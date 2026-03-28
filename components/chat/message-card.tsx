@@ -9,17 +9,18 @@ function timeString(isoString: string): string {
 
 interface MessageCardProps {
   message: Message;
+  isHighlighted?: boolean;
 }
 
-export function MessageCard({ message }: MessageCardProps) {
+export function MessageCard({ message, isHighlighted }: MessageCardProps) {
   if (message.role === 'action-summary') {
-    return <ActionSummaryCard message={message} />;
+    return <ActionSummaryCard message={message} isHighlighted={isHighlighted} />;
   }
 
   return (
     <div
       className={cn(
-        "flex gap-3 px-4 py-3 rounded-lg",
+        "flex gap-3 px-4 py-3 rounded-lg transition-all duration-300",
         message.role === 'user'
           ? "bg-elevated/70 ml-8"
           : message.role === 'nero'
@@ -28,7 +29,19 @@ export function MessageCard({ message }: MessageCardProps) {
       )}
       style={
         message.role === 'nero'
-          ? { borderColor: 'rgba(232,96,58,0.35)', borderLeftColor: 'var(--mb-red)' }
+          ? {
+              borderColor: isHighlighted
+                ? 'rgba(232,96,58,0.8)'
+                : 'rgba(232,96,58,0.35)',
+              borderLeftColor: isHighlighted ? 'var(--mb-brass)' : 'var(--mb-red)',
+              boxShadow: isHighlighted
+                ? '0 0 0 2px rgba(201,160,58,0.25), inset 0 0 0 1px rgba(201,160,58,0.10)'
+                : undefined,
+            }
+          : isHighlighted
+          ? {
+              boxShadow: '0 0 0 2px rgba(201,160,58,0.3)',
+            }
           : {}
       }
     >
@@ -74,17 +87,30 @@ export function MessageCard({ message }: MessageCardProps) {
           {timeString(message.timestamp)}
         </span>
       </div>
+
+      {/* Highlight indicator */}
+      {isHighlighted && (
+        <div
+          className="absolute -left-1 top-1/2 -translate-y-1/2 w-1 rounded-full"
+          style={{ background: 'var(--mb-brass)', height: '60%' }}
+        />
+      )}
     </div>
   );
 }
 
-function ActionSummaryCard({ message }: { message: Message }) {
+function ActionSummaryCard({ message, isHighlighted }: MessageCardProps) {
   return (
     <div
-      className="flex gap-3 px-4 py-3 rounded-lg mx-8 my-2 border"
+      className="flex gap-3 px-4 py-3 rounded-lg mx-8 my-2 border transition-all duration-300"
       style={{
         background: 'rgba(139,126,200,0.06)',
-        borderColor: 'rgba(139,126,200,0.2)',
+        borderColor: isHighlighted
+          ? 'rgba(201,160,58,0.6)'
+          : 'rgba(139,126,200,0.2)',
+        boxShadow: isHighlighted
+          ? '0 0 0 2px rgba(201,160,58,0.25)'
+          : undefined,
       }}
     >
       <div className="flex-shrink-0 mt-0.5">

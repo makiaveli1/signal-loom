@@ -65,3 +65,41 @@ export interface RuntimeState {
   issueCount: number;
   issueDescription?: string;
 }
+
+// Sprint 2: Delegation Events
+export type DelegationEventType =
+  | 'received'
+  | 'delegated'
+  | 'agent_active'
+  | 'agent_returned'
+  | 'approval_requested'
+  | 'decision_made';
+
+export interface DelegationEvent {
+  id: string;
+  threadId: string;
+  type: DelegationEventType;
+  actor: string;
+  targetAgentId?: string;
+  title: string;
+  detail?: string;
+  createdAt: string;
+  linkedMessageId?: string;
+}
+
+// Sprint 2: Split View
+export type PaneSide = 'left' | 'right';
+
+export interface SplitViewState {
+  enabled: boolean;
+  primaryThreadId: string;
+  secondaryThreadId: string | null;
+  activePane: PaneSide;
+}
+
+// Sprint 2: Composer
+export interface ComposerState {
+  isSending: boolean;
+  error: string | null;
+  lastSentAt: string | null;
+}
