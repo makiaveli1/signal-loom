@@ -11,7 +11,7 @@ export interface Thread {
   id: string;
   title: string;
   status: ThreadStatus;
-  lastActive: Date;
+  lastActive: string;
   unreadCount: number;
   hasApproval: boolean;
   linkedAgents: string[];
@@ -25,7 +25,7 @@ export interface Message {
   id: string;
   role: MessageRole;
   content: string;
-  timestamp: Date;
+  timestamp: string;
 }
 
 export type AgentStatus = 'active' | 'idle' | 'waiting' | 'done' | 'blocked';

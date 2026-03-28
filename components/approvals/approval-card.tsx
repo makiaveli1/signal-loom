@@ -3,10 +3,10 @@
 import type { Approval } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-const URGENCY_CONFIG: Record<Approval['urgency'], { label: string; color: string; bg: string }> = {
-  high:   { label: 'HIGH',   color: 'var(--mb-red)',   bg: 'var(--mb-red-dim)' },
-  medium: { label: 'MED',   color: 'var(--mb-brass)',  bg: 'var(--mb-brass-dim)' },
-  low:    { label: 'LOW',    color: 'var(--mb-ash)',    bg: 'rgba(122,120,112,0.12)' },
+const URGENCY_CONFIG: Record<Approval['urgency'], { label: string; color: string; bg: string; border: string }> = {
+  high:   { label: 'High',   color: 'var(--mb-red)',   bg: 'rgba(232,96,58,0.10)',  border: 'rgba(232,96,58,0.25)' },
+  medium: { label: 'Medium', color: 'var(--mb-brass)', bg: 'rgba(201,160,58,0.10)', border: 'rgba(201,160,58,0.22)' },
+  low:    { label: 'Low',    color: 'var(--mb-ash)',    bg: 'rgba(122,120,112,0.08)',border: 'rgba(122,120,112,0.15)' },
 };
 
 interface ApprovalCardProps {
@@ -19,14 +19,15 @@ export function ApprovalCard({ approval, onJumpToThread }: ApprovalCardProps) {
 
   return (
     <div
-      className="rounded-lg border p-4 transition-all duration-150"
+      className="rounded-lg border p-4 transition-all duration-150 hover:scale-[1.01]"
       style={{
         background: 'var(--mb-elevated)',
-        borderColor: `${cfg.color}30`,
+        borderColor: cfg.border,
+        borderLeftWidth: '3px',
       }}
     >
-      {/* Header */}
-      <div className="flex items-start justify-between mb-3">
+      {/* Header row */}
+      <div className="flex items-center justify-between mb-2.5">
         <div className="flex items-center gap-2">
           <span
             className="text-xs font-mono font-semibold px-1.5 py-0.5 rounded"
@@ -38,13 +39,14 @@ export function ApprovalCard({ approval, onJumpToThread }: ApprovalCardProps) {
             by {approval.raisedBy}
           </span>
         </div>
+        {/* Arrow icon */}
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
           <path d="M1 6L11 1L6 11L5 7L1 6Z" fill="var(--mb-brass)" opacity="0.6" />
         </svg>
       </div>
 
       {/* Title */}
-      <p className="text-sm font-medium text-ivory mb-2 leading-snug">
+      <p className="text-sm font-semibold text-ivory mb-2 leading-snug">
         {approval.title}
       </p>
 
@@ -56,11 +58,11 @@ export function ApprovalCard({ approval, onJumpToThread }: ApprovalCardProps) {
       {/* Actions */}
       <div className="flex items-center gap-2">
         <button
-          className="flex-1 text-xs font-medium py-1.5 rounded-md transition-all duration-150"
+          className="flex-1 text-xs font-medium py-1.5 rounded-md transition-all duration-150 hover:opacity-90"
           style={{
             background: cfg.bg,
             color: cfg.color,
-            border: `1px solid ${cfg.color}30`,
+            border: `1px solid ${cfg.border}`,
           }}
         >
           Approve
@@ -69,8 +71,8 @@ export function ApprovalCard({ approval, onJumpToThread }: ApprovalCardProps) {
           className="flex-1 text-xs font-medium py-1.5 rounded-md transition-all duration-150"
           style={{
             background: 'transparent',
-            color: 'var(--mb-ash)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            color: 'var(--mb-ivory-dim)',
+            border: '1px solid rgba(255,255,255,0.07)',
           }}
           onClick={onJumpToThread}
         >

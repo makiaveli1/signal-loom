@@ -11,7 +11,7 @@ export function RuntimeStrip() {
     <footer
       role="contentinfo"
       aria-label="Runtime health status"
-      className="flex items-center justify-between px-4 py-2 border-t text-xs font-mono"
+      className="flex items-center justify-between px-4 py-2 border-t text-xs font-mono gap-6"
       style={{
         background: 'var(--mb-shell)',
         borderColor: 'rgba(255,255,255,0.05)',
@@ -19,21 +19,21 @@ export function RuntimeStrip() {
       }}
     >
       {/* Left — system health */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <span style={{ color: 'var(--mb-ash-muted)' }}>GW</span>
+      <div className="flex items-center gap-5">
+        <div className="flex items-center gap-1.5">
+          <span style={{ color: 'var(--mb-ash-muted)' }}>Gateway</span>
           <span style={{ color: runtime.gateway === 'healthy' ? 'var(--mb-jade)' : 'var(--mb-rust)' }}>
             {runtime.gateway}
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <span style={{ color: 'var(--mb-ash-muted)' }}>Q</span>
+        <div className="flex items-center gap-1.5">
+          <span style={{ color: 'var(--mb-ash-muted)' }}>Queue</span>
           <span style={{ color: runtime.queue === 'healthy' ? 'var(--mb-jade)' : 'var(--mb-rust)' }}>
             {runtime.queue}
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <span style={{ color: 'var(--mb-ash-muted)' }}>HB</span>
+        <div className="flex items-center gap-1.5">
+          <span style={{ color: 'var(--mb-ash-muted)' }}>Heartbeat</span>
           <span style={{ color: runtime.heartbeatFreshness === 'fresh' ? 'var(--mb-jade)' : 'var(--mb-rust)' }}>
             {runtime.heartbeatFreshness}
           </span>
@@ -41,13 +41,13 @@ export function RuntimeStrip() {
       </div>
 
       {/* Center — browser lanes */}
-      <div className="flex items-center gap-3">
-        <span style={{ color: 'var(--mb-ash-muted)' }}>Browser:</span>
-        <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <span style={{ color: 'var(--mb-ash-muted)' }}>Browser</span>
+        <div className="flex items-center gap-1.5" title={`${runtime.browserLanes} of 4 browser lanes active`}>
           {browserLaneDots.map((active, i) => (
             <span
               key={i}
-              className="w-2 h-2 rounded-sm"
+              className="w-2 h-2 rounded-sm transition-all duration-200"
               style={{
                 background: active ? 'var(--mb-teal)' : 'var(--mb-graphite)',
                 boxShadow: active ? '0 0 6px var(--mb-teal-glow)' : 'none',
@@ -56,15 +56,15 @@ export function RuntimeStrip() {
           ))}
         </div>
         <span style={{ color: 'var(--mb-ash-muted)' }}>
-          {runtime.browserLanes} / 4 lanes
+          {runtime.browserLanes}/4 lanes
         </span>
         {!runtime.canvasEnabled && (
-          <span className="text-ash-muted">· Canvas disabled</span>
+          <span style={{ color: 'var(--mb-ash-muted)', fontSize: '10px' }}>· canvas off</span>
         )}
       </div>
 
       {/* Right — issues */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-shrink-0">
         {runtime.issueCount > 0 ? (
           <div className="flex items-center gap-2">
             <span
@@ -79,7 +79,10 @@ export function RuntimeStrip() {
               {runtime.issueCount} issue{runtime.issueCount > 1 ? 's' : ''}
             </span>
             {runtime.issueDescription && (
-              <span className="text-ash-muted text-xs max-w-xs truncate">
+              <span
+                className="text-ash-muted text-xs"
+                style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
                 {runtime.issueDescription}
               </span>
             )}
@@ -87,8 +90,6 @@ export function RuntimeStrip() {
         ) : (
           <span style={{ color: 'var(--mb-jade)' }}>All systems nominal</span>
         )}
-        <span className="text-ash-muted">·</span>
-        <span>v0.1-sprint1</span>
       </div>
     </footer>
   );

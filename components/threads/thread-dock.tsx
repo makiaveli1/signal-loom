@@ -30,7 +30,8 @@ export function ThreadDock() {
           Threads
         </span>
         <span
-          className="text-xs font-mono text-ash"
+          className="text-xs font-mono text-ash-muted px-1.5 py-0.5 rounded"
+          style={{ background: 'var(--mb-graphite)' }}
         >
           {threads.length}
         </span>

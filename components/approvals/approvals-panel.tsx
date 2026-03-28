@@ -15,7 +15,7 @@ export function ApprovalsPanel() {
           initial={{ x: 280, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: 280, opacity: 0 }}
-          transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+          transition={{ type: 'spring', stiffness: 500, damping: 35 }}
           className="flex flex-col h-full border-l"
           style={{
             background: 'var(--mb-shell)',

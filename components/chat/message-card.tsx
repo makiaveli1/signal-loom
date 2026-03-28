@@ -3,8 +3,8 @@
 import { cn } from '@/lib/utils';
 import type { Message } from '@/lib/types';
 
-function timeString(date: Date): string {
-  return date.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' });
+function timeString(isoString: string): string {
+  return new Date(isoString).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' });
 }
 
 interface MessageCardProps {
@@ -28,7 +28,7 @@ export function MessageCard({ message }: MessageCardProps) {
       )}
       style={
         message.role === 'nero'
-          ? { borderColor: 'rgba(232,96,58,0.12)' }
+          ? { borderColor: 'rgba(232,96,58,0.35)', borderLeftColor: 'var(--mb-red)' }
           : {}
       }
     >

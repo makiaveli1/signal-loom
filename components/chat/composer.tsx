@@ -13,11 +13,17 @@ export function Composer() {
         borderColor: 'rgba(255,255,255,0.05)',
       }}
     >
+      {/* Composer input area */}
       <div
-        className="flex items-end gap-2 px-3 py-2.5 rounded-lg border"
+        className="flex items-end gap-2 px-3 py-2.5 rounded-lg border transition-all duration-150"
         style={{
           background: 'var(--mb-panel)',
-          borderColor: 'rgba(255,255,255,0.08)',
+          borderColor: value.trim()
+            ? 'rgba(232,96,58,0.25)'
+            : 'rgba(255,255,255,0.08)',
+          boxShadow: value.trim()
+            ? '0 0 0 1px rgba(232,96,58,0.10), inset 0 0 0 1px rgba(232,96,58,0.05)'
+            : 'none',
         }}
       >
         <textarea
@@ -38,14 +44,18 @@ export function Composer() {
           style={{
             background: value.trim() ? 'var(--mb-red)' : 'var(--mb-graphite)',
             color: value.trim() ? 'var(--mb-ivory)' : 'var(--mb-ash-muted)',
+            transform: value.trim() ? 'scale(1)' : 'scale(0.95)',
+            opacity: value.trim() ? 1 : 0.6,
           }}
           disabled={!value.trim()}
         >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-label="Send">
             <path d="M1 6L11 1L6 11L5 7L1 6Z" fill="currentColor" />
           </svg>
         </button>
       </div>
+
+      {/* Footer hint */}
       <p className="text-xs text-ash-muted mt-1.5 px-1">
         Nero is monitoring · routing is live
       </p>
