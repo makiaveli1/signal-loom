@@ -1,0 +1,261 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ============================================================
+   MIDNIGHT BROADCAST — Signal Loom Design Token System
+   "A warm-dark signal desk with live system energy
+    and calm reading surfaces."
+   ============================================================ */
+
+/* --- Token Map (referenced via var() throughout) --- */
+:root {
+  /* Carbon / base */
+  --mb-carbon:       #0c0e12;
+  --mb-carbon-light: #12151c;
+  --mb-carbon-mid:   #181c26;
+  --mb-graphite:     #1e2330;
+
+  /* Surfaces */
+  --mb-shell:        #13161f;
+  --mb-panel:        #181c28;
+  --mb-elevated:     #1e2434;
+  --mb-reading:      #141820;
+
+  /* Text */
+  --mb-ivory:        #eae6df;
+  --mb-ivory-dim:    #b8b3aa;
+  --mb-ash:          #7c7870;
+  --mb-ash-muted:    #4a4744;
+
+  /* Signal / Active */
+  --mb-teal:         #3dc9c4;
+  --mb-teal-dim:     #1a6b69;
+  --mb-teal-glow:    rgba(61, 201, 196, 0.15);
+
+  /* Accents */
+  --mb-red:          #e8603a;
+  --mb-red-dim:      rgba(232, 96, 58, 0.18);
+  --mb-violet:       #8b7ec8;
+  --mb-violet-dim:   rgba(139, 126, 200, 0.15);
+  --mb-brass:        #c9a03a;
+  --mb-brass-dim:    rgba(201, 160, 58, 0.18);
+
+  /* State */
+  --mb-jade:         #4ab88a;
+  --mb-rust:         #c45a3a;
+  --mb-fog:          #5a6880;
+
+  /* Nero accent */
+  --mb-nero:         #e8603a;
+  --mb-nero-brass:   #c9a03a;
+
+  /* Radius */
+  --mb-radius-sm:    0.375rem;
+  --mb-radius-md:    0.625rem;
+  --mb-radius-lg:    0.875rem;
+  --mb-radius-xl:    1.25rem;
+
+  /* Motion */
+  --mb-ease-signal:  cubic-bezier(0.4, 0, 0.2, 1);
+  --mb-ease-spring:  cubic-bezier(0.34, 1.56, 0.64, 1);
+  --mb-ease-out:     cubic-bezier(0, 0, 0.2, 1);
+  --mb-duration-fast:   120ms;
+  --mb-duration-base:   200ms;
+  --mb-duration-slow:   350ms;
+
+  /* Typography roles */
+  --font-display: var(--font-sans);
+  --font-body:    var(--font-sans);
+  --font-mono:    var(--font-geist-mono);
+}
+
+/* ============================================================
+   SHADCN DARK MODE OVERRIDE — Midnight Broadcast
+   ============================================================ */
+.dark {
+  --background:      var(--mb-carbon);
+  --foreground:      var(--mb-ivory);
+  --card:            var(--mb-panel);
+  --card-foreground: var(--mb-ivory);
+  --popover:         var(--mb-elevated);
+  --popover-foreground: var(--mb-ivory);
+  --primary:         var(--mb-red);
+  --primary-foreground: var(--mb-ivory);
+  --secondary:       var(--mb-graphite);
+  --secondary-foreground: var(--mb-ivory-dim);
+  --muted:           var(--mb-shell);
+  --muted-foreground: var(--mb-ash);
+  --accent:          var(--mb-teal);
+  --accent-foreground: var(--mb-carbon);
+  --destructive:     var(--mb-rust);
+  --destructive-foreground: var(--mb-ivory);
+  --border:          rgba(255, 255, 255, 0.06);
+  --input:           rgba(255, 255, 255, 0.06);
+  --ring:            var(--mb-teal);
+  --radius:          var(--mb-radius-md);
+
+  /* Sidebar */
+  --sidebar:         var(--mb-shell);
+  --sidebar-foreground: var(--mb-ivory-dim);
+  --sidebar-primary: var(--mb-red);
+  --sidebar-primary-foreground: var(--mb-ivory);
+  --sidebar-accent:  var(--mb-elevated);
+  --sidebar-accent-foreground: var(--mb-ivory);
+  --sidebar-border:  rgba(255, 255, 255, 0.05);
+  --sidebar-ring:    var(--mb-teal);
+}
+
+/* ============================================================
+   TAILWIND THEME EXTENSION — Midnight Broadcast tokens
+   ============================================================ */
+@theme inline {
+  /* Map CSS vars → Tailwind utilities */
+  --color-carbon:          var(--mb-carbon);
+  --color-carbon-light:    var(--mb-carbon-light);
+  --color-carbon-mid:      var(--mb-carbon-mid);
+  --color-graphite:        var(--mb-graphite);
+  --color-shell:           var(--mb-shell);
+  --color-panel:           var(--mb-panel);
+  --color-elevated:        var(--mb-elevated);
+  --color-reading:         var(--mb-reading);
+
+  --color-ivory:           var(--mb-ivory);
+  --color-ivory-dim:       var(--mb-ivory-dim);
+  --color-ash:             var(--mb-ash);
+  --color-ash-muted:       var(--mb-ash-muted);
+
+  --color-signal-red:      var(--mb-red);
+  --color-signal-red-dim:  var(--mb-red-dim);
+  --color-signal-teal:     var(--mb-teal);
+  --color-signal-teal-dim: var(--mb-teal-dim);
+  --color-signal-teal-glow: var(--mb-teal-glow);
+  --color-signal-violet:   var(--mb-violet);
+  --color-signal-violet-dim: var(--mb-violet-dim);
+  --color-brass:           var(--mb-brass);
+  --color-brass-dim:       var(--mb-brass-dim);
+
+  --color-state-jade:      var(--mb-jade);
+  --color-state-rust:      var(--mb-rust);
+  --color-state-fog:       var(--mb-fog);
+
+  --color-nero:            var(--mb-nero);
+  --color-nero-brass:      var(--mb-nero-brass);
+
+  /* Radius */
+  --radius-sm:  var(--mb-radius-sm);
+  --radius-md:  var(--mb-radius-md);
+  --radius-lg:  var(--mb-radius-lg);
+  --radius-xl:  var(--mb-radius-xl);
+}
+
+/* ============================================================
+   BASE LAYER
+   ============================================================ */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--border);
+  }
+
+  * {
+    outline-color: color-mix(in oklch, var(--ring) 50%, transparent);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-carbon text-ivory antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--mb-shell);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--mb-graphite);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--mb-ash-muted);
+  }
+
+  /* Text selection */
+  ::selection {
+    background: var(--mb-teal-dim);
+    color: var(--mb-teal);
+  }
+
+  /* Focus visible */
+  :focus-visible {
+    outline: 2px solid var(--mb-teal);
+    outline-offset: 2px;
+    border-radius: var(--mb-radius-sm);
+  }
+}
+
+/* ============================================================
+   REDUCED MOTION
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================================
+   SIGNAL STATUS UTILITIES
+   ============================================================ */
+.status-active     { color: var(--mb-teal); }
+.status-waiting    { color: var(--mb-red); }
+.status-blocked    { color: var(--mb-rust); }
+.status-done       { color: var(--mb-jade); }
+.status-idle       { color: var(--mb-ash); }
+
+.urgency-high      { color: var(--mb-red); }
+.urgency-medium    { color: var(--mb-brass); }
+.urgency-low       { color: var(--mb-ash); }
+
+/* Agent accent colors */
+.agent-hephaestus  { --agent-accent: #e8733a; }
+.agent-argus       { --agent-accent: #c9943a; }
+.agent-ariadne     { --agent-accent: #9b8dc8; }
+.agent-orion       { --agent-accent: #3ab8c8; }
+.agent-hermes      { --agent-accent: #e8a04a; }
+
+/* Live pulse animation */
+@keyframes signal-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.signal-pulse {
+  animation: signal-pulse 2s ease-in-out infinite;
+}
+
+/* Glow effects */
+.glow-teal {
+  box-shadow: 0 0 12px var(--mb-teal-glow), 0 0 4px var(--mb-teal-dim);
+}
+
+.glow-red {
+  box-shadow: 0 0 12px var(--mb-red-dim), 0 0 4px rgba(232, 96, 58, 0.3);
+}
+
+.glow-brass {
+  box-shadow: 0 0 12px var(--mb-brass-dim), 0 0 4px rgba(201, 160, 58, 0.3);
+}
