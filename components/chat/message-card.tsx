@@ -1,15 +1,29 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import type { Message } from '@/lib/types';
 
-function timeString(isoString: string): string {
-  // Use UTC to avoid server/client timezone mismatch during hydration.
-  // Dublin (UTC+1 in March) would cause "10:06" vs "10:07" hydration errors otherwise.
+function formatLocalTime(isoString: string): string {
   const d = new Date(isoString);
-  const h = String(d.getUTCHours()).padStart(2, '0');
-  const m = String(d.getUTCMinutes()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
   return `${h}:${m}`;
+}
+
+interface MessageTimestampProps {
+  isoString: string;
+}
+
+function MessageTimestamp({ isoString }: MessageTimestampProps) {
+  // Server renders the raw ISO string — zero chance of mismatch.
+  // useEffect only runs after hydration, so client has no setState-before-mount issue.
+  const [display, setDisplay] = useState(isoString);
+  useEffect(() => {
+    const timer = setTimeout(() => setDisplay(formatLocalTime(isoString)), 0);
+    return () => clearTimeout(timer);
+  }, [isoString]);
+  return <span suppressHydrationWarning>{display}</span>;
 }
 
 interface MessageCardProps {
@@ -89,7 +103,7 @@ export function MessageCard({ message, isHighlighted }: MessageCardProps) {
           {message.content}
         </p>
         <span className="text-xs font-mono text-ash-muted mt-1 block">
-          {timeString(message.timestamp)}
+          <MessageTimestamp isoString={message.timestamp} />
         </span>
       </div>
 
@@ -136,7 +150,7 @@ function ActionSummaryCard({ message, isHighlighted }: MessageCardProps) {
           {message.content}
         </p>
         <span className="text-xs font-mono text-ash-muted mt-1 block">
-          {timeString(message.timestamp)}
+          <MessageTimestamp isoString={message.timestamp} />
         </span>
       </div>
     </div>
