@@ -4,7 +4,12 @@ import { cn } from '@/lib/utils';
 import type { Message } from '@/lib/types';
 
 function timeString(isoString: string): string {
-  return new Date(isoString).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' });
+  // Use UTC to avoid server/client timezone mismatch during hydration.
+  // Dublin (UTC+1 in March) would cause "10:06" vs "10:07" hydration errors otherwise.
+  const d = new Date(isoString);
+  const h = String(d.getUTCHours()).padStart(2, '0');
+  const m = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
 }
 
 interface MessageCardProps {
