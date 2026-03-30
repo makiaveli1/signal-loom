@@ -1,72 +1,150 @@
 'use client';
 
 import { useSignalLoomStore } from '@/lib/store';
-import type { Thread } from '@/lib/types';
+import type { Thread, PaneRole, Agent } from '@/lib/types';
 import { MessageList } from './message-list';
 import { ThreadHeader } from '../threads/thread-header';
 import { Composer } from './composer';
 import { DelegationTimeline } from './delegation-timeline';
 import { SplitViewToggle } from './split-view-toggle';
+import { PanePresetSwitcher } from './pane-preset-switcher';
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
+
+const STATUS_COLORS: Record<Thread['status'], string> = {
+  active:               'var(--mb-teal)',
+  waiting_on_nero:      'var(--mb-red)',
+  waiting_on_specialist: 'var(--mb-brass)',
+  waiting_on_user:       'var(--mb-violet)',
+  blocked:              'var(--mb-rust)',
+  done:                 'var(--mb-jade)',
+};
 
 interface ThreadPaneProps {
   thread: Thread;
   isActive: boolean;
   isSplit: boolean;
+  paneRole?: PaneRole;
   onSetActive: () => void;
   onClose?: () => void;
   showDelegationTimeline: boolean;
 }
 
+const ROLE_LABELS: Record<PaneRole, string> = {
+  primary: 'Primary',
+  secondary: 'Secondary',
+  monitor: 'Monitor',
+};
+
 export function ThreadPane({
   thread,
   isActive,
   isSplit,
+  paneRole,
   onSetActive,
   onClose,
   showDelegationTimeline,
 }: ThreadPaneProps) {
-  const { delegationEvents, approvals, highlightMessage } = useSignalLoomStore();
+  const { delegationEvents, approvals, highlightMessage, agents } = useSignalLoomStore();
 
   const threadEvents = delegationEvents.filter((e) => e.threadId === thread.id);
   const pendingApproval = approvals.find((a) => a.linkedThreadId === thread.id);
+  const linkedAgents = thread.linkedAgents
+    .map((id) => agents.find((a) => a.id === id))
+    .filter(Boolean);
 
   return (
     <div
       className={cn(
-        'flex flex-col flex-1 min-w-0 h-full transition-opacity duration-150',
-        isSplit && !isActive && 'opacity-60'
+        'flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden transition-opacity duration-150',
+        isSplit && !isActive && 'opacity-85'
       )}
       style={
         isSplit
           ? {
-              borderLeft: isActive ? '2px solid var(--mb-brass)' : '2px solid transparent',
-              background: isActive ? 'var(--mb-carbon)' : 'rgba(0,0,0,0.08)',
+              borderLeft: isActive ? `2px solid ${STATUS_COLORS[thread.status] ?? 'var(--mb-teal)'}` : '2px solid rgba(255,255,255,0.04)',
+              background: isActive ? 'var(--mb-carbon)' : 'rgba(0,0,0,0.12)',
             }
           : undefined
       }
       onClick={isSplit && !isActive ? onSetActive : undefined}
     >
-      {/* Pane title bar (split mode only) */}
+      {/* Pane title bar — split mode */}
       {isSplit && (
         <div
-          className="flex items-center justify-between px-4 py-2 border-b"
+          className="flex items-center justify-between px-4 py-2.5 border-b gap-2 flex-shrink-0"
           style={{
-            borderColor: 'rgba(255,255,255,0.04)',
-            background: 'var(--mb-shell)',
+            borderColor: isActive ? `${STATUS_COLORS[thread.status]}30` : 'rgba(255,255,255,0.04)',
+            background: isActive ? 'rgba(255,255,255,0.03)' : 'transparent',
+            borderLeft: isActive ? `3px solid ${STATUS_COLORS[thread.status] ?? 'var(--mb-teal)'}` : '3px solid transparent',
             cursor: !isActive ? 'pointer' : 'default',
+            transition: 'background 0.15s ease, border-color 0.15s ease',
           }}
           onClick={!isActive ? onSetActive : undefined}
         >
-          <span className="text-xs text-ash-muted truncate">{thread.title}</span>
-          {isActive && onClose && (
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            {/* Status dot */}
+            <span
+              className="w-2 h-2 rounded-full flex-shrink-0"
+              style={{ background: STATUS_COLORS[thread.status] }}
+            />
+            {/* Pane role label */}
+            {paneRole && (
+              <span
+                className="text-xs font-mono uppercase tracking-widest flex-shrink-0"
+                style={{
+                  color: isActive ? 'var(--mb-ivory)' : 'var(--mb-ash)',
+                  fontSize: '9px',
+                  fontWeight: 600,
+                }}
+              >
+                {ROLE_LABELS[paneRole]}
+              </span>
+            )}
+            {/* Thread title */}
+            <span
+              className="text-xs truncate"
+              style={{
+                color: isActive ? 'var(--mb-ivory)' : 'var(--mb-ivory-dim)',
+                fontWeight: isActive ? 500 : 400,
+              }}
+            >
+              {thread.title}
+            </span>
+            {/* Linked agents */}
+            {linkedAgents.slice(0, 2).map((agent) =>
+              agent ? (
+                <span
+                  key={agent.id}
+                  className="px-1.5 py-0.5 rounded text-xs font-mono flex-shrink-0"
+                  style={{
+                    background: `${agent.accentColor}15`,
+                    color: agent.accentColor,
+                    border: `1px solid ${agent.accentColor}25`,
+                    fontSize: '9px',
+                  }}
+                >
+                  {agent.name}
+                </span>
+              ) : null
+            )}
+            {/* Pending approval badge */}
+            {pendingApproval && (
+              <span
+                className="flex items-center gap-0.5 text-xs font-semibold flex-shrink-0"
+                style={{ color: 'var(--mb-brass)', fontSize: '10px' }}
+              >
+                ▲ {approvals.filter((a) => a.linkedThreadId === thread.id).length}
+              </span>
+            )}
+          </div>
+          {onClose && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onClose();
               }}
-              className="flex-shrink-0 text-ash-muted hover:text-ivory transition-colors p-0.5 rounded"
+              className="flex-shrink-0 text-ash-muted hover:text-ivory transition-colors p-1 rounded hover:bg-white/5"
               aria-label="Close pane"
             >
               <X size={12} />
@@ -74,6 +152,9 @@ export function ThreadPane({
           )}
         </div>
       )}
+
+      {/* Preset switcher — shown when preset switcher is visible (top of center area) */}
+      {!isSplit && <PanePresetSwitcher />}
 
       {/* Thread header */}
       <ThreadHeader thread={thread} />

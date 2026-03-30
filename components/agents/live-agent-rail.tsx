@@ -1,11 +1,21 @@
 'use client';
 
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useSignalLoomStore } from '@/lib/store';
 import { AgentCard } from './agent-card';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
+import type { Agent } from '@/lib/types';
 
 export function LiveAgentRail() {
   const { agents } = useSignalLoomStore();
+  const [idleExpanded, setIdleExpanded] = useState(true);
+
+  const visible = agents.filter(
+    (a) => a.status === 'active' || a.status === 'waiting' || a.status === 'blocked'
+  );
+  const idleAgents = agents.filter((a) => a.status === 'idle' || a.status === 'done');
 
   return (
     <aside
@@ -27,7 +37,7 @@ export function LiveAgentRail() {
         </span>
         <div className="flex items-center gap-1.5">
           <span
-            className="w-1.5 h-1.5 rounded-full signal-pulse"
+            className="w-1.5 h-1.5 rounded-full signal-pulse flex-shrink-0"
             style={{ background: 'var(--mb-teal)' }}
           />
           <span className="text-xs font-mono text-signal-teal">
@@ -38,11 +48,87 @@ export function LiveAgentRail() {
 
       <ScrollArea className="flex-1">
         <div className="p-2 space-y-2">
-          {agents.map((agent) => (
+          {/* Always-visible: active, waiting, blocked */}
+          {visible.map((agent) => (
             <AgentCard key={agent.id} agent={agent} />
           ))}
+
+          {/* Idle/done collapsible section */}
+          {idleAgents.length > 0 && (
+            <CollapsibleIdleSection
+              agents={idleAgents}
+              expanded={idleExpanded}
+              onToggle={() => setIdleExpanded((v) => !v)}
+            />
+          )}
         </div>
       </ScrollArea>
     </aside>
+  );
+}
+
+function CollapsibleIdleSection({
+  agents,
+  expanded,
+  onToggle,
+}: {
+  agents: Agent[];
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div>
+      {/* Section header */}
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-1 py-1.5 text-xs font-mono text-ash-muted hover:text-ivory-dim transition-colors duration-150 rounded"
+      >
+        <span className="flex items-center gap-1.5">
+          <svg
+            width="8"
+            height="8"
+            viewBox="0 0 8 8"
+            fill="none"
+            className={cn(
+              'transition-transform duration-200',
+              expanded && 'rotate-90'
+            )}
+          >
+            <path d="M2 1L6 4L2 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Idle
+          <span
+            className="rounded px-1 py-0.5 text-xs font-semibold"
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              color: 'var(--mb-ash)',
+              fontSize: '9px',
+            }}
+          >
+            {agents.length}
+          </span>
+        </span>
+      </button>
+
+      {/* Collapsible agent list */}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            key="idle-agents"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="space-y-2 pt-1">
+              {agents.map((agent) => (
+                <AgentCard key={agent.id} agent={agent} />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

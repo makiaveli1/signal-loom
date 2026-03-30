@@ -1,8 +1,11 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useSignalLoomStore } from '@/lib/store';
 import { ThreadPane } from './thread-pane';
+import { MonitorThreadPane } from './monitor-thread-pane';
+import { ResizeHandle } from '@/components/ui/resize-handle';
 
 function EmptyState() {
   return (
@@ -29,88 +32,159 @@ function EmptyState() {
 export function NeroWorkspace() {
   const {
     threads,
-    selectedThreadId,
-    splitView,
-    setActivePane,
-    closeSplit,
+    workspace,
+    setActivePaneById,
+    closePane,
   } = useSignalLoomStore();
 
-  // Keyboard handling: Tab or Ctrl+` switches pane, Escape closes split
+  // Tracks pane that is mid-exit-animation — once animation starts, pane fades out
+  // before closePane fires to remove it from the store.
+  const [pendingCloseId, setPendingCloseId] = useState<string | null>(null);
+
+  const centerRef = useRef<HTMLDivElement>(null);
+
+  // After the exit animation plays, remove the pane from the store
+  useEffect(() => {
+    if (pendingCloseId === null) return;
+    const timer = setTimeout(() => {
+      closePane(pendingCloseId);
+      setPendingCloseId(null);
+    }, 200); // matches exit transition duration
+    return () => clearTimeout(timer);
+  }, [pendingCloseId, closePane]);
+
+  // Keyboard handling: Tab cycles active pane, Escape closes monitor pane
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (!splitView.enabled) return;
-
       if (e.key === 'Escape') {
-        closeSplit();
+        if (workspace.panes.some((p) => p.role === 'monitor')) {
+          // Find the monitor pane and close it with animation
+          const monitor = workspace.panes.find((p) => p.role === 'monitor');
+          if (monitor) setPendingCloseId(monitor.id);
+        }
         return;
       }
-
       if (e.key === 'Tab' || e.key === '`') {
         e.preventDefault();
-        setActivePane(splitView.activePane === 'left' ? 'right' : 'left');
+        const panes = workspace.panes;
+        const idx = panes.findIndex((p) => p.id === workspace.activePaneId);
+        const next = panes[(idx + 1) % panes.length];
+        setActivePaneById(next.id);
       }
     };
-
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [splitView.enabled, splitView.activePane, closeSplit, setActivePane]);
+  }, [workspace.panes, workspace.activePaneId, setActivePaneById]);
 
-  const primaryThread = threads.find((t) => t.id === splitView.primaryThreadId);
-  const secondaryThread = threads.find((t) => t.id === splitView.secondaryThreadId);
+  const primaryPane = workspace.panes.find((p) => p.role === 'primary');
+  const primaryThread = primaryPane ? threads.find((t) => t.id === primaryPane.threadId) : null;
 
   if (!primaryThread) {
     return <EmptyState />;
   }
 
-  // Split view active — two panes side by side
-  if (splitView.enabled) {
-    return (
-      <div
-        className="flex flex-1 min-w-0 overflow-hidden relative"
-        style={{ background: 'var(--mb-carbon)' }}
-      >
-        {/* Left pane */}
-        <ThreadPane
-          thread={primaryThread}
-          isActive={splitView.activePane === 'left'}
-          isSplit={true}
-          onSetActive={() => setActivePane('left')}
-          onClose={closeSplit}
-          showDelegationTimeline={true}
-        />
+  const nonMonitorPanes = workspace.panes.filter((p) => p.role !== 'monitor');
+  const monitorPane = workspace.panes.find((p) => p.role === 'monitor');
 
-        {/* Vertical divider */}
-        <div
-          className="w-px flex-shrink-0"
-          style={{ background: 'rgba(255,255,255,0.05)' }}
-        />
-
-        {/* Right pane */}
-        <ThreadPane
-          thread={secondaryThread ?? primaryThread}
-          isActive={splitView.activePane === 'right'}
-          isSplit={true}
-          onSetActive={() => setActivePane('right')}
-          onClose={closeSplit}
-          showDelegationTimeline={true}
-        />
-      </div>
-    );
-  }
-
-  // Single-pane view
   return (
+    /*
+     * flex-1: fills the remaining height between TopBar and RuntimeStrip.
+     * min-h-0: REQUIRED in a flex column — allows this element (and its flex
+     *   column children) to shrink below their content size. Without this, a
+     *   flex column item with height:100% will overflow rather than shrink.
+     * overflow: contained at the shell level via the outer MissionShell div.
+     */
     <div
-      className="flex flex-col flex-1 min-w-0 relative"
+      className="flex flex-1 min-h-0"
       style={{ background: 'var(--mb-carbon)' }}
     >
-      <ThreadPane
-        thread={primaryThread}
-        isActive={true}
-        isSplit={false}
-        onSetActive={() => {}}
-        showDelegationTimeline={false}
-      />
+      {/*
+       * Inner flex column: owns the pane layout. min-h-0 ensures panes
+       * (flex column children) can shrink below content size.
+       */}
+      <div
+        ref={centerRef}
+        className="flex flex-1 min-h-0"
+      >
+        <AnimatePresence mode="popLayout">
+          {workspace.panes.map((pane) => {
+            const thread = threads.find((t) => t.id === pane.threadId);
+            if (!thread) return null;
+
+            const isMonitor = pane.role === 'monitor';
+            // Monitor pane owns its own flex width (collapsed: 48px, expanded: 240px)
+            // Non-monitor panes use widthRatio from the store
+            const widthStyle = isMonitor
+              ? {}
+              : { width: `${pane.widthRatio * 100}%` };
+
+            // canClose: secondary panes can always be closed;
+            // monitor panes can always be closed; primary pane is never closeable
+            const canClose =
+              pane.role === 'secondary' ||
+              pane.role === 'monitor';
+
+            return (
+              <motion.div
+                key={pane.id}
+                // Exit animation: when pendingCloseId is set, pane fades out.
+                // After 200ms the store fires closePane and pane is removed permanently.
+                animate={
+                  pendingCloseId === pane.id
+                    ? { opacity: 0, scale: 0.97 }
+                    : { opacity: 1, scale: 1 }
+                }
+                transition={{ duration: 0.18, ease: 'easeIn' }}
+                // No layout prop — resize handle drives width directly.
+                // min-h-0: allows this flex column child to shrink below content size.
+                className="flex-shrink-0 flex h-full min-h-0 overflow-hidden"
+                style={widthStyle}
+              >
+                {isMonitor ? (
+                  <MonitorThreadPane
+                    thread={thread}
+                    isActive={pane.active}
+                    collapsed={workspace.monitorCollapsed}
+                    onExpand={() => {
+                      const { toggleMonitorCollapsed } = useSignalLoomStore.getState();
+                      toggleMonitorCollapsed();
+                    }}
+                    onActivate={() => setActivePaneById(pane.id)}
+                    onClose={canClose ? () => { setPendingCloseId(pane.id); } : undefined}
+                  />
+                ) : (
+                  <ThreadPane
+                    thread={thread}
+                    isActive={pane.active}
+                    isSplit={nonMonitorPanes.length > 1}
+                    paneRole={pane.role}
+                    onSetActive={() => setActivePaneById(pane.id)}
+                    onClose={canClose ? () => { setPendingCloseId(pane.id); } : undefined}
+                    showDelegationTimeline={true}
+                  />
+                )}
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+
+        {/* Resize handles between non-monitor panes */}
+        {nonMonitorPanes.length > 1 && centerRef.current && (
+          <div className="flex-shrink-0 flex h-full min-h-0">
+            {nonMonitorPanes.slice(0, -1).map((paneA, idx) => {
+              const paneB = nonMonitorPanes[idx + 1];
+              return (
+                <ResizeHandle
+                  key={`handle-${paneA.id}-${paneB.id}`}
+                  paneAId={paneA.id}
+                  paneBId={paneB.id}
+                  containerRef={centerRef}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -87,7 +87,7 @@ export interface DelegationEvent {
   linkedMessageId?: string;
 }
 
-// Sprint 2: Split View
+// Sprint 2: Split View (legacy — superseded by pane system)
 export type PaneSide = 'left' | 'right';
 
 export interface SplitViewState {
@@ -95,6 +95,40 @@ export interface SplitViewState {
   primaryThreadId: string;
   secondaryThreadId: string | null;
   activePane: PaneSide;
+}
+
+// Sprint 2.5: Pane System
+export type PaneRole = 'primary' | 'secondary' | 'monitor';
+
+export interface Pane {
+  id: string;          // 'pane-left' | 'pane-center' | 'pane-right'
+  role: PaneRole;
+  threadId: string;
+  widthRatio: number;  // 0.0–1.0, proportion of available center area width
+  active: boolean;
+  collapsed: boolean; // for monitor panes, whether it's in collapsed view
+}
+
+export type WorkspacePreset =
+  | 'focus'       // 1 full pane
+  | 'duo'         // 2 equal panes (50/50)
+  | 'duo_monitor' // 2 panes + 1 compact monitor
+  | 'operator';   // 1 full + 1 compact support
+
+export interface WorkspaceState {
+  preset: WorkspacePreset;
+  panes: Pane[];
+  activePaneId: string;
+  monitorCollapsed: boolean;  // true = monitor pane is collapsed to a slim strip
+}
+
+export interface ResizeState {
+  dragging: boolean;
+  paneAId?: string;
+  paneBId?: string;
+  startX?: number;
+  startWidthA?: number;
+  startWidthB?: number;
 }
 
 // Sprint 2: Composer

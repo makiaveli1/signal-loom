@@ -47,7 +47,6 @@ export function ThreadListItem({ thread, isSelected, onSelect }: ThreadListItemP
       onClick={onSelect}
       className={cn(
         "w-full text-left px-3 py-3 rounded-lg transition-all duration-150 group relative",
-        "hover:scale-[1.01] hover:z-10",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset",
         isSelected
           ? "bg-elevated/80 shadow-[0_0_0_1px_rgba(61,201,196,0.15)]"
@@ -106,10 +105,12 @@ export function ThreadListItem({ thread, isSelected, onSelect }: ThreadListItemP
             {/* Approval indicator */}
             {thread.hasApproval && (
               <span
-                className="w-1.5 h-1.5 rounded-sm flex-shrink-0"
-                style={{ background: 'var(--mb-brass)' }}
-                title="Has approval pending"
-              />
+                className="text-xs leading-none flex-shrink-0 font-bold"
+                style={{ color: 'var(--mb-brass)', fontSize: '10px' }}
+                title="Approval pending"
+              >
+                ▲
+              </span>
             )}
             {/* Unread count */}
             {thread.unreadCount > 0 && (

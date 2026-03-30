@@ -18,8 +18,10 @@ export function MissionShell() {
         className="flex flex-col h-screen overflow-hidden"
         style={{ background: 'var(--mb-carbon)' }}
       >
-        {/* Top bar */}
-        <TopBar />
+        {/* Shell header — explicit height, never participates in content flex */}
+        <div className="flex-shrink-0">
+          <TopBar />
+        </div>
 
         {/* Main content area */}
         <div className="flex flex-1 min-h-0">
@@ -36,8 +38,10 @@ export function MissionShell() {
           <ApprovalsPanel />
         </div>
 
-        {/* Runtime health strip — bottom */}
-        <RuntimeStrip />
+        {/* Runtime health strip — explicit height, never participates in content flex */}
+        <div className="flex-shrink-0">
+          <RuntimeStrip />
+        </div>
       </div>
     </TooltipProvider>
   );

@@ -12,10 +12,10 @@ export function ApprovalsPanel() {
     <AnimatePresence>
       {approvalsPanelOpen && (
         <motion.aside
-          initial={{ x: 280, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          exit={{ x: 280, opacity: 0 }}
-          transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+          initial={{ opacity: 0, x: '100%' }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: '100%' }}
+          transition={{ type: 'spring', stiffness: 380, damping: 32, mass: 0.8 }}
           className="flex flex-col h-full border-l"
           style={{
             background: 'var(--mb-shell)',

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { DelegationEvent, AgentId } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -38,6 +38,84 @@ interface DelegationTimelineProps {
 }
 
 const ALL_AGENTS: AgentId[] = ['hephaestus', 'argus', 'ariadne', 'orion', 'hermes'];
+
+// Hydration-safe: renders ISO timestamp on server, relative time after client mount
+function TimelineEvent({
+  event,
+  onClick,
+}: {
+  event: DelegationEvent;
+  onClick?: () => void;
+}) {
+  const [time, setTime] = useState(event.createdAt);
+
+  // Update to relative time after mount — server and client initial render match.
+  // useEffect only runs after component mounts, so there is no setState-before-mount error.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setTime(formatRelative(event.createdAt));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [event.createdAt]);
+
+  const isApproval =
+    event.type === 'approval_requested' || event.type === 'decision_made';
+  const icon = EVENT_ICONS[event.type];
+  const color = EVENT_COLORS[event.type];
+  const actorColor = AGENT_COLORS[event.actor] ?? 'var(--mb-ash)';
+
+  return (
+    <div
+      className="flex items-start gap-3 py-1.5 cursor-pointer group"
+      onClick={onClick}
+    >
+      {/* Vertical line connector */}
+      <div className="flex flex-col items-center flex-shrink-0 w-4">
+        <div
+          className="w-4 h-4 rounded-full flex items-center justify-center text-xs flex-shrink-0"
+          style={{
+            background: isApproval ? `${color}25` : `${color}15`,
+            border: `1.5px solid ${color}60`,
+            color,
+            fontSize: '8px',
+          }}
+        >
+          {icon}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Actor badge */}
+          <span
+            className="text-xs font-mono capitalize"
+            style={{ color: actorColor }}
+          >
+            {event.actor}
+          </span>
+          {/* Event phrase */}
+          <span className="text-xs text-ivory-dim">{event.title}</span>
+        </div>
+        {/* suppressHydrationWarning — server renders ISO, client fixes after mount */}
+        <span
+          className="text-xs text-ash-muted font-mono"
+          suppressHydrationWarning
+        >
+          {time}
+        </span>
+      </div>
+
+      {/* Approval brass accent */}
+      {isApproval && (
+        <div
+          className="w-1 rounded-full flex-shrink-0"
+          style={{ background: 'var(--mb-brass)', height: '100%', minHeight: '20px' }}
+        />
+      )}
+    </div>
+  );
+}
 
 export function DelegationTimeline({ events, onEventClick }: DelegationTimelineProps) {
   const [filter, setFilter] = useState<AgentId | 'all'>('all');
@@ -115,67 +193,26 @@ export function DelegationTimeline({ events, onEventClick }: DelegationTimelineP
           <p className="text-xs text-ash-muted italic py-1">No events match the filter.</p>
         ) : (
           <div className="space-y-0">
-            {visible.map((event, idx) => {
-              const isApproval =
-                event.type === 'approval_requested' || event.type === 'decision_made';
-              const icon = EVENT_ICONS[event.type];
-              const color = EVENT_COLORS[event.type];
-              const actorColor = AGENT_COLORS[event.actor] ?? 'var(--mb-ash)';
-              const time = formatRelative(event.createdAt);
-
-              return (
-                <div
-                  key={event.id}
-                  className="flex items-start gap-3 py-1.5 cursor-pointer group"
+            {visible.map((event, idx) => (
+              <div key={event.id}>
+                <TimelineEvent
+                  event={event}
                   onClick={() => onEventClick?.(event)}
-                >
-                  {/* Vertical line connector */}
-                  <div className="flex flex-col items-center flex-shrink-0 w-4">
-                    <div
-                      className="w-4 h-4 rounded-full flex items-center justify-center text-xs flex-shrink-0"
-                      style={{
-                        background: isApproval ? `${color}25` : `${color}15`,
-                        border: `1.5px solid ${color}60`,
-                        color,
-                        fontSize: '8px',
-                      }}
-                    >
-                      {icon}
-                    </div>
-                    {idx < visible.length - 1 && (
-                      <div
-                        className="w-px flex-1 min-h-2 mt-0.5"
-                        style={{ background: 'rgba(255,255,255,0.06)' }}
-                      />
-                    )}
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {/* Actor badge */}
-                      <span
-                        className="text-xs font-mono capitalize"
-                        style={{ color: actorColor }}
-                      >
-                        {event.actor}
-                      </span>
-                      {/* Event phrase */}
-                      <span className="text-xs text-ivory-dim">{event.title}</span>
-                    </div>
-                    <span className="text-xs text-ash-muted font-mono">{time}</span>
-                  </div>
-
-                  {/* Approval brass accent */}
-                  {isApproval && (
-                    <div
-                      className="w-1 rounded-full flex-shrink-0"
-                      style={{ background: 'var(--mb-brass)', height: '100%', minHeight: '20px' }}
-                    />
-                  )}
-                </div>
-              );
-            })}
+                />
+                {/* Vertical line — between events, not after last */}
+                {idx < visible.length - 1 && (
+                  <div
+                    className="ml-[0.625rem] w-px"
+                    style={{
+                      height: 'calc(100% + 0.375rem)',
+                      background: 'rgba(255,255,255,0.06)',
+                      marginTop: '-0.125rem',
+                      marginBottom: '0.125rem',
+                    }}
+                  />
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>

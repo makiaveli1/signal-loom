@@ -23,7 +23,6 @@ export function AgentCard({ agent }: AgentCardProps) {
     <div
       className={cn(
         "rounded-lg border p-3 transition-all duration-200",
-        "hover:scale-[1.01] hover:border",
         isActive ? "" : "hover:bg-elevated/40"
       )}
       style={{
@@ -32,7 +31,7 @@ export function AgentCard({ agent }: AgentCardProps) {
         boxShadow: isActive
           ? `0 0 20px ${agent.accentColor}12, inset 0 0 0 1px ${agent.accentColor}08`
           : 'none',
-        transitionProperty: 'box-shadow, border-color, transform, background',
+        transitionProperty: 'box-shadow, border-color, background',
       }}
     >
       {/* Header — name + status */}
@@ -69,13 +68,12 @@ export function AgentCard({ agent }: AgentCardProps) {
             className="flex items-center gap-1 text-xs font-mono"
             style={{ color: statusCfg.color }}
           >
-            {isActive && (
+            {isActive ? (
               <span
                 className="w-1.5 h-1.5 rounded-full signal-pulse flex-shrink-0"
                 style={{ background: statusCfg.color }}
               />
-            )}
-            {!isActive && (
+            ) : (
               <span
                 className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                 style={{ background: statusCfg.color, opacity: 0.4 }}
