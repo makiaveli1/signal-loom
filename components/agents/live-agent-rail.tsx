@@ -8,8 +8,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import type { Agent } from '@/lib/types';
 
+const HERMES_ID = 'hermes';
+
 export function LiveAgentRail() {
-  const { agents } = useSignalLoomStore();
+  const { agents, toggleEmailComposer } = useSignalLoomStore();
   const [idleExpanded, setIdleExpanded] = useState(true);
 
   const visible = agents.filter(
@@ -50,7 +52,11 @@ export function LiveAgentRail() {
         <div className="p-2 space-y-2">
           {/* Always-visible: active, waiting, blocked */}
           {visible.map((agent) => (
-            <AgentCard key={agent.id} agent={agent} />
+            <AgentCard
+              key={agent.id}
+              agent={agent}
+              onClick={agent.id === HERMES_ID ? toggleEmailComposer : undefined}
+            />
           ))}
 
           {/* Idle/done collapsible section */}
@@ -59,6 +65,7 @@ export function LiveAgentRail() {
               agents={idleAgents}
               expanded={idleExpanded}
               onToggle={() => setIdleExpanded((v) => !v)}
+              toggleEmailComposer={toggleEmailComposer}
             />
           )}
         </div>
@@ -71,10 +78,12 @@ function CollapsibleIdleSection({
   agents,
   expanded,
   onToggle,
+  toggleEmailComposer,
 }: {
   agents: Agent[];
   expanded: boolean;
   onToggle: () => void;
+  toggleEmailComposer: () => void;
 }) {
   return (
     <div>
@@ -123,7 +132,11 @@ function CollapsibleIdleSection({
           >
             <div className="space-y-2 pt-1">
               {agents.map((agent) => (
-                <AgentCard key={agent.id} agent={agent} />
+                <AgentCard
+                  key={agent.id}
+                  agent={agent}
+                  onClick={agent.id === HERMES_ID ? toggleEmailComposer : undefined}
+                />
               ))}
             </div>
           </motion.div>

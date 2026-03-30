@@ -28,16 +28,132 @@ export interface EmailGateStoreItem {
   confidence: 'high' | 'medium' | 'low';
   rationale: string;
   proposedTiming: string;
-  gateStatus: 'clear' | 'ready_to_send' | 'review_required' | 'human_approved' | 'human_denied';
-  gateOpenedAt?: string;
-  humanActedAt?: string;
+  gateStatus: 'draft' | 'needs_review' | 'ready_for_approval' | 'human_approved' | 'human_denied';
+  lastChangedAt: string;
   humanNote?: string;
+  approvalInvalidated?: boolean;
   proposedEmail: {
     subject: string;
     body: string;
     footer?: string;
   };
 }
+
+// ---------------------------------------------------------------------------
+// Mock email gates — Sprint 3 DE verification data
+// All gates start in non-sendable states. Only human_approved is sendable.
+// ---------------------------------------------------------------------------
+
+const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
+  {
+    id: 'gate-brian-mcgary',
+    threadId: 'thread-hermes-1',
+    summary: 'Brian McGarry — website studio deployment approval follow-up',
+    toRecipient: 'Brian McGarry',
+    toRole: 'Commercial Director, CPK',
+    isExecutive: false,
+    isNewTopic: true,
+    confidence: 'high',
+    rationale:
+      'Higher scrutiny: first contact with this recipient about this topic. ' +
+      'Review carefully before approving. Gbemi — your approval is required before this can be sent.',
+    proposedTiming: 'Within 24 hours',
+    gateStatus: 'needs_review',
+    lastChangedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    proposedEmail: {
+      subject: 'Verdantia — Your website is ready to go live',
+      body: `Hi Brian,\n\nFollowing our conversation, I'm pleased to let you know your Verdantia website is fully built and ready for your review.\n\nAre you available for a 20-minute call this week?\n\nBest regards,\nOluwagbemi Akadiri`,
+      footer: '-- \nOluwagbemi Akadiri\nVerdantia Ltd\nAI Consulting & Training\nwww.verdantia.ai',
+    },
+  },
+  {
+    id: 'gate-larkfield-followup',
+    threadId: 'thread-hermes-2',
+    summary: 'Larkfield — Q2 strategy meeting follow-up',
+    toRecipient: 'Sarah McGarry',
+    toRole: 'Managing Partner, Larkfield',
+    isExecutive: false,
+    isNewTopic: false,
+    confidence: 'high',
+    rationale:
+      'Standard review. This is a routine outreach or follow-up to an existing contact — ' +
+      'but your approval is still required before this goes out.',
+    proposedTiming: 'Within SLA window',
+    gateStatus: 'ready_for_approval',
+    lastChangedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    proposedEmail: {
+      subject: 'Verdantia — Q2 strategy session',
+      body: `Hi Sarah,\n\nThank you for your time on our call. As discussed, I'm following up with a tailored proposal for Larkfield's Q2 priorities.\n\nBest,\nOluwagbemi Akadiri`,
+      footer: '-- \nOluwagbemi Akadiri\nVerdantia Ltd\nAI Consulting & Training\nwww.verdantia.ai',
+    },
+  },
+  {
+    id: 'gate-cfo-escalation',
+    threadId: 'thread-hermes-3',
+    summary: 'Verdantia expansion — proposal to CFO',
+    toRecipient: 'Adedolapo Grace Babalola',
+    toRole: 'CFO',
+    isExecutive: true,
+    isNewTopic: false,
+    confidence: 'low',
+    rationale:
+      'Higher scrutiny: addressed to executive role (CFO), Hermès has low confidence in this draft. ' +
+      'Review carefully before approving. Gbemi — your approval is required before this can be sent.',
+    proposedTiming: 'Within 2 hours (SLA)',
+    gateStatus: 'needs_review',
+    lastChangedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+    proposedEmail: {
+      subject: 'Verdantia — Q2 expansion proposal',
+      body: `Hi Grace,\n\nI wanted to share some thoughts on how Verdantia could expand its reach in Q2. Based on recent client conversations, I believe there's significant demand for AI training in the mid-market segment.\n\nWould you have 30 minutes to discuss?\n\nWith respect,\nOluwagbemi Akadiri`,
+      footer: '-- \nOluwagbemi Akadiri\nVerdantia Ltd\nAI Consulting & Training\nwww.verdantia.ai',
+    },
+  },
+  {
+    id: 'gate-approved-demo',
+    threadId: 'thread-hermes-4',
+    summary: 'Follow-up after AI workshop — prospective client',
+    toRecipient: 'Michael Okafor',
+    toRole: 'Head of Learning, TechCorp',
+    isExecutive: false,
+    isNewTopic: false,
+    confidence: 'medium',
+    rationale:
+      'Standard review. This is a routine outreach or follow-up — ' +
+      'but your approval is still required before this goes out.',
+    proposedTiming: 'Within SLA window',
+    gateStatus: 'human_approved',
+    lastChangedAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+    humanNote: 'Approved — good framing',
+    proposedEmail: {
+      subject: 'Verdantia — Next steps after the workshop',
+      body: `Hi Michael,\n\nThank you for attending the AI workshop last week. I enjoyed our conversation about TechCorp's upskilling goals.\n\nI've put together a short proposal covering the three areas we discussed. Happy to walk you through it whenever suits.\n\nBest,\nOluwagbemi Akadiri`,
+      footer: '-- \nOluwagbemi Akadiri\nVerdantia Ltd\nAI Consulting & Training\nwww.verdantia.ai',
+    },
+  },
+  {
+    id: 'gate-denied-revision',
+    threadId: 'thread-hermes-5',
+    summary: 'Initial outreach — potential AI consulting lead',
+    toRecipient: 'David Walsh',
+    toRole: 'Operations Director, FinServe Ltd',
+    isExecutive: false,
+    isNewTopic: true,
+    confidence: 'low',
+    rationale:
+      'Higher scrutiny: first contact with this recipient about this topic, Hermès has low confidence in this draft. ' +
+      'Review carefully before approving. Gbemi — your approval is required before this can be sent.',
+    proposedTiming: 'Within 24 hours',
+    gateStatus: 'human_denied',
+    lastChangedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+    humanNote: 'Tone is too pushy — please revise',
+    proposedEmail: {
+      subject: 'Verdantia — Quick question about AI upskilling',
+      body: `Hi David,\n\nI think Verdantia could save your team a lot of time with AI automation. We're working with companies like yours right now and the results are incredible.\n\nCan we jump on a call?\n\nBest,\nOluwagbemi Akadiri`,
+      footer: '-- \nOluwagbemi Akadiri\nVerdantia Ltd\nAI Consulting & Training\nwww.verdantia.ai',
+    },
+  },
+];
+
 import { mockThreads, mockApprovals, mockRuntime, mockAgents } from '@/lib/mock/data';
 import { mockDelegationEvents } from '@/lib/mock/delegation-data';
 import {
@@ -121,6 +237,7 @@ interface SignalLoomStore {
   approvals: Approval[];
   runtime: RuntimeState;
   approvalsPanelOpen: boolean;
+  emailComposerOpen: boolean;
 
   // Sprint 2: Legacy split view (kept for migration compatibility)
   splitView: SplitViewState;
@@ -144,11 +261,13 @@ interface SignalLoomStore {
   emailGates: EmailGateStoreItem[];
   setEmailGates: (gates: EmailGateStoreItem[]) => void;
   updateEmailGate: (gate: EmailGateStoreItem) => void;
+  initEmailGates: () => void;
 
   // Actions
   selectThread: (id: string) => void;
   markThreadRead: (id: string) => void;
   toggleApprovalsPanel: () => void;
+  toggleEmailComposer: () => void;
 
   // Sprint 3: Data loading via OpenClaw adapter
   loadSessions: () => Promise<void>;
@@ -189,6 +308,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   approvals: mockApprovals,
   runtime: mockRuntime,
   approvalsPanelOpen: false,
+  emailComposerOpen: false,
 
   // Sprint 2 legacy (migrated to workspace in 2.5)
   splitView: {
@@ -229,7 +349,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   setEmailGates: (gates) => set({ emailGates: gates }),
   updateEmailGate: (gate) =>
     set((state) => ({
-      emailGates: state.emailGates.map((g) => (g.id === gate.id ? gate : g),
+      emailGates: state.emailGates.map((g) => (g.id === gate.id ? gate : g)),
     })),
   initEmailGates: () => {
     const { emailGates } = get();
@@ -282,6 +402,11 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   toggleApprovalsPanel: () =>
     set((state) => ({
       approvalsPanelOpen: !state.approvalsPanelOpen,
+    })),
+
+  toggleEmailComposer: () =>
+    set((state) => ({
+      emailComposerOpen: !state.emailComposerOpen,
     })),
 
   // ---- Sprint 3: OpenClaw adapter data loading ----

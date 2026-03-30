@@ -151,11 +151,12 @@ export type DelegationEventType =
 
 /** Whether Hermès can act autonomously or a human must approve */
 export type EmailGateStatus =
-  | 'clear'           // Hermès can send without human gate
-  | 'ready_to_send'   // Human notified, auto-sends in 4h unless overridden
-  | 'review_required' // Human must explicitly approve before send
-  | 'human_approved'  // Human approved — queued for send
-  | 'human_denied';  // Human blocked — Hermès must revise
+  | 'draft'             // Hermès is preparing — not yet ready for review
+  | 'needs_review'       // Hermès is ready — human must review before approval
+  | 'ready_for_approval' // Hermès recommends — human reviews and approves or revises
+  | 'human_approved'    // Human approved — ONLY this state is sendable
+  | 'human_denied';    // Human blocked — Hermès must revise and resubmit
+  // 'sent' is set only after the actual send completes (via gateway or API)
 
 export interface EmailGate {
   id: string;
@@ -165,7 +166,7 @@ export interface EmailGate {
   /** Who the email is addressed to */
   toRecipient: string;
   toRole?: string;
-  /** Executive level detected */
+  /** Executive level detected — always needs_review */
   isExecutive: boolean;
   /** First time Verdantia is emailing this recipient about this topic */
   isNewTopic: boolean;
@@ -175,13 +176,9 @@ export interface EmailGate {
   rationale: string;
   /** Human-readable timing of the proposed send */
   proposedTiming: string;
-  /** SLA deadline if applicable */
-  slaDeadline?: string;
   gateStatus: EmailGateStatus;
-  /** ISO timestamp — when the gate opened (for 4h countdown) */
-  gateOpenedAt?: string;
-  /** ISO timestamp — when human last acted */
-  humanActedAt?: string;
+  /** ISO timestamp — when gate last changed state */
+  lastChangedAt: string;
   /** Human's decision note if any */
   humanNote?: string;
   /** The proposed email itself */
@@ -190,13 +187,15 @@ export interface EmailGate {
     body: string;
     footer?: string;
   };
+  /** If true, the current draft has changed since human approval — approval is invalidated */
+  approvalInvalidated?: boolean;
 }
 
 /**
  * Input to computeEmailGate()
  */
 export interface EmailGateInput {
-  threadId: string;
+  threadId?: string;
   summary: string;
   toRecipient: string;
   toRole?: string;
@@ -204,8 +203,7 @@ export interface EmailGateInput {
     subject: string;
     body: string;
   };
-  isReply?: boolean;
-  lastEmailAt?: string;
+  isNewTopic?: boolean;
 }
 
 // ---------------------------------------------------------------------------

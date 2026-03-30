@@ -1,17 +1,22 @@
 /**
  * Human-in-the-loop email gate for Hermès.
  *
- * Hermès has envelope authority over ROUTING, TIMING, and FRAMING — but not
- * everything. This module decides when a human must be in the loop.
+ * Standing rule: Gbemi / Likwid is the final approver for every outbound email.
+ * Hermès may draft, prepare, recommend, and surface review items.
+ * No outbound email is ever sent without explicit human approval.
  *
- * Gate principle: Hermès handles what it CAN handle. The gate is exclusive —
- * either Hermès acts OR a human acts, never both.
+ * The gate determines SCRUTINY LEVEL, not whether approval is needed.
+ * Every email needs human approval — the gate decides how much review is warranted.
  *
- * Gate criteria (from sprint brief):
- * 1. New template/topic for recipient → ready_to_send (4h window, default send)
- * 2. Escalation to executive → review_required (explicit approval needed)
- * 3. Low confidence → notification_with_override
- * 4. Explicit human request → held for response
+ * Gate statuses:
+ * - draft              Hermès is preparing — not yet ready for human review
+ * - needs_review       Higher scrutiny required — human should review carefully
+ * - ready_for_approval Standard scrutiny — routine outreach, solid draft
+ * - human_approved    Human approved — ONLY this state is sendable
+ * - human_denied       Human blocked — Hermès must revise and resubmit
+ *
+ * Send enforcement: canSend() returns true ONLY for human_approved.
+ * requireHumanApproval() throws for all other states.
  */
 
 import type {
@@ -45,29 +50,13 @@ function isExecutive(recipient: string, role?: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// New topic detection
-// ---------------------------------------------------------------------------
-
-// In production this would check a database of known topic→recipient pairs.
-// Here we use a simple in-memory set for the session.
-const knownTopicRecipientPairs = new Set<string>();
-
-export function registerTopicRecipientPair(topic: string, recipient: string): void {
-  knownTopicRecipientPairs.add(`${topic.toLowerCase()}::${recipient.toLowerCase()}`);
-}
-
-export function isNewTopic(topic: string, recipient: string): boolean {
-  return !knownTopicRecipientPairs.has(`${topic.toLowerCase()}::${recipient.toLowerCase()}`);
-}
-
-// ---------------------------------------------------------------------------
 // Confidence scoring
 // ---------------------------------------------------------------------------
 
 const LOW_CONFIDENCE_PHRASES = [
   'i think', 'might be', 'maybe', 'perhaps', 'possibly',
   'not sure', 'uncertain', 'not certain', 'could be',
-  '初步', '暂时', '估计', '大概', // Chinese low-confidence markers
+  '初步', '暂时', '估计', '大概',
 ];
 
 const HIGH_CONFIDENCE_PHRASES = [
@@ -79,176 +68,9 @@ function scoreConfidence(body: string): 'high' | 'medium' | 'low' {
   const lower = body.toLowerCase();
   const lowCount = LOW_CONFIDENCE_PHRASES.filter((p) => lower.includes(p)).length;
   const highCount = HIGH_CONFIDENCE_PHRASES.filter((p) => lower.includes(p)).length;
-
   if (lowCount >= 2) return 'low';
   if (highCount >= 2 && lowCount === 0) return 'high';
   return 'medium';
-}
-
-// ---------------------------------------------------------------------------
-// SLA deadline computation
-// ---------------------------------------------------------------------------
-
-const SLA_HOURS: Record<string, number> = {
-  // Verdantia standard SLAs
-  inquiry_response: 4,
-  proposal_followup: 24,
-  meeting_request: 8,
-  executive_outreach: 2,
-  general: 48,
-  new_lead: 1,
-};
-
-function computeSLADeadline(category: string = 'general'): string {
-  const hours = SLA_HOURS[category] ?? SLA_HOURS.general;
-  const deadline = new Date(Date.now() + hours * 60 * 60 * 1000);
-  return deadline.toISOString();
-}
-
-// ---------------------------------------------------------------------------
-// Core gate computation
-// ---------------------------------------------------------------------------
-
-export interface EmailGateResult {
-  gate: EmailGate;
-  status: EmailGateStatus;
-  rationale: string;
-}
-
-/**
- * Determine the email gate status for a proposed email.
- *
- * Rules (exclusive — first matching rule wins):
- * 1. If to executive → review_required (explicit approval needed, never auto-sends)
- * 2. If new topic for this recipient → ready_to_send (4h window, defaults to send)
- * 3. If low confidence → review_required
- * 4. If is a reply to a recent thread → clear (routine response)
- * 5. Otherwise → clear (Hermès acts autonomously)
- */
-export function computeEmailGate(input: EmailGateInput): EmailGateResult {
-  const { threadId, summary, toRecipient, toRole, proposedEmail } = input;
-  const { subject, body } = proposedEmail;
-
-  // Rule 1: Executive escalation → explicit approval required
-  if (isExecutive(toRecipient, toRole)) {
-    const gate: EmailGate = {
-      id: `gate-${threadId}-${Date.now()}`,
-      threadId,
-      summary,
-      toRecipient,
-      toRole,
-      isExecutive: true,
-      isNewTopic: isNewTopic(subject, toRecipient),
-      confidence: scoreConfidence(body),
-      rationale: `Escalation to executive (${toRole ?? toRecipient}) — explicit human approval required before send.`,
-      proposedTiming: 'Within 2 hours (SLA: executive)',
-      slaDeadline: computeSLADeadline('executive_outreach'),
-      gateStatus: 'review_required',
-      proposedEmail: {
-        subject,
-        body,
-        footer: buildEmailFooter(),
-      },
-    };
-    return { gate, status: 'review_required', rationale: gate.rationale };
-  }
-
-  // Rule 2: New topic for this recipient → 4h notification window
-  const newTopic = isNewTopic(subject, toRecipient);
-  if (newTopic) {
-    const gate: EmailGate = {
-      id: `gate-${threadId}-${Date.now()}`,
-      threadId,
-      summary,
-      toRecipient,
-      toRole,
-      isExecutive: false,
-      isNewTopic: true,
-      confidence: scoreConfidence(body),
-      rationale: `First Verdantia email to ${toRecipient} about this topic. You have 4 hours to review before it auto-sends, or tap "Revise" to edit now.`,
-      proposedTiming: 'In ~4 hours (default — will auto-send unless you intervene)',
-      gateStatus: 'ready_to_send',
-      gateOpenedAt: new Date().toISOString(),
-      proposedEmail: {
-        subject,
-        body,
-        footer: buildEmailFooter(),
-      },
-    };
-    return { gate, status: 'ready_to_send', rationale: gate.rationale };
-  }
-
-  // Rule 3: Low confidence → review required
-  const confidence = scoreConfidence(body);
-  if (confidence === 'low') {
-    const gate: EmailGate = {
-      id: `gate-${threadId}-${Date.now()}`,
-      threadId,
-      summary,
-      toRecipient,
-      toRole,
-      isExecutive: false,
-      isNewTopic: false,
-      confidence,
-      rationale: `Hermès has low confidence in this email — it contains hedging language or uncertain phrasing. Review before sending.`,
-      proposedTiming: 'When you\'re ready (no auto-send)',
-      gateStatus: 'review_required',
-      proposedEmail: {
-        subject,
-        body,
-        footer: buildEmailFooter(),
-      },
-    };
-    return { gate, status: 'review_required', rationale: gate.rationale };
-  }
-
-  // Rule 4: Reply to recent thread → clear (routine)
-  if (input.isReply && input.lastEmailAt) {
-    const hoursSince = (Date.now() - new Date(input.lastEmailAt).getTime()) / (1000 * 60 * 60);
-    if (hoursSince < 72) {
-      const gate: EmailGate = {
-        id: `gate-${threadId}-${Date.now()}`,
-        threadId,
-        summary,
-        toRecipient,
-        toRole,
-        isExecutive: false,
-        isNewTopic: false,
-        confidence: 'high',
-        rationale: 'Routine reply to an active thread — Hermès sending autonomously.',
-        proposedTiming: 'Now',
-        gateStatus: 'clear',
-        proposedEmail: {
-          subject,
-          body,
-          footer: buildEmailFooter(),
-        },
-      };
-      return { gate, status: 'clear', rationale: gate.rationale };
-    }
-  }
-
-  // Rule 5: Default → Hermès acts autonomously
-  const gate: EmailGate = {
-    id: `gate-${threadId}-${Date.now()}`,
-    threadId,
-    summary,
-    toRecipient,
-    toRole,
-    isExecutive: false,
-    isNewTopic: false,
-    confidence,
-    rationale: 'Within Hermès\'s autonomous authority — routing, timing, and framing approved.',
-    proposedTiming: 'Within SLA window',
-    slaDeadline: computeSLADeadline('general'),
-    gateStatus: 'clear',
-    proposedEmail: {
-      subject,
-      body,
-      footer: buildEmailFooter(),
-    },
-  };
-  return { gate, status: 'clear', rationale: gate.rationale };
 }
 
 // ---------------------------------------------------------------------------
@@ -266,16 +88,138 @@ function buildEmailFooter(): string {
 }
 
 // ---------------------------------------------------------------------------
+// Core gate computation
+// ---------------------------------------------------------------------------
+
+export interface EmailGateResult {
+  gate: EmailGate;
+  status: EmailGateStatus;
+  rationale: string;
+}
+
+/**
+ * Determine the gate status and scrutiny level for a proposed email.
+ *
+ * EVERY outbound email requires human approval. This function determines
+ * the SCRUTINY LEVEL — how much review the human should apply.
+ *
+ * Rule: Higher stakes → higher scrutiny. But every email, without exception,
+ * requires explicit human approval before it can be sent.
+ *
+ * High scrutiny (needs_review):
+ * - Addressed to an executive role
+ * - First contact with this recipient about this topic
+ * - Hermès has low confidence in the draft
+ *
+ * Standard scrutiny (ready_for_approval):
+ * - Routine outreach or follow-up to a known contact
+ * - Hermès has medium or high confidence
+ */
+export function computeEmailGate(input: EmailGateInput): EmailGateResult {
+  const { threadId, summary, toRecipient, toRole, proposedEmail } = input;
+  const { subject, body } = proposedEmail;
+  const confidence = scoreConfidence(body);
+  const executive = isExecutive(toRecipient, toRole);
+  const isNewTopic = input.isNewTopic ?? false;
+
+  const now = new Date().toISOString();
+
+  // High scrutiny: executive, new topic, or low confidence
+  if (executive || isNewTopic || confidence === 'low') {
+    const reasons: string[] = [];
+    if (executive) reasons.push(`addressed to executive role (${toRole ?? toRecipient})`);
+    if (isNewTopic) reasons.push('first contact with this recipient about this topic');
+    if (confidence === 'low') reasons.push('Hermès has low confidence in this draft');
+
+    const gate: EmailGate = {
+      id: `gate-${threadId ?? 'direct'}-${Date.now()}`,
+      threadId,
+      summary,
+      toRecipient,
+      toRole,
+      isExecutive: executive,
+      isNewTopic,
+      confidence,
+      rationale:
+        `Higher scrutiny: ${reasons.join('; ')}. Review carefully before approving. ` +
+        `Gbemi — your approval is required before this can be sent.`,
+      proposedTiming: executive ? 'Within 2 hours (SLA)' : 'Within 24 hours',
+      gateStatus: 'needs_review',
+      lastChangedAt: now,
+      proposedEmail: {
+        subject,
+        body,
+        footer: buildEmailFooter(),
+      },
+    };
+    return { gate, status: 'needs_review', rationale: gate.rationale };
+  }
+
+  // Standard scrutiny — routine or known contact
+  // Still requires human approval, but Hermès framing is solid
+  const gate: EmailGate = {
+    id: `gate-${threadId ?? 'direct'}-${Date.now()}`,
+    threadId,
+    summary,
+    toRecipient,
+    toRole,
+    isExecutive: false,
+    isNewTopic,
+    confidence,
+    rationale:
+      'Standard review. This is a routine outreach or follow-up — ' +
+      'but your approval is still required before this goes out.',
+    proposedTiming: 'Within SLA window',
+    gateStatus: 'ready_for_approval',
+    lastChangedAt: now,
+    proposedEmail: {
+      subject,
+      body,
+      footer: buildEmailFooter(),
+    },
+  };
+  return { gate, status: 'ready_for_approval', rationale: gate.rationale };
+}
+
+// ---------------------------------------------------------------------------
+// Send enforcement — the hard rule
+// ---------------------------------------------------------------------------
+
+/**
+ * ONLY emails in human_approved status may be sent.
+ * This is the enforcement point — call this before any send action.
+ *
+ * Returns true if the email can be sent, false otherwise.
+ * Never returns true for draft, needs_review, ready_for_approval, or human_denied.
+ */
+export function canSend(gate: EmailGate): boolean {
+  return gate.gateStatus === 'human_approved';
+}
+
+/**
+ * Validate that a gate is in a sendable state.
+ * Throws if not — use canSend() to check first.
+ */
+export function requireHumanApproval(gate: EmailGate): void {
+  if (!canSend(gate)) {
+    throw new Error(
+      `Send blocked: email to "${gate.toRecipient}" is "${gate.gateStatus}" — ` +
+      `human approval is required before any outbound email.`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Human decision recording
 // ---------------------------------------------------------------------------
 
 export function approveEmailGate(gate: EmailGate, note?: string): EmailGate {
-  registerTopicRecipientPair(gate.proposedEmail.subject, gate.toRecipient);
   return {
     ...gate,
     gateStatus: 'human_approved',
-    humanActedAt: new Date().toISOString(),
+    lastChangedAt: new Date().toISOString(),
     humanNote: note,
+    approvalInvalidated: false,
   };
 }
 
@@ -283,13 +227,22 @@ export function denyEmailGate(gate: EmailGate, note?: string): EmailGate {
   return {
     ...gate,
     gateStatus: 'human_denied',
-    humanActedAt: new Date().toISOString(),
+    lastChangedAt: new Date().toISOString(),
     humanNote: note,
   };
 }
 
-export function reviseEmailGate(gate: EmailGate, revisedEmail: { subject: string; body: string }): EmailGate {
-  // Re-compute gate based on the revised content
+/**
+ * Revise an email gate with new draft content.
+ * If the gate was previously approved, the revision INVALIDATES that approval —
+ * the human must review the new draft and approve again.
+ */
+export function reviseEmailGate(
+  gate: EmailGate,
+  revisedEmail: { subject: string; body: string }
+): EmailGate {
+  const wasApproved = gate.gateStatus === 'human_approved';
+
   const result = computeEmailGate({
     threadId: gate.threadId ?? '',
     summary: gate.summary,
@@ -297,9 +250,24 @@ export function reviseEmailGate(gate: EmailGate, revisedEmail: { subject: string
     toRole: gate.toRole,
     proposedEmail: revisedEmail,
   });
+
   return {
     ...result.gate,
-    id: gate.id, // keep original gate ID
-    humanActedAt: new Date().toISOString(),
+    id: gate.id,
+    lastChangedAt: new Date().toISOString(),
+    // Any revision invalidates prior approval — human must re-review
+    approvalInvalidated: wasApproved ? true : undefined,
+    humanNote: undefined,
+  };
+}
+
+/**
+ * Clear the approval-invalidated flag after human has re-reviewed the new draft.
+ */
+export function clearInvalidation(gate: EmailGate): EmailGate {
+  return {
+    ...gate,
+    approvalInvalidated: false,
+    lastChangedAt: new Date().toISOString(),
   };
 }

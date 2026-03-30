@@ -13,17 +13,20 @@ const STATUS_CONFIG: Record<Agent['status'], { label: string; color: string }> =
 
 interface AgentCardProps {
   agent: Agent;
+  onClick?: () => void;
 }
 
-export function AgentCard({ agent }: AgentCardProps) {
+export function AgentCard({ agent, onClick }: AgentCardProps) {
   const statusCfg = STATUS_CONFIG[agent.status];
   const isActive  = agent.status === 'active';
 
   return (
     <div
+      onClick={onClick}
       className={cn(
         "rounded-lg border p-3 transition-all duration-200",
-        isActive ? "" : "hover:bg-elevated/40"
+        isActive ? "" : "hover:bg-elevated/40",
+        onClick && "cursor-pointer"
       )}
       style={{
         background: 'var(--mb-panel)',

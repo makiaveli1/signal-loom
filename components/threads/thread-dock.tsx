@@ -4,6 +4,7 @@ import { useSignalLoomStore } from '@/lib/store';
 import { ThreadListItem } from './thread-list-item';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Thread } from '@/lib/types';
+import type { EmailGateStoreItem } from '@/lib/store';
 
 export function ThreadDock() {
   const { threads, selectedThreadId, selectThread, sessionsLoading, sessionsError } =
@@ -129,10 +130,10 @@ function ThreadListItemWrapper({
   const pendingEmailGates = (emailGates as EmailGateStoreItem[]).filter(
     (g) =>
       g.threadId === thread.id &&
-      (g.gateStatus === 'ready_to_send' || g.gateStatus === 'review_required')
+      (g.gateStatus === 'ready_for_approval' || g.gateStatus === 'needs_review')
   );
   const hasPendingEmail = pendingEmailGates.length > 0;
-  const hasReviewRequired = pendingEmailGates.some((g) => g.gateStatus === 'review_required');
+  const hasReviewRequired = pendingEmailGates.some((g) => g.gateStatus === 'needs_review');
 
   return (
     <ThreadListItem
