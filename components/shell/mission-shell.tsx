@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { TopBar } from './top-bar';
 import { RuntimeStrip } from './runtime-strip';
@@ -10,7 +11,20 @@ import { ApprovalsPanel } from '../approvals/approvals-panel';
 import { useSignalLoomStore } from '@/lib/store';
 
 export function MissionShell() {
-  const { approvalsPanelOpen } = useSignalLoomStore();
+  const { approvalsPanelOpen, loadSessions, loadAgents, loadApprovals, loadRuntimeHealth } =
+    useSignalLoomStore();
+
+  // Sprint 3: Load real data from the OpenClaw adapter on mount.
+  // The adapter handles mock fallback when NEXT_PUBLIC_USE_MOCK_DATA=true.
+  useEffect(() => {
+    loadSessions();
+    loadAgents();
+    loadApprovals();
+    loadRuntimeHealth();
+    // Refresh health every 30 seconds
+    const interval = setInterval(loadRuntimeHealth, 30_000);
+    return () => clearInterval(interval);
+  }, [loadSessions, loadAgents, loadApprovals, loadRuntimeHealth]);
 
   return (
     <TooltipProvider>

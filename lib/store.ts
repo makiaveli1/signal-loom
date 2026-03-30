@@ -17,6 +17,15 @@ import type {
 } from '@/lib/types';
 import { mockThreads, mockApprovals, mockRuntime, mockAgents } from '@/lib/mock/data';
 import { mockDelegationEvents } from '@/lib/mock/delegation-data';
+import {
+  loadSessions as adapterLoadSessions,
+  loadAgents as adapterLoadAgents,
+  loadApprovals as adapterLoadApprovals,
+  loadRuntimeHealth as adapterLoadRuntimeHealth,
+  loadSessionMessages as adapterLoadSessionMessages,
+  sendMessage as adapterSendMessage,
+  loadDelegationEvents as adapterLoadDelegationEvents,
+} from '@/lib/openclaw/adapter';
 
 // --- Preset helpers ---
 
@@ -102,10 +111,22 @@ interface SignalLoomStore {
   // Sprint 2: Message highlighting
   highlightedMessageId: string | null;
 
+  // Sprint 3: Adapter-backed data
+  sessionsLoading: boolean;
+  sessionsError: string | null;
+  sessionsFetchedAt: string | null;
+
   // Actions
   selectThread: (id: string) => void;
   markThreadRead: (id: string) => void;
   toggleApprovalsPanel: () => void;
+
+  // Sprint 3: Data loading via OpenClaw adapter
+  loadSessions: () => Promise<void>;
+  loadAgents: () => Promise<void>;
+  loadApprovals: () => Promise<void>;
+  loadRuntimeHealth: () => Promise<void>;
+  loadMessagesForThread: (sessionKey: string) => Promise<void>;
 
   // Sprint 2: Legacy split view actions
   setSplitView: (enabled: boolean, secondaryThreadId?: string) => void;
@@ -169,6 +190,11 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
     dragging: false,
   },
 
+  // Sprint 3: Adapter-backed data state
+  sessionsLoading: false,
+  sessionsError: null,
+  sessionsFetchedAt: null,
+
   // ---- Actions ----
 
   selectThread: (id) =>
@@ -215,6 +241,114 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
     set((state) => ({
       approvalsPanelOpen: !state.approvalsPanelOpen,
     })),
+
+  // ---- Sprint 3: OpenClaw adapter data loading ----
+
+  loadSessions: async () => {
+    set({ sessionsLoading: true, sessionsError: null });
+    const result = await adapterLoadSessions();
+    if (!result.ok) {
+      set({ sessionsLoading: false, sessionsError: result.error });
+      return;
+    }
+    // Map OpenClawSession[] → Thread[]
+    const adaptedThreads: Thread[] = result.data.map((s) => ({
+      id: s.id,
+      title: s.title,
+      messages: [] as Thread["messages"], // loaded lazily
+      linkedAgents: [],
+      delegationEvents: [],
+      linkedThreads: [],
+      tags: s.tags,
+      status: s.status === 'active' ? 'active'
+        : s.status === 'done' ? 'done'
+        : s.status === 'idle' ? 'done'
+        : 'active',
+      unreadCount: 0,
+      hasApproval: false,
+      lastActive: s.lastMessageAt ?? new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    }));
+    set((state) => ({
+      threads: adaptedThreads.length > 0 ? adaptedThreads : state.threads,
+      sessionsLoading: false,
+      sessionsFetchedAt: result.fetchedAt,
+      sessionsError: null,
+      // Select first thread if nothing is selected
+      selectedThreadId: state.selectedThreadId || (adaptedThreads[0]?.id ?? state.selectedThreadId),
+      // Update workspace to use first session as primary thread
+      workspace: adaptedThreads.length > 0
+        ? {
+            ...state.workspace,
+            panes: state.workspace.panes.map((p) =>
+              p.role === 'primary'
+                ? { ...p, threadId: adaptedThreads[0].id }
+                : p
+            ),
+          }
+        : state.workspace,
+    }));
+  },
+
+  loadAgents: async () => {
+    const result = await adapterLoadAgents();
+    if (!result.ok) return; // agents are non-critical, just keep mock
+    set({ agents: result.data as unknown as Agent[] });
+  },
+
+  loadApprovals: async () => {
+    const result = await adapterLoadApprovals();
+    if (!result.ok) return;
+    const adapted: Approval[] = result.data.map((a) => ({
+      id: a.id,
+      title: a.summary,
+      urgency: 'medium' as const,
+      raisedBy: a.requestedBy as string,
+      recommendation: '',
+      linkedThreadId: a.linkedThreadId ?? '',
+    }));
+    set({ approvals: adapted });
+  },
+
+  loadRuntimeHealth: async () => {
+    const result = await adapterLoadRuntimeHealth();
+    if (!result.ok) {
+      set((state) => ({
+        runtime: {
+          ...state.runtime,
+          gateway: 'down' as const,
+        },
+      }));
+      return;
+    }
+    const { gateway, queue, heartbeat } = result.data;
+    set((state) => ({
+      runtime: {
+        ...state.runtime,
+        gateway: gateway.reachable ? 'healthy' as const : 'down' as const,
+        queue: queue.healthy ? 'healthy' as const : 'backed_up' as const,
+        heartbeatFreshness: heartbeat.fresh ? 'fresh' as const : 'stale' as const,
+      },
+    }));
+  },
+
+  loadMessagesForThread: async (sessionKey: string) => {
+    const result = await adapterLoadSessionMessages(sessionKey);
+    if (!result.ok || result.data.length === 0) return;
+    const adaptedMessages = result.data.map((m) => ({
+      id: m.id,
+      role: m.role === 'action-summary' ? 'action-summary' : m.role,
+      content: m.content,
+      timestamp: m.timestamp,
+    }));
+    set((state) => ({
+      threads: state.threads.map((t) =>
+        t.id === sessionKey
+          ? { ...t, messages: adaptedMessages as Thread['messages'] }
+          : t
+      ),
+    }));
+  },
 
   // Sprint 2 legacy — migrate to workspace
   setSplitView: (enabled, secondaryThreadId) =>
@@ -444,23 +578,8 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       composerState: { ...state.composerState, isSending: true, error: null },
     }));
 
-    await new Promise((resolve) => setTimeout(resolve, 600));
-
-    const shouldError = Math.random() < 0.1;
-
-    if (shouldError) {
-      set((state) => ({
-        composerState: {
-          ...state.composerState,
-          isSending: false,
-          error: 'Failed to send. Try again.',
-        },
-      }));
-      setTimeout(() => { get().clearComposerError(); }, 3000);
-      return;
-    }
-
-    const newMessage = {
+    // Optimistically add the user message to the thread
+    const userMessage = {
       id: `msg-${threadId}-${Date.now()}`,
       role: 'user' as const,
       content,
@@ -470,7 +589,40 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
     set((state) => ({
       threads: state.threads.map((t) =>
         t.id === threadId
-          ? { ...t, messages: [...t.messages, newMessage], lastActive: new Date().toISOString() }
+          ? { ...t, messages: [...t.messages, userMessage], lastActive: new Date().toISOString() }
+          : t
+      ),
+    }));
+
+    // Call the real adapter (or mock in dev)
+    const result = await adapterSendMessage({
+      sessionKey: threadId,
+      content,
+    });
+
+    if (!result.ok) {
+      set((state) => ({
+        composerState: {
+          ...state.composerState,
+          isSending: false,
+          error: result.error,
+        },
+      }));
+      setTimeout(() => { get().clearComposerError(); }, 4000);
+      return;
+    }
+
+    const assistantMessage = {
+      id: result.data.id,
+      role: 'assistant' as const,
+      content: result.data.content ?? '',
+      timestamp: result.data.timestamp,
+    };
+
+    set((state) => ({
+      threads: state.threads.map((t) =>
+        t.id === threadId
+          ? { ...t, messages: [...t.messages, assistantMessage] as Thread['messages'], lastActive: new Date().toISOString() }
           : t
       ),
       composerState: {
