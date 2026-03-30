@@ -21,6 +21,8 @@ export function MissionShell() {
     loadAgents();
     loadApprovals();
     loadRuntimeHealth();
+    // Sprint 3 DE: Initialize mock email gates (replace with real gateway data)
+    initEmailGates();
     // Refresh health every 30 seconds
     const interval = setInterval(loadRuntimeHealth, 30_000);
     return () => clearInterval(interval);

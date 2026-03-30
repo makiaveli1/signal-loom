@@ -15,6 +15,29 @@ import type {
   WorkspacePreset,
   Pane,
 } from '@/lib/types';
+
+/** Minimal email gate shape stored in the Signal Loom state */
+export interface EmailGateStoreItem {
+  id: string;
+  threadId?: string;
+  summary: string;
+  toRecipient: string;
+  toRole?: string;
+  isExecutive: boolean;
+  isNewTopic: boolean;
+  confidence: 'high' | 'medium' | 'low';
+  rationale: string;
+  proposedTiming: string;
+  gateStatus: 'clear' | 'ready_to_send' | 'review_required' | 'human_approved' | 'human_denied';
+  gateOpenedAt?: string;
+  humanActedAt?: string;
+  humanNote?: string;
+  proposedEmail: {
+    subject: string;
+    body: string;
+    footer?: string;
+  };
+}
 import { mockThreads, mockApprovals, mockRuntime, mockAgents } from '@/lib/mock/data';
 import { mockDelegationEvents } from '@/lib/mock/delegation-data';
 import {
@@ -116,6 +139,12 @@ interface SignalLoomStore {
   sessionsError: string | null;
   sessionsFetchedAt: string | null;
 
+  // Sprint 3 DE: Human email gate (Hermès)
+  // Minimal shape to avoid circular adapter imports in store
+  emailGates: EmailGateStoreItem[];
+  setEmailGates: (gates: EmailGateStoreItem[]) => void;
+  updateEmailGate: (gate: EmailGateStoreItem) => void;
+
   // Actions
   selectThread: (id: string) => void;
   markThreadRead: (id: string) => void;
@@ -194,6 +223,19 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   sessionsLoading: false,
   sessionsError: null,
   sessionsFetchedAt: null,
+
+  // Sprint 3 DE: Human email gate (Hermès)
+  emailGates: [],
+  setEmailGates: (gates) => set({ emailGates: gates }),
+  updateEmailGate: (gate) =>
+    set((state) => ({
+      emailGates: state.emailGates.map((g) => (g.id === gate.id ? gate : g),
+    })),
+  initEmailGates: () => {
+    const { emailGates } = get();
+    if (emailGates.length > 0) return; // already initialized
+    set({ emailGates: MOCK_EMAIL_GATES });
+  },
 
   // ---- Actions ----
 

@@ -124,11 +124,23 @@ function ThreadListItemWrapper({
   isSelected: boolean;
   onSelect: () => void;
 }) {
+  const { emailGates } = useSignalLoomStore();
+
+  const pendingEmailGates = (emailGates as EmailGateStoreItem[]).filter(
+    (g) =>
+      g.threadId === thread.id &&
+      (g.gateStatus === 'ready_to_send' || g.gateStatus === 'review_required')
+  );
+  const hasPendingEmail = pendingEmailGates.length > 0;
+  const hasReviewRequired = pendingEmailGates.some((g) => g.gateStatus === 'review_required');
+
   return (
     <ThreadListItem
       thread={thread}
       isSelected={isSelected}
       onSelect={onSelect}
+      hasPendingEmail={hasPendingEmail}
+      emailGateUrgent={hasReviewRequired}
     />
   );
 }

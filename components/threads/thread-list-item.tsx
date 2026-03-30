@@ -35,6 +35,8 @@ interface ThreadListItemProps {
   thread: Thread;
   isSelected: boolean;
   onSelect: () => void;
+  hasPendingEmail?: boolean;
+  emailGateUrgent?: boolean;
 }
 
 export function ThreadListItem({ thread, isSelected, onSelect }: ThreadListItemProps) {

@@ -139,7 +139,74 @@ export type DelegationEventType =
   | 'agent_active'
   | 'agent_returned'
   | 'approval_requested'
-  | 'decision_made';
+  | 'decision_made'
+  | 'email_proposed'
+  | 'email_approved'
+  | 'email_sent'
+  | 'email_denied';
+
+// ---------------------------------------------------------------------------
+// Email gate (Human-in-the-loop for Hermès email decisions)
+// ---------------------------------------------------------------------------
+
+/** Whether Hermès can act autonomously or a human must approve */
+export type EmailGateStatus =
+  | 'clear'           // Hermès can send without human gate
+  | 'ready_to_send'   // Human notified, auto-sends in 4h unless overridden
+  | 'review_required' // Human must explicitly approve before send
+  | 'human_approved'  // Human approved — queued for send
+  | 'human_denied';  // Human blocked — Hermès must revise
+
+export interface EmailGate {
+  id: string;
+  threadId?: string;
+  /** Summary of the proposed email content */
+  summary: string;
+  /** Who the email is addressed to */
+  toRecipient: string;
+  toRole?: string;
+  /** Executive level detected */
+  isExecutive: boolean;
+  /** First time Verdantia is emailing this recipient about this topic */
+  isNewTopic: boolean;
+  /** Hermès confidence: 'high' | 'medium' | 'low' */
+  confidence: 'high' | 'medium' | 'low';
+  /** Why the gate is in its current state */
+  rationale: string;
+  /** Human-readable timing of the proposed send */
+  proposedTiming: string;
+  /** SLA deadline if applicable */
+  slaDeadline?: string;
+  gateStatus: EmailGateStatus;
+  /** ISO timestamp — when the gate opened (for 4h countdown) */
+  gateOpenedAt?: string;
+  /** ISO timestamp — when human last acted */
+  humanActedAt?: string;
+  /** Human's decision note if any */
+  humanNote?: string;
+  /** The proposed email itself */
+  proposedEmail: {
+    subject: string;
+    body: string;
+    footer?: string;
+  };
+}
+
+/**
+ * Input to computeEmailGate()
+ */
+export interface EmailGateInput {
+  threadId: string;
+  summary: string;
+  toRecipient: string;
+  toRole?: string;
+  proposedEmail: {
+    subject: string;
+    body: string;
+  };
+  isReply?: boolean;
+  lastEmailAt?: string;
+}
 
 // ---------------------------------------------------------------------------
 // Adapter result types (always returned, never thrown to UI)
