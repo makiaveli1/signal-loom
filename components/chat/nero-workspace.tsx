@@ -7,23 +7,40 @@ import { ThreadPane } from './thread-pane';
 import { MonitorThreadPane } from './monitor-thread-pane';
 import { ResizeHandle } from '@/components/ui/resize-handle';
 
-function EmptyState() {
+function EmptyState({ loading }: { loading?: boolean }) {
   return (
     <main
       className="flex flex-col flex-1 items-center justify-center relative"
       style={{ background: 'var(--mb-carbon)' }}
     >
       <div className="text-center">
-        <div
-          className="w-16 h-16 rounded-full flex items-center justify-center mb-4 mx-auto"
-          style={{ background: 'var(--mb-elevated)' }}
-        >
-          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-            <circle cx="16" cy="16" r="4" fill="var(--mb-teal)" opacity="0.8" />
-            <circle cx="16" cy="16" r="9" stroke="var(--mb-teal)" strokeWidth="1.5" opacity="0.3" />
-          </svg>
-        </div>
-        <p className="text-ivory-dim text-sm">Select a thread to begin</p>
+        {loading ? (
+          <>
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center mb-4 mx-auto"
+              style={{ background: 'var(--mb-elevated)' }}
+            >
+              <div
+                className="w-5 h-5 rounded-full border-2 animate-spin"
+                style={{ borderColor: 'rgba(255,255,255,0.1)', borderTopColor: 'var(--mb-teal)' }}
+              />
+            </div>
+            <p className="text-ivory-dim text-sm">Loading sessions…</p>
+          </>
+        ) : (
+          <>
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center mb-4 mx-auto"
+              style={{ background: 'var(--mb-elevated)' }}
+            >
+              <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                <circle cx="16" cy="16" r="4" fill="var(--mb-teal)" opacity="0.8" />
+                <circle cx="16" cy="16" r="9" stroke="var(--mb-teal)" strokeWidth="1.5" opacity="0.3" />
+              </svg>
+            </div>
+            <p className="text-ivory-dim text-sm">Select a thread to begin</p>
+          </>
+        )}
       </div>
     </main>
   );
@@ -35,6 +52,7 @@ export function NeroWorkspace() {
     workspace,
     setActivePaneById,
     closePane,
+    sessionsLoading,
   } = useSignalLoomStore();
 
   // Tracks pane that is mid-exit-animation — once animation starts, pane fades out
@@ -80,7 +98,7 @@ export function NeroWorkspace() {
   const primaryThread = primaryPane ? threads.find((t) => t.id === primaryPane.threadId) : null;
 
   if (!primaryThread) {
-    return <EmptyState />;
+    return <EmptyState loading={sessionsLoading} />;
   }
 
   const nonMonitorPanes = workspace.panes.filter((p) => p.role !== 'monitor');
