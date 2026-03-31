@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { EmailGate } from '@/lib/openclaw/adapter/types';
+import type { EmailGateStoreItem } from '@/lib/store';
 import { approveEmailGate, denyEmailGate, reviseEmailGate } from '@/lib/openclaw/adapter/email-gate';
 import { cn } from '@/lib/utils';
 
@@ -12,7 +13,15 @@ import { cn } from '@/lib/utils';
 
 const STATUS_CONFIG: Record<
   EmailGate['gateStatus'],
-  { label: string; color: string; bg: string; border: string; canApprove: boolean; canRevise: boolean }
+  {
+    label: string;
+    color: string;
+    bg: string;
+    border: string;
+    canApprove: boolean;
+    canRevise: boolean;
+    canSend: boolean;
+  }
 > = {
   draft: {
     label: 'Draft',
@@ -21,6 +30,7 @@ const STATUS_CONFIG: Record<
     border: 'rgba(128,128,120,0.2)',
     canApprove: false,
     canRevise: true,
+    canSend: false,
   },
   needs_review: {
     label: 'Needs Review',
@@ -29,6 +39,7 @@ const STATUS_CONFIG: Record<
     border: 'rgba(232,96,58,0.25)',
     canApprove: true,
     canRevise: true,
+    canSend: false,
   },
   ready_for_approval: {
     label: 'Awaiting Your Approval',
@@ -37,14 +48,43 @@ const STATUS_CONFIG: Record<
     border: 'rgba(201,160,58,0.25)',
     canApprove: true,
     canRevise: true,
+    canSend: false,
   },
   human_approved: {
-    label: 'Approved ✓',
+    label: 'Approved — Ready to Send',
     color: 'var(--mb-jade)',
     bg: 'rgba(80,200,120,0.06)',
     border: 'rgba(80,200,120,0.2)',
     canApprove: false,
-    canRevise: true, // revision invalidates — shown but not prominent
+    canRevise: true,
+    canSend: true,
+  },
+  sending: {
+    label: 'Sending…',
+    color: 'var(--mb-brass)',
+    bg: 'rgba(201,160,58,0.08)',
+    border: 'rgba(201,160,58,0.25)',
+    canApprove: false,
+    canRevise: false,
+    canSend: false,
+  },
+  sent: {
+    label: 'Sent ✓',
+    color: 'var(--mb-jade)',
+    bg: 'rgba(80,200,120,0.06)',
+    border: 'rgba(80,200,120,0.2)',
+    canApprove: false,
+    canRevise: false,
+    canSend: false,
+  },
+  send_failed: {
+    label: 'Send Failed',
+    color: 'var(--mb-red)',
+    bg: 'rgba(232,96,58,0.08)',
+    border: 'rgba(232,96,58,0.25)',
+    canApprove: false,
+    canRevise: true,
+    canSend: false,
   },
   human_denied: {
     label: 'Not Approved',
@@ -53,6 +93,7 @@ const STATUS_CONFIG: Record<
     border: 'rgba(128,128,120,0.2)',
     canApprove: false,
     canRevise: true,
+    canSend: false,
   },
 };
 
@@ -65,25 +106,31 @@ interface EmailGateCardProps {
   onApproved?: (gate: EmailGate, note?: string) => void;
   onDenied?: (gate: EmailGate, note?: string) => void;
   onRevised?: (gate: EmailGate, revised: { subject: string; body: string }) => void;
+  onSend?: (gate: EmailGate) => void;
 }
 
 interface HermesEmailComposerProps {
-  gates: EmailGate[];
-  onApproved?: (gate: EmailGate, note?: string) => void;
-  onDenied?: (gate: EmailGate, note?: string) => void;
-  onRevised?: (gate: EmailGate, revised: { subject: string; body: string }) => void;
+  gates: EmailGateStoreItem[];
+  onApproved?: (gate: EmailGateStoreItem, note?: string) => void;
+  onDenied?: (gate: EmailGateStoreItem, note?: string) => void;
+  onRevised?: (gate: EmailGateStoreItem, revised: { subject: string; body: string }) => void;
+  onSend?: (gate: EmailGateStoreItem) => void;
 }
 
 // ---------------------------------------------------------------------------
 // Email gate card
 // ---------------------------------------------------------------------------
 
-function EmailGateCard({ gate, onApproved, onDenied, onRevised }: EmailGateCardProps) {
+function EmailGateCard({ gate, onApproved, onDenied, onRevised, onSend }: EmailGateCardProps) {
   const config = STATUS_CONFIG[gate.gateStatus];
   const [mode, setMode] = useState<'view' | 'revise'>(gate.gateStatus === 'draft' ? 'revise' : 'view');
   const [revisedSubject, setRevisedSubject] = useState(gate.proposedEmail.subject);
   const [revisedBody, setRevisedBody] = useState(gate.proposedEmail.body);
   const [note, setNote] = useState('');
+  const isSending = gate.gateStatus === 'sending';
+  const isSent = gate.gateStatus === 'sent';
+  const isFailed = gate.gateStatus === 'send_failed';
+  const isSendable = config.canSend && !isSending && !isSent;
 
   // If approved email was revised, show invalidation notice
   const invalidated = gate.approvalInvalidated;
@@ -259,12 +306,128 @@ function EmailGateCard({ gate, onApproved, onDenied, onRevised }: EmailGateCardP
         </div>
       )}
 
-      {/* Human approval confirmation */}
+      {/* Human approval confirmation + send button */}
       {mode === 'view' && gate.gateStatus === 'human_approved' && !invalidated && (
+        <div className="flex flex-col gap-2 pt-1">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onSend?.(gate)}
+              disabled={isSending}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded font-semibold disabled:opacity-50"
+              style={{ background: 'var(--mb-jade)', color: 'var(--mb-carbon)' }}
+              data-automation-id="hermes-send-button"
+            >
+              {isSending ? (
+                <>
+                  <span className="animate-spin" aria-hidden="true">⟳</span>
+                  Sending…
+                </>
+              ) : (
+                <>✉ Send email</>
+              )}
+            </button>
+            <span className="text-xs text-ivory-dim flex-1">
+              Transport: Microsoft Graph
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Sending spinner */}
+      {mode === 'view' && gate.gateStatus === 'sending' && (
         <div className="flex items-center gap-2 pt-1">
-          <span className="text-xs" style={{ color: 'var(--mb-jade)' }}>
-            ✓ Approved — this email is ready to send. Use Hermès to dispatch when ready.
+          <span className="animate-spin text-xs" aria-hidden="true">⟳</span>
+          <span className="text-xs text-ivory-dim">
+            Sending via Microsoft Graph…
           </span>
+        </div>
+      )}
+
+      {/* Sent confirmation */}
+      {mode === 'view' && gate.gateStatus === 'sent' && (
+        <div className="flex flex-col gap-1 pt-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold" style={{ color: 'var(--mb-jade)' }}>
+              ✓ Sent successfully
+            </span>
+          </div>
+          {gate.sentAt && (
+            <span className="text-xs text-ash-muted">
+              {new Date(gate.sentAt).toLocaleString('en-IE', {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              })}
+            </span>
+          )}
+          {gate.auditLog && gate.auditLog.length > 0 && (
+            <details className="mt-1">
+              <summary className="text-xs text-ash-muted cursor-pointer hover:text-ivory-dim">
+                View audit trail ({gate.auditLog.length} events)
+              </summary>
+              <div className="mt-1 space-y-0.5">
+                {gate.auditLog.map((entry, i) => (
+                  <div key={i} className="text-xs text-ash-muted flex gap-2">
+                    <span className="flex-shrink-0 opacity-50">
+                      {new Date(entry.at).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span>
+                      {entry.action.replace(/_/g, ' ')}
+                      {entry.note && <span className="text-ivory-dim ml-1">— {entry.note}</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
+
+      {/* Send failed + retry */}
+      {mode === 'view' && gate.gateStatus === 'send_failed' && (
+        <div className="flex flex-col gap-2 pt-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold" style={{ color: 'var(--mb-red)' }}>
+              ✗ Send failed
+            </span>
+            <span className="text-xs text-ivory-dim flex-1">
+              Attempt {gate.sendAttempts ?? 1}
+            </span>
+          </div>
+          {gate.sendError && (
+            <p className="text-xs text-ivory-dim italic">
+              {gate.sendError}
+            </p>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onSend?.(gate)}
+              disabled={isSending}
+              className="text-xs px-3 py-1.5 rounded font-medium disabled:opacity-50"
+              style={{ background: 'var(--mb-brass)', color: 'var(--mb-carbon)' }}
+            >
+              Retry send
+            </button>
+          </div>
+          {gate.auditLog && gate.auditLog.length > 0 && (
+            <details className="mt-1">
+              <summary className="text-xs text-ash-muted cursor-pointer hover:text-ivory-dim">
+                View audit trail ({gate.auditLog.length} events)
+              </summary>
+              <div className="mt-1 space-y-0.5">
+                {gate.auditLog.map((entry, i) => (
+                  <div key={i} className="text-xs text-ash-muted flex gap-2">
+                    <span className="flex-shrink-0 opacity-50">
+                      {new Date(entry.at).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span>
+                      {entry.action.replace(/_/g, ' ')}
+                      {entry.note && <span className="text-ivory-dim ml-1">— {entry.note}</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
       )}
 
@@ -289,23 +452,25 @@ export function HermesEmailComposer({
   onApproved,
   onDenied,
   onRevised,
+  onSend,
 }: HermesEmailComposerProps) {
-  const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'denied'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'sent' | 'denied'>('pending');
 
   const pending = gates.filter(
     (g) => g.gateStatus === 'needs_review' || g.gateStatus === 'ready_for_approval'
   );
-  const approved = gates.filter(
-    (g) => g.gateStatus === 'human_approved' && !g.approvalInvalidated
-  );
-  const denied = gates.filter((g) => g.gateStatus === 'human_denied');
-
-  // All gates that need attention
   const needsAttention = gates.filter(
     (g) =>
       (g.gateStatus === 'needs_review' || g.gateStatus === 'ready_for_approval') ||
       g.approvalInvalidated
   );
+  // Approved + send_failed = ready to send (approved gates not yet sent, or failed to retry)
+  const approvedForSend = gates.filter(
+    (g) =>
+      (g.gateStatus === 'human_approved' || g.gateStatus === 'send_failed') && !g.approvalInvalidated
+  );
+  const sent = gates.filter((g) => g.gateStatus === 'sent');
+  const denied = gates.filter((g) => g.gateStatus === 'human_denied');
 
   const tabs: {
     key: typeof activeTab;
@@ -321,8 +486,14 @@ export function HermesEmailComposer({
     },
     {
       key: 'approved',
-      label: 'Approved',
-      count: approved.length,
+      label: 'Ready to send',
+      count: approvedForSend.length,
+      color: 'var(--mb-jade)',
+    },
+    {
+      key: 'sent',
+      label: 'Sent',
+      count: sent.length,
       color: 'var(--mb-jade)',
     },
     {
@@ -332,7 +503,7 @@ export function HermesEmailComposer({
     },
   ];
 
-  const activeGates = { pending: needsAttention, approved, denied }[activeTab];
+  const activeGates = { pending: needsAttention, approved: approvedForSend, sent, denied }[activeTab];
 
   return (
     <div className="flex flex-col h-full">
@@ -380,14 +551,10 @@ export function HermesEmailComposer({
             </div>
             <p className="text-xs text-ash-muted">
               {activeTab === 'pending' && 'No emails need your review'}
-              {activeTab === 'approved' && 'No approved emails yet'}
+              {activeTab === 'approved' && 'No emails ready to send'}
+              {activeTab === 'sent' && 'No sent emails yet'}
               {activeTab === 'denied' && 'No blocked emails'}
             </p>
-            {activeTab === 'approved' && (
-              <p className="text-xs text-ash-muted opacity-60">
-                Approved emails appear here. Send via Hermès when ready.
-              </p>
-            )}
           </div>
         ) : (
           activeGates.map((gate) => (
@@ -397,6 +564,7 @@ export function HermesEmailComposer({
               onApproved={onApproved}
               onDenied={onDenied}
               onRevised={onRevised}
+              onSend={onSend}
             />
           ))
         )}

@@ -154,9 +154,13 @@ export type EmailGateStatus =
   | 'draft'             // Hermès is preparing — not yet ready for review
   | 'needs_review'       // Hermès is ready — human must review before approval
   | 'ready_for_approval' // Hermès recommends — human reviews and approves or revises
-  | 'human_approved'    // Human approved — ONLY this state is sendable
+  | 'human_approved'    // Human approved — ready to dispatch, not yet sent
+  | 'sending'           // Dispatch in progress
+  | 'sent'              // Successfully sent via Graph sendMail
+  | 'send_failed'       // Send failed — may retry if still approved
   | 'human_denied';    // Human blocked — Hermès must revise and resubmit
-  // 'sent' is set only after the actual send completes (via gateway or API)
+  // No email is ever sent without human_approved first.
+  // Only 'sent' represents a successful outbound delivery.
 
 export interface EmailGate {
   id: string;
@@ -189,7 +193,33 @@ export interface EmailGate {
   };
   /** If true, the current draft has changed since human approval — approval is invalidated */
   approvalInvalidated?: boolean;
+  /** Send audit — one entry per meaningful lifecycle event */
+  auditLog?: EmailGateAuditEntry[];
+  /** ISO timestamp of successful send */
+  sentAt?: string;
+  /** Last send error message */
+  sendError?: string;
+  /** Number of send attempts */
+  sendAttempts?: number;
 }
+
+export interface EmailGateAuditEntry {
+  at: string;
+  action: EmailGateAuditAction;
+  note?: string;
+}
+
+export type EmailGateAuditAction =
+  | 'draft_created'
+  | 'submitted_for_review'
+  | 'approved'
+  | 'denied'
+  | 'revision_submitted'
+  | 'approval_invalidated'
+  | 'send_initiated'
+  | 'send_succeeded'
+  | 'send_failed'
+  | 'retry_initiated';
 
 /**
  * Input to computeEmailGate()

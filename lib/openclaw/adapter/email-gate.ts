@@ -23,6 +23,7 @@ import type {
   EmailGate,
   EmailGateInput,
   EmailGateStatus,
+  EmailGateAuditEntry,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -190,7 +191,8 @@ export function computeEmailGate(input: EmailGateInput): EmailGateResult {
  * This is the enforcement point — call this before any send action.
  *
  * Returns true if the email can be sent, false otherwise.
- * Never returns true for draft, needs_review, ready_for_approval, or human_denied.
+ * Never returns true for draft, needs_review, ready_for_approval,
+ * sending, sent, send_failed, or human_denied.
  */
 export function canSend(gate: EmailGate): boolean {
   return gate.gateStatus === 'human_approved';
@@ -209,27 +211,96 @@ export function requireHumanApproval(gate: EmailGate): void {
   }
 }
 
+/**
+ * Record an audit entry on a gate.
+ */
+export function auditEntry(
+  gate: EmailGate,
+  action: EmailGateAuditEntry['action'],
+  note?: string
+): EmailGate {
+  return {
+    ...gate,
+    auditLog: [
+      ...(gate.auditLog ?? []),
+      { at: new Date().toISOString(), action, note },
+    ],
+  };
+}
+
+/**
+ * Transition a gate to sending state — records audit entry.
+ * Only valid from human_approved.
+ */
+export function transitionToSending(gate: EmailGate): EmailGate {
+  if (gate.gateStatus !== 'human_approved') {
+    throw new Error(
+      `Cannot transition to sending: gate is "${gate.gateStatus}" — ` +
+      `only human_approved gates can be sent.`
+    );
+  }
+  return auditEntry(
+    { ...gate, gateStatus: 'sending', sendAttempts: (gate.sendAttempts ?? 0) + 1 },
+    'send_initiated'
+  );
+}
+
+/**
+ * Transition a gate to sent state — records audit entry + timestamp.
+ */
+export function transitionToSent(gate: EmailGate): EmailGate {
+  if (gate.gateStatus !== 'sending') {
+    throw new Error(`Cannot transition to sent: gate is "${gate.gateStatus}"`);
+  }
+  return auditEntry({ ...gate, gateStatus: 'sent', sentAt: new Date().toISOString() }, 'send_succeeded');
+}
+
+/**
+ * Transition a gate to send_failed state — records audit entry + error.
+ * Gate remains approved so retry is possible.
+ */
+export function transitionToSendFailed(
+  gate: EmailGate,
+  errorMessage: string
+): EmailGate {
+  if (gate.gateStatus !== 'sending' && gate.gateStatus !== 'send_failed') {
+    throw new Error(`Cannot transition to send_failed: gate is "${gate.gateStatus}"`);
+  }
+  return auditEntry(
+    { ...gate, gateStatus: 'send_failed', sendError: errorMessage },
+    gate.sendAttempts && gate.sendAttempts > 1 ? 'retry_initiated' : 'send_failed'
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Human decision recording
 // ---------------------------------------------------------------------------
 
 export function approveEmailGate(gate: EmailGate, note?: string): EmailGate {
-  return {
-    ...gate,
-    gateStatus: 'human_approved',
-    lastChangedAt: new Date().toISOString(),
-    humanNote: note,
-    approvalInvalidated: false,
-  };
+  return auditEntry(
+    {
+      ...gate,
+      gateStatus: 'human_approved',
+      lastChangedAt: new Date().toISOString(),
+      humanNote: note,
+      approvalInvalidated: false,
+    },
+    'approved',
+    note
+  );
 }
 
 export function denyEmailGate(gate: EmailGate, note?: string): EmailGate {
-  return {
-    ...gate,
-    gateStatus: 'human_denied',
-    lastChangedAt: new Date().toISOString(),
-    humanNote: note,
-  };
+  return auditEntry(
+    {
+      ...gate,
+      gateStatus: 'human_denied',
+      lastChangedAt: new Date().toISOString(),
+      humanNote: note,
+    },
+    'denied',
+    note
+  );
 }
 
 /**
@@ -251,7 +322,7 @@ export function reviseEmailGate(
     proposedEmail: revisedEmail,
   });
 
-  return {
+  let updated: EmailGate = {
     ...result.gate,
     id: gate.id,
     lastChangedAt: new Date().toISOString(),
@@ -259,6 +330,12 @@ export function reviseEmailGate(
     approvalInvalidated: wasApproved ? true : undefined,
     humanNote: undefined,
   };
+
+  if (wasApproved) {
+    updated = auditEntry(updated, 'approval_invalidated', 'Draft revised after approval — must re-approve') as EmailGate;
+  }
+  updated = auditEntry(updated, 'revision_submitted') as EmailGate;
+  return updated;
 }
 
 /**

@@ -19,6 +19,7 @@ export function MissionShell() {
     emailComposerOpen,
     emailGates,
     updateEmailGate,
+    sendEmail,
     loadSessions,
     loadAgents,
     loadApprovals,
@@ -101,6 +102,10 @@ export function MissionShell() {
                   onRevised={(gate: EmailGate, revised) => {
                     const updated = reviseEmailGate(gate, revised);
                     updateEmailGate(updated);
+                  }}
+                  onSend={(gate: EmailGate) => {
+                    // sendEmail() transitions state to sending → sent/send_failed
+                    sendEmail(gate.id);
                   }}
                 />
               </div>

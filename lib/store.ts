@@ -15,6 +15,7 @@ import type {
   WorkspacePreset,
   Pane,
 } from '@/lib/types';
+import type { EmailGateAuditEntry } from '@/lib/openclaw/adapter/types';
 
 /** Minimal email gate shape stored in the Signal Loom state */
 export interface EmailGateStoreItem {
@@ -23,12 +24,13 @@ export interface EmailGateStoreItem {
   summary: string;
   toRecipient: string;
   toRole?: string;
+  toEmail?: string;
   isExecutive: boolean;
   isNewTopic: boolean;
   confidence: 'high' | 'medium' | 'low';
   rationale: string;
   proposedTiming: string;
-  gateStatus: 'draft' | 'needs_review' | 'ready_for_approval' | 'human_approved' | 'human_denied';
+  gateStatus: 'draft' | 'needs_review' | 'ready_for_approval' | 'human_approved' | 'sending' | 'sent' | 'send_failed' | 'human_denied';
   lastChangedAt: string;
   humanNote?: string;
   approvalInvalidated?: boolean;
@@ -37,6 +39,14 @@ export interface EmailGateStoreItem {
     body: string;
     footer?: string;
   };
+  /** Send audit trail */
+  auditLog?: EmailGateAuditEntry[];
+  /** ISO timestamp of successful send */
+  sentAt?: string;
+  /** Last send error message */
+  sendError?: string;
+  /** Number of send attempts */
+  sendAttempts?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -51,6 +61,7 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     summary: 'Brian McGarry — website studio deployment approval follow-up',
     toRecipient: 'Brian McGarry',
     toRole: 'Commercial Director, CPK',
+    toEmail: 'brian.mcgary@cpk.example.com',
     isExecutive: false,
     isNewTopic: true,
     confidence: 'high',
@@ -60,6 +71,10 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     proposedTiming: 'Within 24 hours',
     gateStatus: 'needs_review',
     lastChangedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    auditLog: [
+      { at: new Date(Date.now() - 30 * 60 * 1000).toISOString(), action: 'draft_created' },
+      { at: new Date(Date.now() - 28 * 60 * 1000).toISOString(), action: 'submitted_for_review' },
+    ],
     proposedEmail: {
       subject: 'Verdantia — Your website is ready to go live',
       body: `Hi Brian,\n\nFollowing our conversation, I'm pleased to let you know your Verdantia website is fully built and ready for your review.\n\nAre you available for a 20-minute call this week?\n\nBest regards,\nOluwagbemi Akadiri`,
@@ -72,6 +87,7 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     summary: 'Larkfield — Q2 strategy meeting follow-up',
     toRecipient: 'Sarah McGarry',
     toRole: 'Managing Partner, Larkfield',
+    toEmail: 'sarah.mcgarry@larkfield.example.com',
     isExecutive: false,
     isNewTopic: false,
     confidence: 'high',
@@ -81,6 +97,10 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     proposedTiming: 'Within SLA window',
     gateStatus: 'ready_for_approval',
     lastChangedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    auditLog: [
+      { at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), action: 'draft_created' },
+      { at: new Date(Date.now() - 90 * 60 * 1000).toISOString(), action: 'submitted_for_review' },
+    ],
     proposedEmail: {
       subject: 'Verdantia — Q2 strategy session',
       body: `Hi Sarah,\n\nThank you for your time on our call. As discussed, I'm following up with a tailored proposal for Larkfield's Q2 priorities.\n\nBest,\nOluwagbemi Akadiri`,
@@ -93,6 +113,7 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     summary: 'Verdantia expansion — proposal to CFO',
     toRecipient: 'Adedolapo Grace Babalola',
     toRole: 'CFO',
+    toEmail: 'grace.babalola@verdantia.example.com',
     isExecutive: true,
     isNewTopic: false,
     confidence: 'low',
@@ -102,6 +123,10 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     proposedTiming: 'Within 2 hours (SLA)',
     gateStatus: 'needs_review',
     lastChangedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+    auditLog: [
+      { at: new Date(Date.now() - 15 * 60 * 1000).toISOString(), action: 'draft_created' },
+      { at: new Date(Date.now() - 10 * 60 * 1000).toISOString(), action: 'submitted_for_review' },
+    ],
     proposedEmail: {
       subject: 'Verdantia — Q2 expansion proposal',
       body: `Hi Grace,\n\nI wanted to share some thoughts on how Verdantia could expand its reach in Q2. Based on recent client conversations, I believe there's significant demand for AI training in the mid-market segment.\n\nWould you have 30 minutes to discuss?\n\nWith respect,\nOluwagbemi Akadiri`,
@@ -114,6 +139,7 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     summary: 'Follow-up after AI workshop — prospective client',
     toRecipient: 'Michael Okafor',
     toRole: 'Head of Learning, TechCorp',
+    toEmail: 'michael.okafor@techcorp.example.com',
     isExecutive: false,
     isNewTopic: false,
     confidence: 'medium',
@@ -124,6 +150,11 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     gateStatus: 'human_approved',
     lastChangedAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
     humanNote: 'Approved — good framing',
+    auditLog: [
+      { at: new Date(Date.now() - 45 * 60 * 1000).toISOString(), action: 'draft_created' },
+      { at: new Date(Date.now() - 44 * 60 * 1000).toISOString(), action: 'submitted_for_review' },
+      { at: new Date(Date.now() - 45 * 60 * 1000).toISOString(), action: 'approved', note: 'Approved — good framing' },
+    ],
     proposedEmail: {
       subject: 'Verdantia — Next steps after the workshop',
       body: `Hi Michael,\n\nThank you for attending the AI workshop last week. I enjoyed our conversation about TechCorp's upskilling goals.\n\nI've put together a short proposal covering the three areas we discussed. Happy to walk you through it whenever suits.\n\nBest,\nOluwagbemi Akadiri`,
@@ -136,6 +167,7 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     summary: 'Initial outreach — potential AI consulting lead',
     toRecipient: 'David Walsh',
     toRole: 'Operations Director, FinServe Ltd',
+    toEmail: 'david.walsh@finserve.example.com',
     isExecutive: false,
     isNewTopic: true,
     confidence: 'low',
@@ -146,6 +178,11 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     gateStatus: 'human_denied',
     lastChangedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
     humanNote: 'Tone is too pushy — please revise',
+    auditLog: [
+      { at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), action: 'draft_created' },
+      { at: new Date(Date.now() - 2.5 * 60 * 60 * 1000).toISOString(), action: 'submitted_for_review' },
+      { at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), action: 'denied', note: 'Tone is too pushy — please revise' },
+    ],
     proposedEmail: {
       subject: 'Verdantia — Quick question about AI upskilling',
       body: `Hi David,\n\nI think Verdantia could save your team a lot of time with AI automation. We're working with companies like yours right now and the results are incredible.\n\nCan we jump on a call?\n\nBest,\nOluwagbemi Akadiri`,
@@ -262,6 +299,7 @@ interface SignalLoomStore {
   setEmailGates: (gates: EmailGateStoreItem[]) => void;
   updateEmailGate: (gate: EmailGateStoreItem) => void;
   initEmailGates: () => void;
+  sendEmail: (gateId: string) => Promise<void>;
 
   // Actions
   selectThread: (id: string) => void;
@@ -355,6 +393,93 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
     const { emailGates } = get();
     if (emailGates.length > 0) return; // already initialized
     set({ emailGates: MOCK_EMAIL_GATES });
+  },
+
+  sendEmail: async (gateId) => {
+    const { emailGates, updateEmailGate } = get();
+    const gate = emailGates.find((g) => g.id === gateId);
+    if (!gate) {
+      throw new Error(`Gate not found: ${gateId}`);
+    }
+
+    // Server-side enforcement — double-check before making the API call
+    if (gate.gateStatus !== 'human_approved') {
+      throw new Error(
+        `Send blocked: gate is "${gate.gateStatus}" — human approval is required.`
+      );
+    }
+
+    // Transition to sending
+    const sendingGate: EmailGateStoreItem = {
+      ...gate,
+      gateStatus: 'sending',
+      lastChangedAt: new Date().toISOString(),
+      sendAttempts: (gate.sendAttempts ?? 0) + 1,
+      auditLog: [
+        ...(gate.auditLog ?? []),
+        { at: new Date().toISOString(), action: 'send_initiated' },
+      ],
+    };
+    updateEmailGate(sendingGate);
+
+    // Call the real dispatch API
+    try {
+      const res = await fetch('/api/hermes/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gateId: gate.id,
+          toEmail: gate.toEmail ?? `${gate.toRecipient.replace(' ', '.').toLowerCase()}@example.com`,
+          toName: gate.toRecipient,
+          subject: gate.proposedEmail.subject,
+          body: gate.proposedEmail.body,
+          footer: gate.proposedEmail.footer,
+          gateStatus: gate.gateStatus,
+        }),
+      });
+
+      const data = (await res.json()) as { ok: boolean; sent?: boolean; sentAt?: string; error?: string };
+
+      if (data.ok && data.sent) {
+        updateEmailGate({
+          ...sendingGate,
+          gateStatus: 'sent',
+          lastChangedAt: new Date().toISOString(),
+          sentAt: data.sentAt ?? new Date().toISOString(),
+          auditLog: [
+            ...(sendingGate.auditLog ?? []),
+            { at: new Date().toISOString(), action: 'send_succeeded' },
+          ],
+        });
+      } else {
+        updateEmailGate({
+          ...sendingGate,
+          gateStatus: 'send_failed',
+          lastChangedAt: new Date().toISOString(),
+          sendError: data.error ?? 'Unknown send error',
+          auditLog: [
+            ...(sendingGate.auditLog ?? []),
+            {
+              at: new Date().toISOString(),
+              action: sendingGate.sendAttempts && sendingGate.sendAttempts > 1 ? 'retry_initiated' : 'send_failed',
+              note: data.error ?? 'Unknown send error',
+            },
+          ],
+        });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Network error';
+      updateEmailGate({
+        ...sendingGate,
+        gateStatus: 'send_failed',
+        lastChangedAt: new Date().toISOString(),
+        sendError: message,
+        auditLog: [
+          ...(sendingGate.auditLog ?? []),
+          { at: new Date().toISOString(), action: 'send_failed', note: message },
+        ],
+      });
+    }
   },
 
   // ---- Actions ----
