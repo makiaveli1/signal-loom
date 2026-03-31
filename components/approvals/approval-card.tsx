@@ -157,6 +157,21 @@ export function ApprovalCard({
         </div>
       )}
 
+      {/* Next-step cue for denied items */}
+      {status === 'denied' && (
+        <div
+          className="text-xs p-2 rounded mb-3"
+          style={{
+            background: 'rgba(201,160,58,0.06)',
+            border: '1px solid rgba(201,160,58,0.18)',
+            color: 'var(--mb-ivory-dim)',
+          }}
+        >
+          <span className="font-semibold text-brass">Next step: </span>
+          Revise and resubmit — return to the linked thread to address the feedback.
+        </div>
+      )}
+
       {/* Revision note input */}
       {showNote && (
         <div className="mb-3 space-y-1.5">

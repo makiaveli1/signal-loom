@@ -7,7 +7,7 @@ import type { Thread } from '@/lib/types';
 import type { EmailGateStoreItem } from '@/lib/store';
 
 export function ThreadDock() {
-  const { threads, selectedThreadId, selectThread, sessionsLoading, sessionsError } =
+  const { threads, selectedThreadId, selectThread, sessionsLoading, sessionsError, sessionsFetchedAt, loadSessions } =
     useSignalLoomStore();
 
   const pinned = threads.filter((t) => t.pinned);
@@ -61,9 +61,42 @@ export function ThreadDock() {
 
       {/* Error state */}
       {!sessionsLoading && sessionsError && (
-        <div className="flex-1 flex flex-col items-center justify-center gap-2 px-4 py-8">
-          <p className="text-xs text-ember text-center">Sessions unavailable</p>
-          <p className="text-xs text-ash-muted text-center">{sessionsError}</p>
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 py-8">
+          <div
+            className="w-5 h-5 rounded-full flex items-center justify-center text-xs"
+            style={{
+              background: 'rgba(232,96,58,0.12)',
+              border: '1.5px solid rgba(232,96,58,0.3)',
+              color: 'var(--mb-ember)',
+              fontSize: '8px',
+            }}
+          >
+            !
+          </div>
+          <p className="text-xs text-ember text-center font-semibold">Sessions unavailable</p>
+          {sessionsFetchedAt && (
+            <p className="text-xs text-ash-muted text-center">
+              Last loaded:{' '}
+              {new Date(sessionsFetchedAt).toLocaleTimeString('en-IE', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </p>
+          )}
+          <p className="text-xs text-ash-muted text-center leading-relaxed opacity-75 max-w-[180px]">
+            {sessionsError}
+          </p>
+          <button
+            onClick={() => loadSessions()}
+            className="text-xs px-3 py-1.5 rounded-md font-medium transition-all duration-150 hover:opacity-90"
+            style={{
+              background: 'var(--mb-graphite)',
+              color: 'var(--mb-ivory)',
+              border: '1px solid rgba(255,255,255,0.1)',
+            }}
+          >
+            ↻ Retry
+          </button>
         </div>
       )}
 

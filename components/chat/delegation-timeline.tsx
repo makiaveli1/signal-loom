@@ -132,8 +132,35 @@ export function DelegationTimeline({ events, onEventClick }: DelegationTimelineP
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
-  const visible = expanded ? sorted : sorted.slice(0, MAX_VISIBLE);
-  const hiddenCount = sorted.length - MAX_VISIBLE;
+  // Collapse consecutive duplicate events (same type + same actor, within 2 minutes)
+  const collapsed: Array<DelegationEvent | { _count: number; _representative: DelegationEvent }> = [];
+  for (const event of sorted) {
+    const prev = collapsed[collapsed.length - 1];
+    if (
+      prev &&
+      !('_count' in prev) &&
+      prev.type === event.type &&
+      prev.actor === event.actor &&
+      Math.abs(new Date(prev.createdAt).getTime() - new Date(event.createdAt).getTime()) < 2 * 60 * 1000
+    ) {
+      // Merge into a count card
+      const rep = collapsed.pop() as DelegationEvent;
+      collapsed.push({ _count: 2, _representative: rep });
+    } else if (
+      prev &&
+      '_count' in prev &&
+      prev._representative.type === event.type &&
+      prev._representative.actor === event.actor &&
+      Math.abs(new Date(prev._representative.createdAt).getTime() - new Date(event.createdAt).getTime()) < 2 * 60 * 1000
+    ) {
+      prev._count += 1;
+    } else {
+      collapsed.push(event);
+    }
+  }
+
+  const visible = expanded ? collapsed : collapsed.slice(0, MAX_VISIBLE);
+  const hiddenCount = collapsed.length - MAX_VISIBLE;
 
   return (
     <div
@@ -193,26 +220,83 @@ export function DelegationTimeline({ events, onEventClick }: DelegationTimelineP
           <p className="text-xs text-ash-muted italic py-1">No events match the filter.</p>
         ) : (
           <div className="space-y-0">
-            {visible.map((event, idx) => (
-              <div key={event.id}>
-                <TimelineEvent
-                  event={event}
-                  onClick={() => onEventClick?.(event)}
-                />
-                {/* Vertical line — between events, not after last */}
-                {idx < visible.length - 1 && (
-                  <div
-                    className="ml-[0.625rem] w-px"
-                    style={{
-                      height: 'calc(100% + 0.375rem)',
-                      background: 'rgba(255,255,255,0.06)',
-                      marginTop: '-0.125rem',
-                      marginBottom: '0.125rem',
-                    }}
+            {visible.map((item, idx) => {
+              // Collapsed group of repeated events
+              if ('_count' in item) {
+                const rep = item._representative;
+                const color = EVENT_COLORS[rep.type];
+                const actorColor = AGENT_COLORS[rep.actor] ?? 'var(--mb-ash)';
+                return (
+                  <div key={`collapsed-${rep.id}-${idx}`}>
+                    <div
+                      className="flex items-start gap-3 py-1.5"
+                      style={{ opacity: 0.6 }}
+                    >
+                      <div className="flex flex-col items-center flex-shrink-0 w-4">
+                        <div
+                          className="w-4 h-4 rounded-full flex items-center justify-center text-xs flex-shrink-0"
+                          style={{
+                            background: `${color}15`,
+                            border: `1.5px solid ${color}40`,
+                            color,
+                            fontSize: '8px',
+                          }}
+                        >
+                          {EVENT_ICONS[rep.type]}
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-mono capitalize" style={{ color: actorColor }}>
+                          {rep.actor}
+                        </span>
+                        <span className="text-xs text-ivory-dim">{rep.title}</span>
+                        <span
+                          className="text-xs font-mono px-1.5 py-0.5 rounded"
+                          style={{
+                            background: 'rgba(255,255,255,0.06)',
+                            color: 'var(--mb-ash)',
+                          }}
+                        >
+                          ×{item._count}
+                        </span>
+                      </div>
+                    </div>
+                    {idx < visible.length - 1 && (
+                      <div
+                        className="ml-[0.625rem] w-px"
+                        style={{
+                          height: 'calc(100% + 0.375rem)',
+                          background: 'rgba(255,255,255,0.06)',
+                          marginTop: '-0.125rem',
+                          marginBottom: '0.125rem',
+                        }}
+                      />
+                    )}
+                  </div>
+                );
+              }
+
+              // Regular event
+              return (
+                <div key={item.id}>
+                  <TimelineEvent
+                    event={item}
+                    onClick={() => onEventClick?.(item)}
                   />
-                )}
-              </div>
-            ))}
+                  {idx < visible.length - 1 && (
+                    <div
+                      className="ml-[0.625rem] w-px"
+                      style={{
+                        height: 'calc(100% + 0.375rem)',
+                        background: 'rgba(255,255,255,0.06)',
+                        marginTop: '-0.125rem',
+                        marginBottom: '0.125rem',
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

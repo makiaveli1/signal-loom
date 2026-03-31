@@ -5,8 +5,14 @@ import { useSignalLoomStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 
 export function TopBar() {
-  const { runtime, approvals, toggleApprovalsPanel, approvalsPanelOpen } = useSignalLoomStore();
-  const pendingApprovals = approvals.length;
+  const { runtime, approvals, approvalsPanelOpen, toggleApprovalsPanel, emailGates } = useSignalLoomStore();
+  const pendingApprovals = approvals.filter(
+    (a) => a.status === undefined || a.status === 'pending'
+  ).length;
+  const pendingEmailGates = emailGates.filter(
+    (g) => g.gateStatus === 'needs_review' || g.gateStatus === 'ready_for_approval'
+  ).length;
+  const totalPending = pendingApprovals + pendingEmailGates;
 
   return (
     <header
@@ -72,13 +78,13 @@ export function TopBar() {
               fill={approvalsPanelOpen ? 'var(--mb-brass)' : 'var(--mb-ash)'} />
           </svg>
           Approvals
-          {pendingApprovals > 0 && (
+          {totalPending > 0 && (
             <Badge
               variant="outline"
               className="text-xs font-mono min-w-5 h-5 justify-center"
               style={{ borderColor: 'var(--mb-brass)', color: 'var(--mb-brass)', background: 'var(--mb-brass-dim)' }}
             >
-              {pendingApprovals}
+              {totalPending}
             </Badge>
           )}
         </button>

@@ -438,9 +438,9 @@ function EmailGateCard({ gate, onApproved, onDenied, onRevised, onSend }: EmailG
             <span className="text-xs" style={{ color: 'var(--mb-ash)' }}>
               Blocked.
             </span>
-            {gate.decisionNote && (
+            {gate.humanNote && (
               <span className="text-xs italic" style={{ color: 'var(--mb-ash)', opacity: 0.7 }}>
-                "{gate.decisionNote}"
+                "{gate.humanNote}"
               </span>
             )}
           </div>

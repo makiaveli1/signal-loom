@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSignalLoomStore } from '@/lib/store';
 import { ApprovalCard } from './approval-card';
+import { EmailGateCard } from './email-gate-card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Approval } from '@/lib/types';
 
@@ -13,6 +14,9 @@ export function ApprovalsPanel() {
     toggleApprovalsPanel,
     selectThread,
     resolveApproval,
+    emailGates,
+    updateEmailGate,
+    sendEmail,
   } = useSignalLoomStore();
 
   // Sort: pending first, then by urgency, then by recency
@@ -33,6 +37,15 @@ export function ApprovalsPanel() {
   const pendingCount = approvals.filter(
     (a) => a.status === undefined || a.status === 'pending'
   ).length;
+
+  // Email gates: count only gates that need human action (not yet approved/denied/sent/failed)
+  const pendingEmailGateCount = emailGates.filter(
+    (g) =>
+      g.gateStatus === 'needs_review' ||
+      g.gateStatus === 'ready_for_approval'
+  ).length;
+
+  const totalPending = pendingCount + pendingEmailGateCount;
 
   return (
     <AnimatePresence>
@@ -62,11 +75,11 @@ export function ApprovalsPanel() {
               <span
                 className="text-xs font-mono px-1.5 py-0.5 rounded"
                 style={{
-                  background: pendingCount > 0 ? 'rgba(201,160,58,0.15)' : 'rgba(80,200,120,0.1)',
-                  color: pendingCount > 0 ? 'var(--mb-brass)' : 'var(--mb-jade)',
+                  background: totalPending > 0 ? 'rgba(201,160,58,0.15)' : 'rgba(80,200,120,0.1)',
+                  color: totalPending > 0 ? 'var(--mb-brass)' : 'var(--mb-jade)',
                 }}
               >
-                {pendingCount} pending
+                {totalPending} pending
               </span>
             </div>
             <button
@@ -96,7 +109,7 @@ export function ApprovalsPanel() {
           {/* Approval cards */}
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-3">
-              {sortedApprovals.length === 0 ? (
+              {sortedApprovals.length === 0 && emailGates.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
                   <span className="text-lg opacity-30">✓</span>
                   <p className="text-xs text-ash-muted">No approvals pending</p>
@@ -105,19 +118,63 @@ export function ApprovalsPanel() {
                   </p>
                 </div>
               ) : (
-                sortedApprovals.map((approval) => (
-                  <ApprovalCard
-                    key={approval.id}
-                    approval={approval}
-                    onJumpToThread={() => {
-                      selectThread(approval.linkedThreadId);
-                      toggleApprovalsPanel();
-                    }}
-                    onApprove={(appr, note) => resolveApproval(appr.id, 'approved', note)}
-                    onDeny={(appr, note) => resolveApproval(appr.id, 'denied', note)}
-                    onRevise={(appr, note) => resolveApproval(appr.id, 'revised', note)}
-                  />
-                ))
+                <>
+                  {sortedApprovals.length > 0 && (
+                    <>
+                      <div className="text-xs font-semibold uppercase tracking-wider text-ash-muted px-1">
+                        Delegation Approvals
+                      </div>
+                      {sortedApprovals.map((approval) => (
+                        <ApprovalCard
+                          key={approval.id}
+                          approval={approval}
+                          onJumpToThread={() => {
+                            selectThread(approval.linkedThreadId);
+                            toggleApprovalsPanel();
+                          }}
+                          onApprove={(appr, note) => resolveApproval(appr.id, 'approved', note)}
+                          onDeny={(appr, note) => resolveApproval(appr.id, 'denied', note)}
+                          onRevise={(appr, note) => resolveApproval(appr.id, 'revised', note)}
+                        />
+                      ))}
+                    </>
+                  )}
+
+                  {emailGates.length > 0 && (
+                    <>
+                      <div className="text-xs font-semibold uppercase tracking-wider text-ash-muted px-1 pt-1">
+                        Email Outbound
+                      </div>
+                      {emailGates.map((gate) => (
+                        <EmailGateCard
+                          key={gate.id}
+                          gate={gate}
+                          onJumpToThread={() => {
+                            if (gate.threadId) selectThread(gate.threadId);
+                            toggleApprovalsPanel();
+                          }}
+                          onApprove={gate.gateStatus === 'human_approved' ? () => sendEmail(gate.id).catch(() => {}) : undefined}
+                          onDeny={
+                            gate.gateStatus === 'needs_review' || gate.gateStatus === 'ready_for_approval'
+                              ? (g) => {
+                                  // Transition to denied locally
+                                  updateEmailGate({
+                                    ...g,
+                                    gateStatus: 'human_denied',
+                                    lastChangedAt: new Date().toISOString(),
+                                    auditLog: [
+                                      ...(g.auditLog ?? []),
+                                      { at: new Date().toISOString(), action: 'denied' },
+                                    ],
+                                  });
+                                }
+                              : undefined
+                          }
+                        />
+                      ))}
+                    </>
+                  )}
+                </>
               )}
             </div>
           </ScrollArea>
