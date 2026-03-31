@@ -431,12 +431,22 @@ function EmailGateCard({ gate, onApproved, onDenied, onRevised, onSend }: EmailG
         </div>
       )}
 
-      {/* Denial notice */}
+      {/* Denial notice — clear next step */}
       {mode === 'view' && gate.gateStatus === 'human_denied' && (
-        <div className="flex items-center gap-2 pt-1">
-          <span className="text-xs text-ash-muted">
-            Blocked. Tap "Revise draft" to rework and resubmit.
-          </span>
+        <div className="flex flex-col gap-2 pt-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs" style={{ color: 'var(--mb-ash)' }}>
+              Blocked.
+            </span>
+            {gate.decisionNote && (
+              <span className="text-xs italic" style={{ color: 'var(--mb-ash)', opacity: 0.7 }}>
+                "{gate.decisionNote}"
+              </span>
+            )}
+          </div>
+          <p className="text-xs" style={{ color: 'var(--mb-ash)', opacity: 0.6 }}>
+            Tap "Revise draft" to rework and resubmit. Hermès will be notified.
+          </p>
         </div>
       )}
     </div>
