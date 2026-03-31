@@ -281,6 +281,8 @@ export const mockApprovals: Approval[] = [
     raisedBy: 'Argus',
     recommendation: 'Safe to proceed — 1 medium risk JWT path patched, CORS config tightened.',
     linkedThreadId: 'thread-8',
+    status: 'pending',
+    source: 'mock',
   },
   {
     id: 'apr-2',
@@ -289,6 +291,8 @@ export const mockApprovals: Approval[] = [
     raisedBy: 'Orion',
     recommendation: 'Report is comprehensive. Recommend a 1-hour sync to walk key findings before filing.',
     linkedThreadId: 'thread-7',
+    status: 'pending',
+    source: 'mock',
   },
   {
     id: 'apr-3',
@@ -297,6 +301,8 @@ export const mockApprovals: Approval[] = [
     raisedBy: 'Hephaestus',
     recommendation: 'Phase A complete. Tokens, types, mock data all in place. Ready for Ariadne gate review.',
     linkedThreadId: 'thread-1',
+    status: 'pending',
+    source: 'mock',
   },
 ];
 

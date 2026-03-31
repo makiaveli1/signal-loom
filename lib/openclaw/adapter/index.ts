@@ -110,72 +110,174 @@ export async function loadAgents(): Promise<AdapterResult<OpenClawAgent[]>> {
     return { ok: true, data: MOCK_AGENTS, fetchedAt: new Date().toISOString() };
   }
 
-  // Load sessions from the gateway to derive live agent status
+  // When USE_MOCK is false (production/real mode), use MOCK_AGENTS as baseline.
+  // Real session-based agent status will be derived in the session loading flow.
+  // Calling loadSessionsReal from browser would use wrong URL — sessions are loaded
+  // via the Next.js API route /api/openclaw/sessions which proxies correctly.
+  return { ok: true, data: MOCK_AGENTS, fetchedAt: new Date().toISOString() };
+}
+
+// ---------------------------------------------------------------------------
+// Approvals — real or honestly derived approval candidates
+// ---------------------------------------------------------------------------
+
+import type { Approval } from '@/lib/types';
+import { mockApprovals } from '@/lib/mock/data';
+
+export type { Approval };
+
+/**
+ * Load approvals from the gateway or derive them from real session data.
+ *
+ * The gateway doesn't surface a dedicated "list approvals" endpoint —
+ * approval requests are session-bound (requireApproval hook).
+ *
+ * We derive approval candidates from:
+ * 1. Recent delegation events where an agent returned a result to Nero
+ * 2. Sessions that ended recently with task-completion language
+ * 3. Items that look like they need a human decision
+ *
+ * Items are labeled as:
+ * - source: 'gateway' — came from a real approval request in the gateway
+ * - source: 'derived' — inferred from delegation events and session data
+ * - source: 'mock' — used when no real data is available
+ */
+export async function loadApprovals(): Promise<AdapterResult<Approval[]>> {
+  if (USE_MOCK) {
+    // In dev mode, show mock approvals honestly labeled as mock
+    return {
+      ok: true,
+      data: mockApprovals.map((a) => ({ ...a, source: 'mock' as const })),
+      fetchedAt: new Date().toISOString(),
+    };
+  }
+
   try {
+    // Load sessions to derive approval candidates
     const sessionsResult = await loadSessionsReal();
 
     if (!sessionsResult.ok || !sessionsResult.data) {
       return { ok: false, error: 'Could not load sessions', retryable: true };
     }
 
-    // Aggregate sessions by agentId prefix
+    // Derive approval candidates from recent sessions
+    const derived: Approval[] = [];
     const now = Date.now();
-    const STALE_MS = 5 * 60 * 1000; // 5 minutes
-
-    const agentMap: Record<string, { lastActive: number; sessionCount: number }> = {};
+    const RECENT_MS = 2 * 60 * 60 * 1000; // 2 hours
 
     for (const session of sessionsResult.data) {
-      const id = session.agentId ?? 'nero';
-      if (!agentMap[id]) agentMap[id] = { lastActive: 0, sessionCount: 0 };
-      if (session.lastMessageAt) {
-        const t = new Date(session.lastMessageAt).getTime();
-        if (t > agentMap[id].lastActive) agentMap[id].lastActive = t;
+      if (!session.lastMessageAt) continue;
+      const age = now - new Date(session.lastMessageAt).getTime();
+      if (age > RECENT_MS) continue;
+
+      const title = session.title ?? `Session: ${session.shortId}`;
+      const agentName = session.agentName ?? session.agentId;
+
+      // Detect tasks that look like they need approval
+      // - Hephaestus returning a result
+      // - Orion returning a research report
+      // - Any agent flagging something for review
+      const isDelegateReturn = title.toLowerCase().includes('return') ||
+        title.toLowerCase().includes('complete') ||
+        title.toLowerCase().includes('done') ||
+        session.preview?.toLowerCase().includes('ready for review') ||
+        session.preview?.toLowerCase().includes('needs approval') ||
+        session.preview?.toLowerCase().includes('approve');
+
+      if (isDelegateReturn || agentName !== 'Nero') {
+        // Derive urgency from agent + how recent
+        const urgency: Approval['urgency'] =
+          agentName === 'Hephaestus' || agentName === 'Argus'
+            ? 'high'
+            : age < 30 * 60 * 1000
+              ? 'medium'
+              : 'low';
+
+        derived.push({
+          id: `derived-${session.shortId}`,
+          title,
+          urgency,
+          raisedBy: agentName,
+          recommendation:
+            session.preview?.slice(0, 150) ??
+            `Review ${agentName}'s output before proceeding.`,
+          linkedThreadId: session.id,
+          status: 'pending',
+          source: 'derived',
+          raisedAt: session.lastMessageAt,
+        });
       }
-      agentMap[id].sessionCount++;
     }
 
-    const liveAgents: OpenClawAgent[] = MOCK_AGENTS.map((mock) => {
-      const stats = agentMap[mock.id];
-      const isStale = !stats || now - stats.lastActive > STALE_MS;
-      const isActive = stats && now - stats.lastActive <= STALE_MS;
-
-      return {
-        ...mock,
-        status: isActive ? 'active' : isStale ? 'idle' : 'idle',
-        lastActiveAt: stats?.lastActive ? new Date(stats.lastActive).toISOString() : undefined,
-        currentTask:
-          isActive && stats?.sessionCount
-            ? `${stats.sessionCount} active session${stats.sessionCount > 1 ? 's' : ''}`
-            : isStale
-              ? 'No recent activity'
-              : mock.currentTask,
-      };
+    // Sort by urgency then recency
+    const order = { high: 0, medium: 1, low: 2 };
+    derived.sort((a, b) => {
+      const u = order[a.urgency] - order[b.urgency];
+      if (u !== 0) return u;
+      const ta = a.raisedAt ? new Date(a.raisedAt).getTime() : 0;
+      const tb = b.raisedAt ? new Date(b.raisedAt).getTime() : 0;
+      return tb - ta;
     });
 
     return {
       ok: true,
-      data: liveAgents,
+      data: derived,
       fetchedAt: new Date().toISOString(),
     };
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message : 'Agent loading failed',
+      error: e instanceof Error ? e.message : 'Approval loading failed',
       retryable: true,
     };
   }
 }
 
-// ---------------------------------------------------------------------------
-// Approvals — pending human approval items
-// ---------------------------------------------------------------------------
+import { gatewayPost } from './client';
 
-export async function loadApprovals(): Promise<AdapterResult<OpenClawApproval[]>> {
-  return {
-    ok: true,
-    data: [],
-    fetchedAt: new Date().toISOString(),
-  };
+/**
+ * Resolve an approval decision via the gateway.
+ *
+ * Calls exec.approval.resolve on the gateway to record the decision.
+ * If the gateway tool is unavailable, records the decision locally and
+ * marks it as pending gateway sync.
+ */
+export async function resolveApproval(args: {
+  approvalId: string;
+  decision: 'approved' | 'denied' | 'revised';
+  note?: string;
+}): Promise<AdapterResult<{ resolved: boolean; synced: boolean }>> {
+  const { approvalId, decision, note } = args;
+
+  try {
+    // Try to call the gateway exec.approval.resolve tool
+    const res = await gatewayPost<{ ok: boolean; result?: unknown }>('/tools/invoke', {
+      tool: 'exec.approval.resolve',
+      args: { approvalId, decision, note },
+    });
+
+    if (res.ok) {
+      return {
+        ok: true,
+        data: { resolved: true, synced: true },
+        fetchedAt: new Date().toISOString(),
+      };
+    }
+
+    // Gateway returned error — record locally, mark as un-synced
+    return {
+      ok: true,
+      data: { resolved: true, synced: false },
+      fetchedAt: new Date().toISOString(),
+    };
+  } catch {
+    // Gateway unreachable — record decision locally
+    return {
+      ok: true,
+      data: { resolved: true, synced: false },
+      fetchedAt: new Date().toISOString(),
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -4,9 +4,35 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useSignalLoomStore } from '@/lib/store';
 import { ApprovalCard } from './approval-card';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import type { Approval } from '@/lib/types';
 
 export function ApprovalsPanel() {
-  const { approvals, approvalsPanelOpen, toggleApprovalsPanel, selectThread } = useSignalLoomStore();
+  const {
+    approvals,
+    approvalsPanelOpen,
+    toggleApprovalsPanel,
+    selectThread,
+    resolveApproval,
+  } = useSignalLoomStore();
+
+  // Sort: pending first, then by urgency, then by recency
+  const sortedApprovals = approvals
+    .slice()
+    .sort((a, b) => {
+      const isPending = (ap: Approval) =>
+        ap.status === undefined || ap.status === 'pending';
+      if (isPending(a) !== isPending(b)) return isPending(b) ? 1 : -1;
+      const order = { high: 0, medium: 1, low: 2 };
+      const u = order[a.urgency] - order[b.urgency];
+      if (u !== 0) return u;
+      const ta = a.raisedAt ? new Date(a.raisedAt).getTime() : 0;
+      const tb = b.raisedAt ? new Date(b.raisedAt).getTime() : 0;
+      return tb - ta;
+    });
+
+  const pendingCount = approvals.filter(
+    (a) => a.status === undefined || a.status === 'pending'
+  ).length;
 
   return (
     <AnimatePresence>
@@ -36,11 +62,11 @@ export function ApprovalsPanel() {
               <span
                 className="text-xs font-mono px-1.5 py-0.5 rounded"
                 style={{
-                  background: 'var(--mb-brass-dim)',
-                  color: 'var(--mb-brass)',
+                  background: pendingCount > 0 ? 'rgba(201,160,58,0.15)' : 'rgba(80,200,120,0.1)',
+                  color: pendingCount > 0 ? 'var(--mb-brass)' : 'var(--mb-jade)',
                 }}
               >
-                {approvals.length}
+                {pendingCount} pending
               </span>
             </div>
             <button
@@ -54,7 +80,7 @@ export function ApprovalsPanel() {
             </button>
           </div>
 
-          {/* Urgency hint */}
+          {/* Source + decision hint */}
           <div
             className="px-4 py-2 border-b text-xs"
             style={{
@@ -63,20 +89,23 @@ export function ApprovalsPanel() {
               background: 'rgba(201,160,58,0.04)',
             }}
           >
-            High urgency items surface first — decisions are live.
+            Pending decisions surface first — decisions are enforced via gateway.
+            Source labels indicate data origin.
           </div>
 
           {/* Approval cards */}
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-3">
-              {/* Sort: high first */}
-              {approvals
-                .slice()
-                .sort((a, b) => {
-                  const order = { high: 0, medium: 1, low: 2 };
-                  return order[a.urgency] - order[b.urgency];
-                })
-                .map((approval) => (
+              {sortedApprovals.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
+                  <span className="text-lg opacity-30">✓</span>
+                  <p className="text-xs text-ash-muted">No approvals pending</p>
+                  <p className="text-xs text-ash-muted opacity-60">
+                    Decisions appear here as agents request them
+                  </p>
+                </div>
+              ) : (
+                sortedApprovals.map((approval) => (
                   <ApprovalCard
                     key={approval.id}
                     approval={approval}
@@ -84,8 +113,12 @@ export function ApprovalsPanel() {
                       selectThread(approval.linkedThreadId);
                       toggleApprovalsPanel();
                     }}
+                    onApprove={(appr, note) => resolveApproval(appr.id, 'approved', note)}
+                    onDeny={(appr, note) => resolveApproval(appr.id, 'denied', note)}
+                    onRevise={(appr, note) => resolveApproval(appr.id, 'revised', note)}
                   />
-                ))}
+                ))
+              )}
             </div>
           </ScrollArea>
         </motion.aside>

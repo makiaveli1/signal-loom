@@ -51,7 +51,28 @@ export interface Approval {
   raisedBy: string;
   recommendation: string;
   linkedThreadId: string;
+  /** Current decision state — defaults to 'pending' */
+  status?: ApprovalStatus;
+  /**
+   * Source of this approval item.
+   * - 'gateway': came from a real requireApproval hook in the gateway
+   * - 'derived': inferred from delegation events and session data
+   * - 'mock': used in dev mode when no real data is available
+   */
+  source?: 'gateway' | 'derived' | 'mock';
+  /** Human's decision note if any */
+  decisionNote?: string;
+  /** When status last changed */
+  decidedAt?: string;
+  /** When raised */
+  raisedAt?: string;
 }
+
+export type ApprovalStatus =
+  | 'pending'    // Awaiting human decision
+  | 'approved'   // Human approved — proceed
+  | 'denied'    // Human blocked — do not proceed
+  | 'revised';  // Human requested changes — revised and resubmitted
 
 export type GatewayHealth = 'healthy' | 'degraded' | 'down';
 export type QueueHealth = 'healthy' | 'backed_up' | 'stalled';

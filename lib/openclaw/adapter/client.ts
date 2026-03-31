@@ -6,12 +6,12 @@
  * - Next.js API routes are server-side and can reach the gateway at 127.0.0.1:18789
  * - This avoids WSL/Windows networking issues with direct browser → gateway calls
  *
- * The NEXT_PUBLIC_ prefix makes this available in browser bundles.
- * In server-only contexts (Next.js API routes), we also call the gateway directly.
+ * Uses a 25-second AbortSignal timeout to prevent gateway hangs.
  */
 
 const GATEWAY_URL = process.env.NEXT_PUBLIC_OPENCLAW_GATEWAY_URL ?? 'http://127.0.0.1:18789';
 const GATEWAY_TOKEN = process.env.NEXT_PUBLIC_OPENCLAW_GATEWAY_TOKEN ?? '';
+const GATEWAY_TIMEOUT_MS = 25_000;
 
 /**
  * Determine the base URL for adapter calls.
@@ -19,21 +19,14 @@ const GATEWAY_TOKEN = process.env.NEXT_PUBLIC_OPENCLAW_GATEWAY_TOKEN ?? '';
  * - Browser-side: call the Next.js API routes which proxy to the gateway
  */
 function getBaseUrl(): string {
-  // Server-side (Next.js API routes, server components)
   if (typeof window === 'undefined') {
     return GATEWAY_URL;
   }
-  // Browser-side: use the Next.js API proxy routes
-  // These routes are at /api/openclaw/* and proxy to the gateway server-side
-  return '';
+  return ''; // browser → relative URL → Next.js API route
 }
 
 /**
  * Core fetch wrapper for OpenClaw gateway / API proxy calls.
- *
- * Server-side: calls the gateway directly at GATEWAY_URL with auth header.
- * Browser-side: calls the relative Next.js API route (/api/openclaw/*) with auth.
- *
  * Returns parsed JSON body on success; throws on network/HTTP errors.
  */
 export async function gatewayFetch<T = unknown>(
@@ -42,27 +35,44 @@ export async function gatewayFetch<T = unknown>(
 ): Promise<T> {
   const baseUrl = getBaseUrl();
   const url = baseUrl + path;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      ...(baseUrl ? { Authorization: `Bearer ${GATEWAY_TOKEN}` } : {}),
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
 
-  if (!res.ok) {
-    let message = `Gateway ${res.status}`;
-    try {
-      const body = await res.text();
-      message += `: ${body.slice(0, 200)}`;
-    } catch {
-      // ignore
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeout = setTimeout(() => controller?.abort(), GATEWAY_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller?.signal as AbortSignal | undefined,
+      headers: {
+        ...(baseUrl ? { Authorization: `Bearer ${GATEWAY_TOKEN}` } : {}),
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+
+    if (!res.ok) {
+      let message = `Gateway ${res.status}`;
+      try {
+        const body = await res.text();
+        // Strip HTML tags from error messages
+        const clean = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (clean) message += `: ${clean.slice(0, 200)}`;
+      } catch {
+        // ignore text read failure
+      }
+      clearTimeout(timeout);
+      throw new Error(message);
     }
-    throw new Error(message);
-  }
 
-  return res.json() as Promise<T>;
+    clearTimeout(timeout);
+    return res.json() as Promise<T>;
+  } catch (e) {
+    clearTimeout(timeout);
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error(`Gateway timeout after ${GATEWAY_TIMEOUT_MS / 1000}s — gateway may be slow`);
+    }
+    throw e;
+  }
 }
 
 /**

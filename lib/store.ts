@@ -191,7 +191,7 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
   },
 ];
 
-import { mockThreads, mockApprovals, mockRuntime, mockAgents } from '@/lib/mock/data';
+import { mockThreads, mockRuntime, mockAgents } from '@/lib/mock/data';
 import { mockDelegationEvents } from '@/lib/mock/delegation-data';
 import {
   loadSessions as adapterLoadSessions,
@@ -201,6 +201,7 @@ import {
   loadSessionMessages as adapterLoadSessionMessages,
   sendMessage as adapterSendMessage,
   loadDelegationEvents as adapterLoadDelegationEvents,
+  resolveApproval as adapterResolveApproval,
 } from '@/lib/openclaw/adapter';
 
 // --- Preset helpers ---
@@ -291,6 +292,7 @@ interface SignalLoomStore {
   // Sprint 3: Adapter-backed data
   sessionsLoading: boolean;
   sessionsError: string | null;
+  healthLoading: boolean;
   sessionsFetchedAt: string | null;
 
   // Sprint 3 DE: Human email gate (Hermès)
@@ -311,6 +313,7 @@ interface SignalLoomStore {
   loadSessions: () => Promise<void>;
   loadAgents: () => Promise<void>;
   loadApprovals: () => Promise<void>;
+  resolveApproval: (approvalId: string, decision: 'approved' | 'denied' | 'revised', note?: string) => Promise<void>;
   loadRuntimeHealth: () => Promise<void>;
   loadMessagesForThread: (sessionKey: string) => Promise<void>;
 
@@ -343,7 +346,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   threads: mockThreads,
   selectedThreadId: 'thread-1',
   agents: mockAgents,
-  approvals: mockApprovals,
+  approvals: [], // loaded from adapter on mount; store shows empty while loading
   runtime: mockRuntime,
   approvalsPanelOpen: false,
   emailComposerOpen: false,
@@ -380,6 +383,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   // Sprint 3: Adapter-backed data state
   sessionsLoading: false,
   sessionsError: null,
+  healthLoading: true,
   sessionsFetchedAt: null,
 
   // Sprint 3 DE: Human email gate (Hermès)
@@ -391,7 +395,8 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
     })),
   initEmailGates: () => {
     const { emailGates } = get();
-    if (emailGates.length > 0) return; // already initialized
+    if (emailGates.length > 0) return; // already initialized — don't re-init
+    // Email gates are initialized with mock data; real loading happens in useEffect
     set({ emailGates: MOCK_EMAIL_GATES });
   },
 
@@ -540,7 +545,10 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
     set({ sessionsLoading: true, sessionsError: null });
     const result = await adapterLoadSessions();
     if (!result.ok) {
-      set({ sessionsLoading: false, sessionsError: result.error });
+      // Strip HTML from error messages (gateway sometimes returns HTML error pages)
+      const rawError = result.error ?? '';
+      const cleanError = rawError.replace(/<[^>]*>/g, '').replace(/\n/g, ' ').trim();
+      set({ sessionsLoading: false, sessionsError: cleanError || 'Sessions unavailable' });
       return;
     }
     // Map OpenClawSession[] → Thread[]
@@ -591,19 +599,42 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   loadApprovals: async () => {
     const result = await adapterLoadApprovals();
     if (!result.ok) return;
-    const adapted: Approval[] = result.data.map((a) => ({
-      id: a.id,
-      title: a.summary,
-      urgency: 'medium' as const,
-      raisedBy: a.requestedBy as string,
-      recommendation: '',
-      linkedThreadId: a.linkedThreadId ?? '',
+    set({ approvals: result.data });
+  },
+
+  resolveApproval: async (approvalId: string, decision: 'approved' | 'denied' | 'revised', note?: string) => {
+    const { approvals } = get();
+    const approval = approvals.find((a) => a.id === approvalId);
+    if (!approval) return;
+
+    // Optimistic update — immediately show the decision
+    set((state) => ({
+      approvals: state.approvals.map((a) =>
+        a.id === approvalId
+          ? { ...a, status: decision as Approval['status'], decisionNote: note, decidedAt: new Date().toISOString() }
+          : a
+      ),
     }));
-    set({ approvals: adapted });
+
+    // Persist via adapter
+    const result = await adapterResolveApproval({ approvalId, decision, note });
+
+    // If gateway was unreachable, add a note so the UI is honest
+    if (result.ok && !result.data?.synced) {
+      set((state) => ({
+        approvals: state.approvals.map((a) =>
+          a.id === approvalId
+            ? { ...a, decisionNote: `${a.decisionNote ?? ''} [Gateway unreachable — decision recorded locally]` }
+            : a
+        ),
+      }));
+    }
   },
 
   loadRuntimeHealth: async () => {
+    set({ healthLoading: true });
     const result = await adapterLoadRuntimeHealth();
+    set({ healthLoading: false });
     if (!result.ok) {
       set((state) => ({
         runtime: {

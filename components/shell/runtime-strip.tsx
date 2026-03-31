@@ -3,7 +3,7 @@
 import { useSignalLoomStore } from '@/lib/store';
 
 export function RuntimeStrip() {
-  const { runtime } = useSignalLoomStore();
+  const { runtime, healthLoading } = useSignalLoomStore();
 
   const browserLaneDots = Array.from({ length: 4 }, (_, i) => i < runtime.browserLanes);
 
@@ -22,8 +22,16 @@ export function RuntimeStrip() {
       <div className="flex items-center gap-5">
         <div className="flex items-center gap-1.5">
           <span style={{ color: 'var(--mb-ash-muted)' }}>Gateway</span>
-          <span style={{ color: runtime.gateway === 'healthy' ? 'var(--mb-jade)' : 'var(--mb-rust)' }}>
-            {runtime.gateway}
+          <span
+            style={{
+              color: healthLoading
+                ? 'var(--mb-brass)'
+                : runtime.gateway === 'healthy'
+                  ? 'var(--mb-jade)'
+                  : 'var(--mb-rust)',
+            }}
+          >
+            {healthLoading ? 'Checking…' : runtime.gateway}
           </span>
         </div>
         <div className="flex items-center gap-1.5">

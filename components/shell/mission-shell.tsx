@@ -20,26 +20,24 @@ export function MissionShell() {
     emailGates,
     updateEmailGate,
     sendEmail,
-    loadSessions,
     loadAgents,
     loadApprovals,
     loadRuntimeHealth,
     initEmailGates,
   } = useSignalLoomStore();
 
-  // Sprint 3: Load real data from the OpenClaw adapter on mount.
-  // The adapter handles mock fallback when NEXT_PUBLIC_USE_MOCK_DATA=true.
+  // Load real data on mount.
+  // Sessions are loaded via /api/openclaw/sessions (Next.js API route) — not via
+  // the adapter's gatewayFetch which fails from browser (relative URL → Next.js → 404).
   useEffect(() => {
-    loadSessions();
+    initEmailGates();
     loadAgents();
     loadApprovals();
     loadRuntimeHealth();
-    // Sprint 3 DE: Initialize mock email gates (replace with real gateway data)
-    initEmailGates();
-    // Refresh health every 30 seconds
+
     const interval = setInterval(loadRuntimeHealth, 30_000);
     return () => clearInterval(interval);
-  }, [loadSessions, loadAgents, loadApprovals, loadRuntimeHealth]);
+  }, [loadAgents, loadApprovals, loadRuntimeHealth, initEmailGates]);
 
   return (
     <TooltipProvider>
@@ -47,7 +45,7 @@ export function MissionShell() {
         className="flex flex-col h-screen overflow-hidden"
         style={{ background: 'var(--mb-carbon)' }}
       >
-        {/* Shell header — explicit height, never participates in content flex */}
+        {/* Shell header */}
         <div className="flex-shrink-0">
           <TopBar />
         </div>
@@ -104,7 +102,6 @@ export function MissionShell() {
                     updateEmailGate(updated);
                   }}
                   onSend={(gate: EmailGate) => {
-                    // sendEmail() transitions state to sending → sent/send_failed
                     sendEmail(gate.id);
                   }}
                 />
@@ -113,7 +110,7 @@ export function MissionShell() {
           )}
         </div>
 
-        {/* Runtime health strip — explicit height, never participates in content flex */}
+        {/* Runtime health strip */}
         <div className="flex-shrink-0">
           <RuntimeStrip />
         </div>
