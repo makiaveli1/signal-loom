@@ -12,7 +12,7 @@ import type {
   OpenClawAgent,
   OpenClawRuntimeHealth,
   OpenClawApproval,
-  OpenClawDelegationEvent,
+  DelegationEvent,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -179,7 +179,7 @@ export const MOCK_HEALTH: OpenClawRuntimeHealth = {
 // Delegation events
 // ---------------------------------------------------------------------------
 
-export const MOCK_DELEGATION_EVENTS: OpenClawDelegationEvent[] = [
+export const MOCK_DELEGATION_EVENTS: DelegationEvent[] = [
   {
     id: 'evt-s3-1',
     threadId: MOCK_SESSIONS[0].id,

@@ -122,20 +122,26 @@ export type ApprovalStatus = 'pending' | 'approved' | 'denied' | 'unknown';
 // Delegation / timeline events
 // ---------------------------------------------------------------------------
 
-export interface OpenClawDelegationEvent {
+export interface DelegationEvent {
   id: string;
   threadId?: string;         // associated thread/session
   type: DelegationEventType;
-  actor: AgentId | 'user';
-  title: string;             // human-readable phrasing
-  targetAgentId?: AgentId;   // delegate target if applicable
-  createdAt: string;          // ISO timestamp
+  actor?: AgentId | 'user';
+  fromAgent?: string;        // display name for sender
+  toAgent?: string;          // display name for recipient
+  title?: string;            // human-readable phrasing
+  targetAgentId?: AgentId;  // delegate target if applicable
+  createdAt?: string;        // ISO timestamp
+  timestamp?: string;         // ISO timestamp (used in some contexts)
+  taskSummary?: string;      // short description of delegated task
+  status?: 'pending' | 'in_progress' | 'completed' | 'blocked';
   linkedMessageId?: string;
 }
 
 export type DelegationEventType =
   | 'received'
   | 'delegated'
+  | 'returned'
   | 'agent_active'
   | 'agent_returned'
   | 'approval_requested'

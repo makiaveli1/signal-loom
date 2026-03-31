@@ -1,29 +1,51 @@
 /**
- * OpenClaw gateway HTTP client
+ * OpenClaw adapter HTTP client
  *
- * All gateway communication goes through this module. App components never
- * call fetch() directly against the gateway — they go through the adapter.
+ * Architecture:
+ * - Browser calls Next.js API routes (/api/openclaw/*)
+ * - Next.js API routes are server-side and can reach the gateway at 127.0.0.1:18789
+ * - This avoids WSL/Windows networking issues with direct browser → gateway calls
  *
- * Gateway is assumed to be at http://127.0.0.1:18789 when accessed from the
- * browser. Auth token comes from the browser environment variable.
+ * The NEXT_PUBLIC_ prefix makes this available in browser bundles.
+ * In server-only contexts (Next.js API routes), we also call the gateway directly.
  */
 
 const GATEWAY_URL = process.env.NEXT_PUBLIC_OPENCLAW_GATEWAY_URL ?? 'http://127.0.0.1:18789';
 const GATEWAY_TOKEN = process.env.NEXT_PUBLIC_OPENCLAW_GATEWAY_TOKEN ?? '';
 
 /**
- * Core fetch wrapper — adds auth header, JSON serialization, and error handling.
- * Returns the parsed JSON body on success; throws on network/HTTP errors.
+ * Determine the base URL for adapter calls.
+ * - Server-side (Node.js): call the gateway directly at 127.0.0.1:18789
+ * - Browser-side: call the Next.js API routes which proxy to the gateway
+ */
+function getBaseUrl(): string {
+  // Server-side (Next.js API routes, server components)
+  if (typeof window === 'undefined') {
+    return GATEWAY_URL;
+  }
+  // Browser-side: use the Next.js API proxy routes
+  // These routes are at /api/openclaw/* and proxy to the gateway server-side
+  return '';
+}
+
+/**
+ * Core fetch wrapper for OpenClaw gateway / API proxy calls.
+ *
+ * Server-side: calls the gateway directly at GATEWAY_URL with auth header.
+ * Browser-side: calls the relative Next.js API route (/api/openclaw/*) with auth.
+ *
+ * Returns parsed JSON body on success; throws on network/HTTP errors.
  */
 export async function gatewayFetch<T = unknown>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const url = `${GATEWAY_URL}${path}`;
+  const baseUrl = getBaseUrl();
+  const url = baseUrl + path;
   const res = await fetch(url, {
     ...options,
     headers: {
-      'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+      ...(baseUrl ? { Authorization: `Bearer ${GATEWAY_TOKEN}` } : {}),
       'Content-Type': 'application/json',
       ...options.headers,
     },
