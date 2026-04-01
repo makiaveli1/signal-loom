@@ -81,14 +81,16 @@ const MOCK_LEADS: Lead[] = [
       phone: '087 618 2500',
       phoneSecondary: '01-4424089',
     },
-    stage: 'concept_in_review',
+    stage: 'concept_approved',
     concept: {
-      status: 'internal_review',
+      status: 'approved',
       conceptType: 'homepage_mock',
       tier: 1,
       previewUrl: 'http://127.0.0.1:4312/',
-      publicPreviewUrl: 'https://rude-doors-tell.loca.lt',
+      publicPreviewUrl: 'https://pretty-windows-grab.loca.lt', // ⚠️ TEMP — replace with GitHub Pages URL when deployed
       verifiedAt: new Date().toISOString(),
+      approvedBy: 'nero',
+      approvedAt: '2026-04-01T19:00:00Z',
       screenshots: [
         'LEADS/brian-mcgarry-plumber/artifacts/brian-home-mobile.png',
         'LEADS/brian-mcgarry-plumber/artifacts/brian-home-desktop.png',
@@ -111,8 +113,9 @@ const MOCK_LEADS: Lead[] = [
         'Tier 1 static homepage concept. Mobile-first tap-to-call. ' +
         '5 sections: Hero → Services → Trust → Area → Contact. ' +
         'Sticky mobile CTA. No contact form. No RGI claim (removed). ' +
-        'Ariadne visual QA: 9/10 — pre-launch tweaks: WCAG contrast check, RGI replacement.',
-      lastChangedAt: new Date().toISOString(),
+        'Ariadne visual QA: 9/10 — pre-launch tweaks: WCAG contrast check, RGI replacement. ' +
+        'Formally approved by Nero 2026-04-01 — CONCEPT_APPROVAL_DECISION.md.',
+      lastChangedAt: '2026-04-01T19:00:00Z',
     },
     notes:
       'Genuine sole trader since 2014. Responsive in initial contact. ' +

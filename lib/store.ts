@@ -65,8 +65,8 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     id: 'gate-brian-mcgary',
     threadId: 'thread-hermes-1',
     leadId: 'brian-mcgarry-plumber',
-    conceptStatus: 'building',
-    publicPreviewUrl: 'https://rude-doors-tell.loca.lt',
+    conceptStatus: 'approved',
+    publicPreviewUrl: 'https://pretty-windows-grab.loca.lt', // ⚠️ TEMP — replace with GitHub Pages URL when deployed
     summary: 'Brian McGarry — Verdantia website concept follow-up',
     toRecipient: 'Brian McGarry',
     toRole: 'Owner',
@@ -75,15 +75,17 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     isNewTopic: true,
     confidence: 'high',
     rationale:
-      'Higher scrutiny: first contact with this recipient about this topic. ' +
-      'Review carefully before approving. Concept brief is ready — Forge builds next. ' +
-      'Gbemi — your approval is required before this can be sent.',
+      'Concept formally approved by Nero (2026-04-01). Outreach draft complete. ' +
+      'Pending: durable preview URL (GitHub Pages), Likwid human approval, mailbox setup. ' +
+      'Concept-first send rule enforced — all gates must pass before send.',
     proposedTiming: 'Within 24 hours',
-    gateStatus: 'needs_review',
+    gateStatus: 'ready_for_approval',
     lastChangedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
     auditLog: [
       { at: new Date(Date.now() - 30 * 60 * 1000).toISOString(), action: 'draft_created' },
       { at: new Date(Date.now() - 28 * 60 * 1000).toISOString(), action: 'submitted_for_review' },
+      { at: '2026-04-01T19:00:00Z', action: 'concept_approved' }, // Nero formal approval
+      { at: '2026-04-01T19:00:00Z', action: 'ready_for_approval' }, // Moved to pending Likwid review
     ],
     proposedEmail: {
       subject: 'Verdantia — Your website concept is ready to review',
