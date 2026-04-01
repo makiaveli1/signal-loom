@@ -2,8 +2,10 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSignalLoomStore } from '@/lib/store';
+import { useCrmStore } from '@/lib/crm/store';
 import { ApprovalCard } from './approval-card';
 import { EmailGateCard } from './email-gate-card';
+import { ConceptApprovalCard } from '../crm/concept-approval-card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Approval } from '@/lib/types';
 
@@ -18,6 +20,7 @@ export function ApprovalsPanel() {
     updateEmailGate,
     sendEmail,
   } = useSignalLoomStore();
+  const { leads } = useCrmStore();
 
   // Sort: pending first, then by urgency, then by recency
   const sortedApprovals = approvals
@@ -45,7 +48,11 @@ export function ApprovalsPanel() {
       g.gateStatus === 'ready_for_approval'
   ).length;
 
-  const totalPending = pendingCount + pendingEmailGateCount;
+  // Concept reviews: leads in internal_review awaiting Nero approval
+  const conceptReviewLeads = leads.filter((l) => l.concept.status === 'internal_review');
+  const conceptReviewCount = conceptReviewLeads.length;
+
+  const totalPending = pendingCount + pendingEmailGateCount + conceptReviewCount;
 
   return (
     <AnimatePresence>
@@ -109,7 +116,7 @@ export function ApprovalsPanel() {
           {/* Approval cards */}
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-3">
-              {sortedApprovals.length === 0 && emailGates.length === 0 ? (
+              {sortedApprovals.length === 0 && emailGates.length === 0 && conceptReviewLeads.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
                   <span className="text-lg opacity-30">✓</span>
                   <p className="text-xs text-ash-muted">No approvals pending</p>
@@ -170,6 +177,26 @@ export function ApprovalsPanel() {
                                 }
                               : undefined
                           }
+                        />
+                      ))}
+                    </>
+                  )}
+
+                  {conceptReviewLeads.length > 0 && (
+                    <>
+                      <div className="text-xs font-semibold uppercase tracking-wider text-ash-muted px-1 pt-1">
+                        Concept Review
+                      </div>
+                      {conceptReviewLeads.map((lead) => (
+                        <ConceptApprovalCard
+                          key={lead.id}
+                          lead={lead}
+                          onApproved={() => {
+                            // Status already updated in store via setConceptStatus in the card
+                          }}
+                          onRework={() => {
+                            // Status already updated in store via setConceptStatus in the card
+                          }}
                         />
                       ))}
                     </>
