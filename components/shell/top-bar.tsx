@@ -17,11 +17,6 @@ export function TopBar() {
   ).length;
   const totalPending = pendingApprovals + pendingEmailGates;
 
-  // Leads missing concept or needing concept approval
-  const leadsNeedingConcept = leads.filter(
-    (l) => l.concept.status !== 'approved' && l.concept.status !== 'attached_to_outreach'
-  ).length;
-
   return (
     <header
       className="flex items-center justify-between px-4 py-2.5 border-b"
@@ -70,37 +65,8 @@ export function TopBar() {
         )}
       </div>
 
-      {/* Right — approvals + CRM */}
+      {/* Right — approvals */}
       <div className="flex items-center gap-2">
-        {/* CRM Lead Dossier — concept-first workflow */}
-        <button
-          onClick={toggleCrmPanel}
-          className={cn(
-            "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150",
-            crmPanelOpen
-              ? "bg-teal-dim text-teal border border-teal/30"
-              : "bg-graphite text-ash hover:text-ivory border border-transparent hover:border-white/08"
-          )}
-          title="CRM Lead Dossier — concept packages and send gating"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-            <rect x="1" y="1" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
-            <line x1="1" y1="4" x2="11" y2="4" stroke="currentColor" strokeWidth="1" opacity="0.5" />
-            <line x1="1" y1="7" x2="11" y2="7" stroke="currentColor" strokeWidth="1" opacity="0.5" />
-            <circle cx="3.5" cy="2.5" r="0.8" fill="currentColor" />
-          </svg>
-          CRM
-          {leadsNeedingConcept > 0 && (
-            <Badge
-              variant="outline"
-              className="text-xs font-mono min-w-5 h-5 justify-center"
-              style={{ borderColor: 'var(--mb-teal)', color: 'var(--mb-teal)', background: 'rgba(61,201,196,0.1)' }}
-            >
-              {leadsNeedingConcept}
-            </Badge>
-          )}
-        </button>
-
         <button
           onClick={toggleApprovalsPanel}
           className={cn(

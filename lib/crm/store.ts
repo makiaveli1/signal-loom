@@ -87,17 +87,31 @@ const MOCK_LEADS: Lead[] = [
       conceptType: 'homepage_mock',
       tier: 1,
       previewUrl: 'http://127.0.0.1:4312/',
+      publicPreviewUrl: 'https://rude-doors-tell.loca.lt',
+      verifiedAt: new Date().toISOString(),
       screenshots: [
         'LEADS/brian-mcgarry-plumber/artifacts/brian-home-mobile.png',
         'LEADS/brian-mcgarry-plumber/artifacts/brian-home-desktop.png',
       ],
       buildPath: '/home/likwid/.openclaw/workspace/LEADS/brian-mcgarry-plumber',
+      qaFindings: {
+        findings: [
+          'RGI placeholder removed — replaced with "Tidy Reliable Work" trust slot',
+          'All 5 sections in correct brief order',
+          'Sticky mobile CTA confirmed in hero',
+          'No contact form present',
+          'Copper accent (#C17A47) confirmed throughout',
+          'WCAG contrast on grey text: minor concern — check before launch',
+        ],
+        reviewedBy: 'ariadne',
+        reviewedAt: new Date().toISOString(),
+        overallPass: true,
+      },
       notes:
-        'Tier 1 static homepage concept built as a mobile-first tap-to-call page. ' +
-        'Hero = name + direct mobile. 5 sections only. ' +
-        'Sticky mobile CTA included. No contact form. ' +
-        'RGI claim intentionally left unmade pending confirmation. ' +
-        'Ready for Ariadne visual QA.',
+        'Tier 1 static homepage concept. Mobile-first tap-to-call. ' +
+        '5 sections: Hero → Services → Trust → Area → Contact. ' +
+        'Sticky mobile CTA. No contact form. No RGI claim (removed). ' +
+        'Ariadne visual QA: 9/10 — pre-launch tweaks: WCAG contrast check, RGI replacement.',
       lastChangedAt: new Date().toISOString(),
     },
     notes:
@@ -110,7 +124,8 @@ const MOCK_LEADS: Lead[] = [
     createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date().toISOString(),
     outbound: {
-      pitchEmail: undefined,
+      pitchEmail:
+        "Hi Brian,\n\nHope you're well.\n\nI noticed Brian McGarry Plumbing doesn't have a website yet, so I put together a quick concept to show what something could look like — specifically for Dublin 12 homeowners looking for a reliable local plumber.\n\nIt's mobile-first, so it works well on a phone, and the idea is simple: get you phone calls from people in your area who found you online.\n\nI'd love to show you — if useful, I can send over a couple of quick notes on why I designed it the way I did.\n\nEither way, no pressure at all.\n\nBest,\nOluwagbemi Akadiri\nVerdantia Ltd\nwww.verdantia.ai",
       sendStatus: undefined,
     },
     tags: ['plumber', 'dublin', 'local-seo', 'no-website', 'sole-trader', 'real'],
@@ -302,8 +317,8 @@ export const useCrmStore = create<CrmStore>((set, get) => ({
         ok: false,
         reason: 'Lead not found',
         checks: {
-          conceptExists: false, conceptApproved: false, conceptHasPreview: false,
-          outreachDrafted: false, humanApproved: false, mailboxReady: false,
+          conceptExists: false, conceptApproved: false, conceptHasOutput: false,
+          publicPreviewUrl: false, outreachDrafted: false, humanApproved: false, mailboxReady: false,
         },
       };
     }

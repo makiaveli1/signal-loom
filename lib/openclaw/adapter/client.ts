@@ -10,7 +10,8 @@
  */
 
 const GATEWAY_URL = process.env.NEXT_PUBLIC_OPENCLAW_GATEWAY_URL ?? 'http://127.0.0.1:18789';
-const GATEWAY_TOKEN = process.env.NEXT_PUBLIC_OPENCLAW_GATEWAY_TOKEN ?? '';
+// Server-side only — never exposed to the browser bundle
+const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN ?? '';
 const GATEWAY_TIMEOUT_MS = 25_000;
 
 /**
