@@ -9,7 +9,6 @@ import { NeroWorkspace } from '../chat/nero-workspace';
 import { LiveAgentRail } from '../agents/live-agent-rail';
 import { ApprovalsPanel } from '../approvals/approvals-panel';
 import { HermesEmailComposer } from '../agents/hermes-email-composer';
-import { LeadDossier } from '../crm/lead-dossier';
 import { useSignalLoomStore } from '@/lib/store';
 import { approveEmailGate, denyEmailGate, reviseEmailGate } from '@/lib/openclaw/adapter/email-gate';
 import type { EmailGate } from '@/lib/openclaw/adapter/types';
@@ -18,7 +17,6 @@ export function MissionShell() {
   const {
     approvalsPanelOpen,
     emailComposerOpen,
-    crmPanelOpen,
     emailGates,
     updateEmailGate,
     sendEmail,
@@ -65,21 +63,6 @@ export function MissionShell() {
 
           {/* Approvals panel — slides in from right */}
           <ApprovalsPanel />
-
-          {/* CRM Lead Dossier — concept-first workflow */}
-          {crmPanelOpen && (
-            <div
-              className="flex flex-col h-full border-l flex-shrink-0"
-              style={{
-                background: 'var(--mb-shell)',
-                borderColor: 'rgba(255,255,255,0.05)',
-                width: '340px',
-                minWidth: '340px',
-              }}
-            >
-              <LeadDossier />
-            </div>
-          )}
 
           {/* Hermès email composer — slides in from right when Hermès is clicked */}
           {emailComposerOpen && (

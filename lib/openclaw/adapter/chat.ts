@@ -105,5 +105,100 @@ export async function sendMessage(
   }
 }
 
-// Streaming: add POST /api/openclaw/chat/stream and wire streamMessage to it
-// when the UI needs streaming support. Not wired yet — see route.ts comment.
+// ---------------------------------------------------------------------------
+// Streaming — browser-safe via local server route
+// ---------------------------------------------------------------------------
+
+/**
+ * Stream a message to an agent via the server-side streaming route.
+ *
+ * Architecture:
+ * - Browser calls POST /api/openclaw/chat/stream (no token — server-side)
+ * - Server route attaches token and proxies to gateway /v1/chat/completions
+ * - Server streams SSE back to browser
+ *
+ * Token is NEVER exposed to the browser.
+ *
+ * Usage:
+ *   const stream = streamMessage({ sessionKey, content, model, history });
+ *   const reader = stream.getReader();
+ *   for (;;) { const { done, value } = await reader.read(); if (done) break; appendChunk(value); }
+ */
+export function streamMessage(params: SendMessageParams): ReadableStream<string> {
+  const { content, model = 'openclaw/default', history = [], sessionKey } = params;
+
+  const messages: ChatMessage[] = [
+    ...history.map((m) => ({
+      role: (m.role === 'action-summary' ? 'assistant' : m.role) as ChatMessage['role'],
+      content: m.content,
+      name: m.agentId,
+    })),
+    { role: 'user' as const, content },
+  ];
+
+  const body = JSON.stringify({ sessionKey, content, model, messages });
+
+  return new ReadableStream({
+    async start(controller) {
+      try {
+        const response = await fetch('/api/openclaw/chat/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        });
+
+        if (!response.ok || !response.body) {
+          const text = await response.text();
+          let error = `HTTP ${response.status}`;
+          try {
+            const parsed = JSON.parse(text);
+            if (parsed.error) error = parsed.error;
+          } catch {
+            // use HTTP status
+          }
+          controller.enqueue(`[error] ${error}`);
+          controller.close();
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const text = decoder.decode(value, { stream: true });
+          // SSE format: lines starting with "data: "
+          for (const line of text.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data: ')) continue;
+            const data = trimmed.slice(6).trim();
+            if (!data) continue;
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.error) {
+                controller.enqueue(`[error] ${parsed.error}`);
+                controller.close();
+                return;
+              }
+              if (parsed.done) {
+                controller.close();
+                return;
+              }
+              if (parsed.chunk) {
+                controller.enqueue(parsed.chunk);
+              }
+            } catch {
+              // skip malformed SSE data
+            }
+          }
+        }
+      } catch (e) {
+        controller.enqueue(`[error] ${e instanceof Error ? e.message : 'Stream failed'}`);
+      } finally {
+        controller.close();
+      }
+    },
+  });
+}
