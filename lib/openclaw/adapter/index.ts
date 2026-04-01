@@ -357,39 +357,110 @@ export async function loadDelegationEvents(): Promise<AdapterResult<DelegationEv
     return { ok: true, data: MOCK_DELEGATION_EVENTS, fetchedAt: new Date().toISOString() };
   }
 
-  // In production, this would load from the gateway session transcripts
-  // by scanning recent sessions for delegation-related messages.
-  // For now, fall back to mock + session metadata.
+  // Derive delegation events from real session data.
+  //
+  // Honest limitation: the gateway session store contains session metadata
+  // (status, message count, timestamps, child session keys) but not the
+  // semantic content of conversations. Events are derived from session
+  // characteristics — not from native delegation events.
+  //
+  // What we CAN infer from session metadata:
+  // - A session with childSessions → Nero delegated work to a subagent
+  // - A running session with high message count → active specialist work
+  // - A done/idle session → completed work
+  // - Channel (webchat, telegram) → where the interaction originated
+  //
+  // What we CANNOT infer (without transcript access):
+  // - The specific task delegated
+  // - The exact delegation chain for multi-agent flows
+  // - Approval/email events (require transcript analysis)
+  //
+  // All derived events are labeled as honestly as the evidence allows.
   try {
     const sessionsResult = await loadSessionsReal();
     if (!sessionsResult.ok) {
       return { ok: false, error: 'Could not load sessions', retryable: true };
     }
 
-    // Derive delegation events from session metadata
-    // (In full implementation, parse transcripts for delegation patterns)
+    const sessions = sessionsResult.data;
+    const now = Date.now();
+    const THREE_HRS = 3 * 60 * 60 * 1000;
+
     const events: DelegationEvent[] = [];
 
-    for (const session of sessionsResult.data.slice(0, 20)) {
-      if (session.lastMessageAt) {
-        const minutesAgo = Math.floor((Date.now() - new Date(session.lastMessageAt).getTime()) / 60000);
-        if (minutesAgo < 180) {
-          events.push({
-            id: `evt-gw-${session.shortId}`,
-            type: 'returned',
-            timestamp: session.lastMessageAt,
-            fromAgent: session.agentName,
-            toAgent: 'Nero',
-            taskSummary: session.preview?.slice(0, 80) ?? `Session: ${session.title}`,
-            status: 'completed',
-          });
-        }
+    for (const session of sessions.slice(0, 30)) {
+      if (!session.lastMessageAt) continue;
+      const ageMs = now - new Date(session.lastMessageAt).getTime();
+      if (ageMs > THREE_HRS) continue;
+
+      const childTag = session.tags.find((t) => t.startsWith('delegated:'));
+      const childCount = childTag ? parseInt(childTag.split(':')[1]) : 0;
+
+      // Type: session with child sessions → Nero delegated work
+      if (childCount > 0) {
+        events.push({
+          id: `evt-delegated-${session.shortId}`,
+          threadId: session.id,
+          type: 'delegated',
+          actor: 'nero',
+          title: `Nero delegated to specialist (${childCount} sub-sessions)`,
+          createdAt: session.lastMessageAt,
+          status: session.status === 'active' ? 'in_progress' : 'completed',
+          tags: session.tags,
+        });
       }
+
+      // Type: session with substantial message count → active specialist work
+      if (session.messageCount > 10) {
+        const isRecent = ageMs < 30 * 60 * 1000;
+        events.push({
+          id: `evt-active-${session.shortId}`,
+          threadId: session.id,
+          type: 'agent_active',
+          actor: 'nero',
+          title: isRecent
+            ? `Active specialist session (${session.messageCount} messages)`
+            : `Session was active (${session.messageCount} messages)`,
+          createdAt: session.lastMessageAt,
+          status: session.status === 'active' ? 'in_progress' : 'completed',
+          tags: session.tags,
+        });
+      }
+
+      // Type: completed session
+      if (session.status === 'done') {
+        events.push({
+          id: `evt-returned-${session.shortId}`,
+          threadId: session.id,
+          type: 'agent_returned',
+          actor: 'nero',
+          title: session.tags.includes('telegram') ? 'Telegram session completed' : 'Session completed',
+          createdAt: session.lastMessageAt,
+          status: 'completed',
+          tags: session.tags,
+        });
+      }
+    }
+
+    // Sort newest first
+    events.sort((a, b) => {
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    // Return empty state if no real events — never silently fall back to mock
+    if (events.length === 0) {
+      return {
+        ok: true,
+        data: [],
+        fetchedAt: new Date().toISOString(),
+      };
     }
 
     return {
       ok: true,
-      data: events.length > 0 ? events : MOCK_DELEGATION_EVENTS,
+      data: events,
       fetchedAt: new Date().toISOString(),
     };
   } catch (e) {

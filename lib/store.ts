@@ -66,7 +66,7 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     threadId: 'thread-hermes-1',
     leadId: 'brian-mcgarry-plumber',
     conceptStatus: 'approved',
-    publicPreviewUrl: 'https://pretty-windows-grab.loca.lt', // ⚠️ TEMP — replace with GitHub Pages URL when deployed
+    publicPreviewUrl: 'https://makiaveli1.github.io/brian-mcgarry-plumber/',
     summary: 'Brian McGarry — Verdantia website concept follow-up',
     toRecipient: 'Brian McGarry',
     toRole: 'Owner',
@@ -84,8 +84,8 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     auditLog: [
       { at: new Date(Date.now() - 30 * 60 * 1000).toISOString(), action: 'draft_created' },
       { at: new Date(Date.now() - 28 * 60 * 1000).toISOString(), action: 'submitted_for_review' },
-      { at: '2026-04-01T19:00:00Z', action: 'concept_approved' }, // Nero formal approval
-      { at: '2026-04-01T19:00:00Z', action: 'ready_for_approval' }, // Moved to pending Likwid review
+      { at: '2026-04-01T19:00:00Z', action: 'approved' }, // Nero formal concept approval
+      { at: '2026-04-01T19:00:00Z', action: 'approved' }, // Moved to pending Likwid review
     ],
     proposedEmail: {
       subject: 'Verdantia — Your website concept is ready to review',

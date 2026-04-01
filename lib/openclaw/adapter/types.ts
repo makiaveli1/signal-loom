@@ -136,6 +136,7 @@ export interface DelegationEvent {
   taskSummary?: string;      // short description of delegated task
   status?: 'pending' | 'in_progress' | 'completed' | 'blocked';
   linkedMessageId?: string;
+  tags?: string[];
 }
 
 export type DelegationEventType =

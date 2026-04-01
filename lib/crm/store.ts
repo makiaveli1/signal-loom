@@ -87,7 +87,7 @@ const MOCK_LEADS: Lead[] = [
       conceptType: 'homepage_mock',
       tier: 1,
       previewUrl: 'http://127.0.0.1:4312/',
-      publicPreviewUrl: 'https://pretty-windows-grab.loca.lt', // ⚠️ TEMP — replace with GitHub Pages URL when deployed
+      publicPreviewUrl: 'https://makiaveli1.github.io/brian-mcgarry-plumber/',
       verifiedAt: new Date().toISOString(),
       approvedBy: 'nero',
       approvedAt: '2026-04-01T19:00:00Z',
