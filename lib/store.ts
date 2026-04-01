@@ -63,7 +63,7 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     id: 'gate-brian-mcgary',
     threadId: 'thread-hermes-1',
     leadId: 'brian-mcgarry-plumber',
-    conceptStatus: 'brief_ready',
+    conceptStatus: 'building',
     summary: 'Brian McGarry — Verdantia website concept follow-up',
     toRecipient: 'Brian McGarry',
     toRole: 'Owner',

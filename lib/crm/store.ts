@@ -81,20 +81,24 @@ const MOCK_LEADS: Lead[] = [
       phone: '087 618 2500',
       phoneSecondary: '01-4424089',
     },
-    stage: 'concept_brief_ready',
+    stage: 'concept_in_review',
     concept: {
-      status: 'brief_ready',
+      status: 'internal_review',
       conceptType: 'homepage_mock',
       tier: 1,
-      previewUrl: undefined,
-      screenshots: [],
+      previewUrl: 'http://127.0.0.1:4312/',
+      screenshots: [
+        'LEADS/brian-mcgarry-plumber/artifacts/brian-home-mobile.png',
+        'LEADS/brian-mcgarry-plumber/artifacts/brian-home-desktop.png',
+      ],
+      buildPath: '/home/likwid/.openclaw/workspace/LEADS/brian-mcgarry-plumber',
       notes:
-        'Sole-trader plumber, Dublin 12 (Walkinstown). 11+ years in business. ' +
-        'No website, no GBP. Primary differentiator: local address + 11 years + direct phone access. ' +
-        'Mobile-first tap-to-call site. Hero: name + phone. 5 sections max. ' +
-        'No contact form. RGI status TBC. ' +
-        'GBP must be paired with website for local SEO.',
-      lastChangedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        'Tier 1 static homepage concept built as a mobile-first tap-to-call page. ' +
+        'Hero = name + direct mobile. 5 sections only. ' +
+        'Sticky mobile CTA included. No contact form. ' +
+        'RGI claim intentionally left unmade pending confirmation. ' +
+        'Ready for Ariadne visual QA.',
+      lastChangedAt: new Date().toISOString(),
     },
     notes:
       'Genuine sole trader since 2014. Responsive in initial contact. ' +
@@ -104,7 +108,7 @@ const MOCK_LEADS: Lead[] = [
       'Launch blockers: RGI confirmation + 3 testimonials + service list. ' +
       'CONCEPT_BRIEF.md exists — full spec ready for Forge.',
     createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date().toISOString(),
     outbound: {
       pitchEmail: undefined,
       sendStatus: undefined,
