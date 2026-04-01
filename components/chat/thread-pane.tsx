@@ -45,7 +45,7 @@ export function ThreadPane({
   onClose,
   showDelegationTimeline,
 }: ThreadPaneProps) {
-  const { delegationEvents, approvals, highlightMessage, agents } = useSignalLoomStore();
+  const { delegationEvents, approvals, highlightMessage, agents, sessionsFetchedAt } = useSignalLoomStore();
 
   const threadEvents = delegationEvents.filter((e) => e.threadId === thread.id);
   const pendingApproval = approvals.find((a) => a.linkedThreadId === thread.id);
@@ -160,9 +160,10 @@ export function ThreadPane({
       <ThreadHeader thread={thread} />
 
       {/* Delegation timeline — above messages */}
-      {showDelegationTimeline && threadEvents.length > 0 && (
+      {showDelegationTimeline && (
         <DelegationTimeline
           events={threadEvents}
+          fetchedAt={sessionsFetchedAt}
           onEventClick={(event) => {
             if (event.linkedMessageId) {
               highlightMessage(event.linkedMessageId);

@@ -50,6 +50,18 @@ export function LiveAgentRail() {
 
       <ScrollArea className="flex-1">
         <div className="p-2 space-y-2">
+          {/* Honest empty state — no agents derived from real sessions */}
+          {agents.length === 0 && (
+            <div className="py-6 px-2 text-center">
+              <p className="text-xs text-ash-muted italic">
+                No active agents — Nero is running solo.
+              </p>
+              <p className="text-xs text-ash-dimmed mt-1">
+                Refresh sessions to see live agent status.
+              </p>
+            </div>
+          )}
+
           {/* Always-visible: active, waiting, blocked */}
           {visible.map((agent) => (
             <AgentCard

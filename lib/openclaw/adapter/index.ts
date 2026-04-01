@@ -110,11 +110,10 @@ export async function loadAgents(): Promise<AdapterResult<OpenClawAgent[]>> {
     return { ok: true, data: MOCK_AGENTS, fetchedAt: new Date().toISOString() };
   }
 
-  // When USE_MOCK is false (production/real mode), use MOCK_AGENTS as baseline.
-  // Real session-based agent status will be derived in the session loading flow.
-  // Calling loadSessionsReal from browser would use wrong URL — sessions are loaded
-  // via the Next.js API route /api/openclaw/sessions which proxies correctly.
-  return { ok: true, data: MOCK_AGENTS, fetchedAt: new Date().toISOString() };
+  // Real agent status is derived from session data in the store, not here.
+  // The store's loadSessions() loads real sessions and derives agent statuses
+  // from them — that is the authoritative source for live agent data.
+  return { ok: true, data: [], fetchedAt: new Date().toISOString() };
 }
 
 // ---------------------------------------------------------------------------

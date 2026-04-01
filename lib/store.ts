@@ -599,11 +599,148 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       lastActive: s.lastMessageAt ?? new Date().toISOString(),
       createdAt: new Date().toISOString(),
     }));
+
+    // ---- Derive agent statuses from real session data ----
+    const sessions = result.data;
+    const now = Date.now();
+    const FIVE_MINS = 5 * 60 * 1000;
+
+    // Known agent session key prefixes
+    const SESSION_AGENT_MAP: Array<{ prefix: string; agentId: Agent['id'] }> = [
+      { prefix: 'agent:forge:subagent:', agentId: 'hephaestus' },
+      { prefix: 'agent:sentinel:subagent:', agentId: 'argus' },
+      { prefix: 'agent:studio:subagent:', agentId: 'ariadne' },
+      { prefix: 'agent:scout:subagent:', agentId: 'orion' },
+      { prefix: 'agent:mercury:subagent:', agentId: 'hermes' },
+    ];
+
+    // Derive agent statuses from session data
+    // Track: agentId → { status, taskPreview, lastActiveMs }
+    type AgentDerivation = { status: Agent['status']; taskPreview: string; lastActiveMs: number };
+    const derivedAgentsMap = new Map<Agent['id'], AgentDerivation>();
+
+    for (const session of sessions) {
+      // Find which agent this session belongs to
+      const mapping = SESSION_AGENT_MAP.find(({ prefix }) =>
+        session.id.startsWith(prefix)
+      );
+      if (!mapping) continue;
+
+      const agentId = mapping.agentId as Agent['id'];
+      const lastActiveMs = session.lastMessageAt
+        ? new Date(session.lastMessageAt).getTime()
+        : 0;
+      const ageMs = now - lastActiveMs;
+      const isRecent = ageMs < FIVE_MINS;
+
+      // Skip if we already have a more recent session for this agent
+      const existing = derivedAgentsMap.get(agentId);
+      if (existing && existing.lastActiveMs > 0) {
+        if (existing.lastActiveMs > lastActiveMs) continue;
+      }
+
+      // Determine status honestly
+      let status: Agent['status'] = 'idle';
+      if (session.status === 'active' && isRecent) {
+        status = 'active';
+      } else if (session.status === 'done' && isRecent) {
+        status = 'done';
+      } else if (session.status === 'idle') {
+        status = 'idle';
+      } else {
+        status = 'idle';
+      }
+
+      // Build task preview from session metadata
+      const childTag = session.tags.find((t) => t.startsWith('delegated:'));
+      const childCount = childTag ? parseInt(childTag.split(':')[1]) : 0;
+      const taskPreview = childCount > 0
+        ? `Delegated ${childCount} subagent${childCount > 1 ? 's' : ''}`
+        : session.preview
+          ? session.preview.slice(0, 60)
+          : session.title;
+
+      derivedAgentsMap.set(agentId, {
+        status,
+        taskPreview,
+        lastActiveMs,
+      });
+    }
+
+    // Merge derived statuses into mockAgents baseline (preserve mock fields we can't derive)
+    const MOCK_AGENT_FIELDS: Record<Agent['id'], { name: string; role: string; browserEnabled: boolean; accentColor: string }> = {
+      hephaestus: { name: 'Hephaestus', role: 'execution', browserEnabled: false, accentColor: '#D44D2C' },
+      argus:      { name: 'Argus',      role: 'review',    browserEnabled: false, accentColor: '#44BB44' },
+      ariadne:   { name: 'Ariadne',    role: 'design',    browserEnabled: false, accentColor: '#CC44CC' },
+      orion:     { name: 'Orion',      role: 'research',  browserEnabled: false, accentColor: '#4A9EFF' },
+      hermes:    { name: 'Hermes',     role: 'commercial', browserEnabled: false, accentColor: '#E8A83C' },
+    };
+
+    const derivedAgents: Agent[] = (['hephaestus', 'argus', 'ariadne', 'orion', 'hermes'] as Agent['id'][])
+      .map((id) => {
+        const derived = derivedAgentsMap.get(id);
+        const defaults = MOCK_AGENT_FIELDS[id];
+        return {
+          id,
+          name: defaults.name,
+          role: defaults.role,
+          status: derived?.status ?? 'idle',
+          taskPreview: derived?.taskPreview ?? 'Idle',
+          browserEnabled: defaults.browserEnabled,
+          accentColor: defaults.accentColor,
+        } satisfies Agent;
+      });
+
+    // ---- Derive delegation events from sessions (honest — no invented data) ----
+    const THREE_HRS = 3 * 60 * 60 * 1000;
+    const derivedEvents: DelegationEvent[] = [];
+
+    for (const session of sessions.slice(0, 30)) {
+      if (!session.lastMessageAt) continue;
+      const ageMs = now - new Date(session.lastMessageAt).getTime();
+      if (ageMs > THREE_HRS) continue;
+
+      const childTag = session.tags.find((t) => t.startsWith('delegated:'));
+      const childCount = childTag ? parseInt(childTag.split(':')[1]) : 0;
+
+      if (childCount > 0) {
+        derivedEvents.push({
+          id: `evt-delegated-${session.shortId}`,
+          threadId: session.id,
+          type: 'delegated',
+          actor: 'nero',
+          title: `Nero delegated to specialist (${childCount} sub-session${childCount > 1 ? 's' : ''})`,
+          createdAt: session.lastMessageAt,
+        });
+      }
+
+      if (session.status === 'active' && ageMs < FIVE_MINS) {
+        derivedEvents.push({
+          id: `evt-active-${session.shortId}`,
+          threadId: session.id,
+          type: 'agent_active',
+          actor: 'nero',
+          title: 'Active specialist session',
+          createdAt: session.lastMessageAt,
+        });
+      }
+    }
+
+    // Sort events newest first
+    derivedEvents.sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    // ---- Update store ----
     set((state) => ({
       threads: adaptedThreads.length > 0 ? adaptedThreads : state.threads,
       sessionsLoading: false,
       sessionsFetchedAt: result.fetchedAt,
       sessionsError: null,
+      // Derive honest agent statuses from real sessions
+      agents: derivedAgents,
+      // Populate delegation timeline from real session data
+      delegationEvents: derivedEvents.length > 0 ? derivedEvents : state.delegationEvents,
       // Select first thread if nothing is selected
       selectedThreadId: state.selectedThreadId || (adaptedThreads[0]?.id ?? state.selectedThreadId),
       // Update workspace to use first session as primary thread

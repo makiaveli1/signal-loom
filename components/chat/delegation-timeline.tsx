@@ -34,6 +34,8 @@ const EVENT_COLORS: Record<DelegationEvent['type'], string> = {
 
 interface DelegationTimelineProps {
   events: DelegationEvent[];
+  /** ISO timestamp of when events were last fetched — shown as "last updated" */
+  fetchedAt?: string | null;
   onEventClick?: (event: DelegationEvent) => void;
 }
 
@@ -117,7 +119,7 @@ function TimelineEvent({
   );
 }
 
-export function DelegationTimeline({ events, onEventClick }: DelegationTimelineProps) {
+export function DelegationTimeline({ events, onEventClick, fetchedAt }: DelegationTimelineProps) {
   const [filter, setFilter] = useState<AgentId | 'all'>('all');
   const [expanded, setExpanded] = useState(false);
 
@@ -172,9 +174,16 @@ export function DelegationTimeline({ events, onEventClick }: DelegationTimelineP
     >
       {/* Header + filter row */}
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-ash-muted">
-          Delegation Timeline
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-ash-muted">
+            Delegation Timeline
+          </span>
+          {fetchedAt && (
+            <span className="text-xs font-mono text-ash-dimmed" title={`Last refreshed ${new Date(fetchedAt).toLocaleTimeString()}`}>
+              · {formatRelative(fetchedAt)}
+            </span>
+          )}
+        </div>
 
         {/* Agent filter pills */}
         <div className="flex items-center gap-1">
@@ -217,7 +226,9 @@ export function DelegationTimeline({ events, onEventClick }: DelegationTimelineP
       {/* Timeline nodes */}
       <div className="relative">
         {visible.length === 0 ? (
-          <p className="text-xs text-ash-muted italic py-1">No events match the filter.</p>
+          <p className="text-xs text-ash-muted italic py-1">
+            No delegation events yet — start a conversation with Nero.
+          </p>
         ) : (
           <div className="space-y-0">
             {visible.map((item, idx) => {
