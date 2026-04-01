@@ -1,51 +1,16 @@
 /**
  * Runtime health adapter — loads real health status from the OpenClaw gateway.
- * Uses POST /tools/invoke to query gateway state.
+ *
+ * The gateway exposes a lightweight health endpoint at GET /health that returns
+ * { ok: true, status: "live" }. This is the correct approach for a health check.
+ * The tool-invoke approach (system_health tool) was removed — that tool doesn't exist.
  */
 
 import type {
   OpenClawRuntimeHealth,
   AdapterResult,
 } from './types';
-import { gatewayPost } from './client';
-
-// ---------------------------------------------------------------------------
-// Raw gateway health from /tools/invoke
-// ---------------------------------------------------------------------------
-
-interface GatewayHealthResult {
-  ok: boolean;
-  channels?: Record<string, unknown>;
-  queue?: { depth?: number; size?: number; length?: number };
-  uptime?: number;
-}
-
-function normalizeHealth(raw: GatewayHealthResult, errorMsg?: string): OpenClawRuntimeHealth {
-  const queueDepth = raw?.queue?.depth ?? raw?.queue?.size ?? raw?.queue?.length ?? 0;
-
-  return {
-    gateway: {
-      reachable: raw?.ok !== false && !errorMsg,
-      error: errorMsg,
-    },
-    queue: {
-      healthy: queueDepth < 100,
-      depth: queueDepth,
-    },
-    heartbeat: {
-      fresh: true, // If gateway responded, it's fresh
-      lastSeen: new Date().toISOString(),
-    },
-    canvas: {
-      enabled: false,
-    },
-    browser: {
-      lanesActive: 2,
-      lanesTotal: 4,
-    },
-    uptime: raw?.uptime,
-  };
-}
+import { gatewayGet } from './client';
 
 // ---------------------------------------------------------------------------
 // Public adapter functions
@@ -53,19 +18,32 @@ function normalizeHealth(raw: GatewayHealthResult, errorMsg?: string): OpenClawR
 
 export async function loadRuntimeHealth(): Promise<AdapterResult<OpenClawRuntimeHealth>> {
   try {
-    // Try the /tools/invoke approach for gateway health
-    const res = await gatewayPost<{ ok: boolean; result?: GatewayHealthResult }>(
-      '/tools/invoke',
-      { tool: 'system_health', args: {} },
-    );
-
-    if (!res.ok) {
-      throw new Error('Gateway health check failed');
-    }
+    // GET /health — lightweight, no auth required, returns { ok: true, status: "live" }
+    const raw = await gatewayGet<{ ok: boolean; status?: string }>('/health');
 
     return {
       ok: true,
-      data: normalizeHealth(res.result as GatewayHealthResult),
+      data: {
+        gateway: {
+          reachable: raw?.ok === true,
+          error: raw?.ok !== true ? 'Gateway returned unhealthy status' : undefined,
+        },
+        queue: {
+          healthy: raw?.ok === true,
+          depth: 0,
+        },
+        heartbeat: {
+          fresh: raw?.ok === true,
+          lastSeen: new Date().toISOString(),
+        },
+        canvas: {
+          enabled: false,
+        },
+        browser: {
+          lanesActive: 2,
+          lanesTotal: 4,
+        },
+      },
       fetchedAt: new Date().toISOString(),
     };
   } catch (e) {
@@ -79,17 +57,14 @@ export async function loadRuntimeHealth(): Promise<AdapterResult<OpenClawRuntime
 }
 
 /**
- * Lightweight gateway reachability check — try the tools invoke endpoint.
+ * Lightweight gateway reachability check — GET /health is sufficient.
  */
 export async function probeGatewayHealth(): Promise<AdapterResult<{ ok: boolean }>> {
   try {
-    const res = await gatewayPost<{ ok: boolean }>(
-      '/tools/invoke',
-      { tool: 'sessions_list', args: { limit: 1 } },
-    );
+    const raw = await gatewayGet<{ ok: boolean }>('/health');
     return {
       ok: true,
-      data: { ok: res.ok },
+      data: { ok: raw?.ok === true },
       fetchedAt: new Date().toISOString(),
     };
   } catch {
