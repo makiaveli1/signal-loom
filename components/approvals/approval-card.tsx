@@ -4,6 +4,9 @@ import { useState } from 'react';
 import type { Approval } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
+/** Denied-state next-step cue — harmonized across approval-card and email-gate-card */
+const DENIAL_NEXT_STEP = 'Revise and resubmit — return to the linked thread to address feedback.';
+
 const URGENCY_CONFIG: Record<Approval['urgency'], { label: string; color: string; bg: string; border: string }> = {
   high:   { label: 'High',   color: 'var(--mb-red)',   bg: 'rgba(232,96,58,0.10)',  border: 'rgba(232,96,58,0.25)' },
   medium: { label: 'Medium', color: 'var(--mb-brass)', bg: 'rgba(201,160,58,0.10)', border: 'rgba(201,160,58,0.22)' },
@@ -168,7 +171,7 @@ export function ApprovalCard({
           }}
         >
           <span className="font-semibold text-brass">Next step: </span>
-          Revise and resubmit — return to the linked thread to address the feedback.
+          {DENIAL_NEXT_STEP}
         </div>
       )}
 

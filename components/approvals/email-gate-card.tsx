@@ -4,6 +4,9 @@ import { useState } from 'react';
 import type { EmailGateStoreItem } from '@/lib/store';
 import { cn } from '@/lib/utils';
 
+/** Denied-state next-step cue — harmonized across approval-card and email-gate-card */
+const DENIAL_NEXT_STEP = 'Revise and resubmit — return to the linked thread to address feedback.';
+
 const GATE_STATUS_CONFIG: Record<EmailGateStoreItem['gateStatus'], { label: string; color: string; bg: string; border: string }> = {
   draft: {
     label: 'Draft',
@@ -224,7 +227,7 @@ export function EmailGateCard({ gate, onJumpToThread, onApprove, onDeny, onRetry
           }}
         >
           <span className="font-semibold text-brass">Next step: </span>
-          Revise the draft and resubmit — return to the linked thread to address the feedback.
+          {DENIAL_NEXT_STEP}
         </div>
       )}
 
