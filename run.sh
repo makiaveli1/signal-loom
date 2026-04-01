@@ -3,10 +3,10 @@
 # Usage: ./run.sh [port]
 #
 # Defaults:
-#   Port: 3099
+#   Port: 3000
 #   Preview server: localhost:4312 (Brian McGarry concept)
 
-PORT="${1:-3099}"
+PORT="${1:-3000}"
 PREVIEW_PORT="${PREVIEW_PORT:-4312}"
 PREVIEW_DIR="${PREVIEW_DIR:-/home/likwid/.openclaw/workspace/LEADS/brian-mcgarry-plumber}"
 
