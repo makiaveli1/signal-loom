@@ -32,8 +32,12 @@ export interface ConceptPackage {
   /** 'not_started' | 'brief_ready' | 'building' | 'internal_review' | 'approved' | 'rework_needed' | 'attached_to_outreach' */
   status: ConceptStatus;
   conceptType: ConceptType;
-  /** URL where the live concept/preview is hosted */
+  /** Local preview URL (localhost — not for sharing) */
   previewUrl?: string;
+  /** Clean public preview URL — REQUIRED for send gate */
+  publicPreviewUrl?: string;
+  /** ISO timestamp — when publicPreviewUrl was last verified live */
+  verifiedAt?: string;
   /** Array of screenshot file paths or URLs */
   screenshots?: string[];
   /** Local or network path to the build output */
@@ -177,12 +181,13 @@ export interface SendGate {
   reason?: string;
   /** If blocked, which specific check failed */
   checks: {
-    conceptExists:    boolean;
-    conceptApproved:  boolean;
-    conceptHasPreview: boolean; // previewUrl OR screenshots
-    outreachDrafted:  boolean;
-    humanApproved:    boolean; // email gate human_approved
-    mailboxReady:     boolean;  // Graph/system readiness
+    conceptExists:      boolean;
+    conceptApproved:    boolean;
+    conceptHasOutput:   boolean; // previewUrl OR screenshots
+    publicPreviewUrl: boolean; // clean public URL — required for prospect send
+    outreachDrafted:   boolean;
+    humanApproved:     boolean; // email gate human_approved
+    mailboxReady:      boolean; // Graph/system readiness
   };
 }
 
@@ -190,10 +195,11 @@ export type SendGateCheckId = keyof SendGate['checks'];
 
 /** Human-readable labels for send gate checks */
 export const SEND_GATE_CHECK_LABELS: Record<SendGateCheckId, string> = {
-  conceptExists:     'Concept exists',
-  conceptApproved:   'Concept approved',
-  conceptHasPreview: 'Preview or screenshots available',
-  outreachDrafted:   'Outreach draft written',
-  humanApproved:     'Human approved email',
-  mailboxReady:      'System / mailbox ready',
+  conceptExists:      'Concept exists',
+  conceptApproved:    'Concept approved',
+  conceptHasOutput:   'Preview or screenshots available',
+  publicPreviewUrl:  'Public preview URL available',
+  outreachDrafted:    'Outreach draft written',
+  humanApproved:      'Human approved email',
+  mailboxReady:       'System / mailbox ready',
 };

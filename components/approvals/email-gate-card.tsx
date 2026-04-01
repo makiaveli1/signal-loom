@@ -98,11 +98,13 @@ export function EmailGateCard({ gate, onJumpToThread, onApprove, onDeny, onRetry
   const isSent = gate.gateStatus === 'sent' || gate.gateStatus === 'send_failed';
   const isSending = gate.gateStatus === 'sending';
 
-  // Concept-gated send rule: send only when email approved AND concept is approved/attached
+  // Concept-gated send rule: email approved AND concept approved AND public preview URL exists
   const conceptApproved =
     gate.conceptStatus === 'approved' || gate.conceptStatus === 'attached_to_outreach';
-  const canSend = isApproved && conceptApproved;
+  const hasPublicPreview = !!gate.publicPreviewUrl;
+  const canSend = isApproved && conceptApproved && hasPublicPreview;
   const sendBlockedByConcept = isApproved && !conceptApproved;
+  const sendBlockedByPreview = isApproved && conceptApproved && !hasPublicPreview;
 
   return (
     <div
@@ -201,6 +203,31 @@ export function EmailGateCard({ gate, onJumpToThread, onApprove, onDeny, onRetry
         </div>
       )}
 
+      {/* Send blocker — concept approved but no public preview URL */}
+      {sendBlockedByPreview && (
+        <div
+          className="text-xs p-2.5 rounded mb-3 flex flex-col gap-1"
+          style={{
+            background: 'rgba(201,160,58,0.06)',
+            border: '1px solid rgba(201,160,58,0.22)',
+          }}
+        >
+          <div className="flex items-center gap-1.5">
+            <span style={{ color: 'var(--mb-brass)' }}>⚠</span>
+            <span className="font-semibold text-brass">Send blocked — preview URL not published</span>
+          </div>
+          <p className="text-ivory-dim pl-5">
+            Email and concept are both approved, but there is no public preview URL.
+            Publish the concept preview to get a shareable link before sending.
+          </p>
+          {gate.publicPreviewUrl && (
+            <p className="text-ash-muted pl-5 text-xs">
+              Local preview: <span className="text-ivory-dim font-mono">{gate.publicPreviewUrl}</span>
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Send error */}
       {gate.sendError && (
         <div
@@ -254,6 +281,18 @@ export function EmailGateCard({ gate, onJumpToThread, onApprove, onDeny, onRetry
               data-automation-id="email-gate-send-button-disabled"
             >
               Send ↗ (concept required)
+            </button>
+          )}
+          {/* Disabled send — no public preview URL */}
+          {sendBlockedByPreview && (
+            <button
+              disabled
+              className="flex-1 text-xs font-semibold py-1.5 rounded-md opacity-50 cursor-not-allowed"
+              style={{ background: 'var(--mb-graphite)', color: 'var(--mb-ash)' }}
+              title="No public preview URL — publish the concept preview first"
+              data-automation-id="email-gate-send-button-disabled"
+            >
+              Send ↗ (preview URL required)
             </button>
           )}
           {(gate.gateStatus === 'needs_review' || gate.gateStatus === 'ready_for_approval') && onDeny && (

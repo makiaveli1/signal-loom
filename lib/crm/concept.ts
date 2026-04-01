@@ -123,9 +123,10 @@ export function computeSendGate(
   const { concept, outbound } = lead;
 
   const checks = {
-    conceptExists:     concept !== undefined && concept.status !== 'not_started',
-    conceptApproved:   conceptIsApproved(concept),
-    conceptHasPreview: conceptHasOutput(concept),
+    conceptExists:      concept !== undefined && concept.status !== 'not_started',
+    conceptApproved:    conceptIsApproved(concept),
+    conceptHasOutput:   conceptHasOutput(concept),
+    publicPreviewUrl:  !!concept.publicPreviewUrl,
     outreachDrafted:   !!(outbound?.pitchEmail),
     humanApproved:     emailGate?.humanApproved ?? false,
     mailboxReady:      true, // TODO: wire real Graph/mailbox readiness check
@@ -139,8 +140,10 @@ export function computeSendGate(
       reason = `Concept missing — cannot send. Start by having Forge build a concept.`;
     else if (!checks.conceptApproved)
       reason = `Concept is "${getConceptStatusLabel(concept.status).toLowerCase()}" — must be approved before send.`;
-    else if (!checks.conceptHasPreview)
+    else if (!checks.conceptHasOutput)
       reason = `Concept has no preview or screenshots — cannot attach to outreach.`;
+    else if (!checks.publicPreviewUrl)
+      reason = `No public preview URL — publish the concept preview before sending.`;
     else if (!checks.outreachDrafted)
       reason = `Outreach draft not written yet — Hermes must draft first.`;
     else if (!checks.humanApproved)
@@ -159,9 +162,10 @@ export function computeSendGate(
 export function getPrimaryBlocker(gate: SendGate): keyof SendGate['checks'] | null {
   if (gate.ok) return null;
   const entries: [keyof SendGate['checks'], boolean][] = [
-    ['conceptExists',     gate.checks.conceptExists],
-    ['conceptApproved',   gate.checks.conceptApproved],
-    ['conceptHasPreview', gate.checks.conceptHasPreview],
+    ['conceptExists',      gate.checks.conceptExists],
+    ['conceptApproved',    gate.checks.conceptApproved],
+    ['conceptHasOutput',   gate.checks.conceptHasOutput],
+    ['publicPreviewUrl',  gate.checks.publicPreviewUrl],
     ['outreachDrafted',   gate.checks.outreachDrafted],
     ['humanApproved',     gate.checks.humanApproved],
     ['mailboxReady',      gate.checks.mailboxReady],

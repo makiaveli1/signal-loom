@@ -25,6 +25,8 @@ export interface EmailGateStoreItem {
   leadId?: string;
   /** CRM: current concept status for this lead — mirrors the lead's concept state */
   conceptStatus?: string;
+  /** CRM: whether a clean public preview URL exists for this lead's concept */
+  publicPreviewUrl?: string;
   summary: string;
   toRecipient: string;
   toRole?: string;
@@ -64,6 +66,7 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     threadId: 'thread-hermes-1',
     leadId: 'brian-mcgarry-plumber',
     conceptStatus: 'building',
+    publicPreviewUrl: 'https://rude-doors-tell.loca.lt',
     summary: 'Brian McGarry — Verdantia website concept follow-up',
     toRecipient: 'Brian McGarry',
     toRole: 'Owner',

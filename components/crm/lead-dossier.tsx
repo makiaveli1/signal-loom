@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { useCrmStore } from '@/lib/crm/store';
 import {
   LEAD_STAGE_LABELS,
@@ -13,6 +14,7 @@ import {
   conceptIsApproved,
   getTierDescription,
 } from '@/lib/crm/concept';
+import { ConceptPreview } from './concept-preview';
 import type { Lead, ConceptStatus } from '@/lib/crm/types';
 
 const STAGE_ORDER: Lead['stage'][] = [
@@ -42,20 +44,71 @@ const STAGE_COLORS: Record<Lead['stage'], string> = {
 export function LeadDossier() {
   const { leads, selectedLeadId, selectLead, setStage, setConceptStatus } = useCrmStore();
   const lead = selectedLeadId ? leads.find((l) => l.id === selectedLeadId) : null;
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to top whenever the selected lead changes
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [selectedLeadId]);
 
   if (!lead) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
+      <div className="flex flex-col h-full">
+        {/* Lead queue header */}
         <div
-          className="w-12 h-12 rounded-full flex items-center justify-center text-lg"
-          style={{ background: 'rgba(255,255,255,0.05)' }}
+          className="px-4 py-2.5 border-b flex-shrink-0"
+          style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'rgba(0,0,0,0.15)' }}
         >
-          👤
+          <p className="text-xs font-semibold text-ash-muted uppercase tracking-wider">
+            CRM — {leads.length} leads
+          </p>
         </div>
-        <p className="text-sm font-medium text-ash-muted">No lead selected</p>
-        <p className="text-xs text-ash-muted opacity-60 max-w-[200px]">
-          Select a lead from the list to view their concept package and outreach status.
-        </p>
+        {/* Lead queue list */}
+        <div className="flex-1 overflow-y-auto" ref={!lead ? scrollRef : undefined}>
+          {leads.map((l) => {
+            const badge = getConceptBadgeLabel(l.concept);
+            const color = getConceptBadgeColor(l.concept);
+            const isSelected = l.id === selectedLeadId;
+            return (
+              <button
+                key={l.id}
+                onClick={() => selectLead(l.id)}
+                className="w-full text-left px-4 py-3 border-b transition-all"
+                style={{
+                  background: isSelected ? 'rgba(61,201,196,0.08)' : 'transparent',
+                  borderColor: 'rgba(255,255,255,0.04)',
+                }}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-semibold text-ivory truncate">{l.businessName}</span>
+                  <span
+                    className="text-xs font-mono px-1.5 py-0.5 rounded flex-shrink-0 ml-2"
+                    style={{
+                      color: color,
+                      background: `${color}18`,
+                      border: `1px solid ${color}35`,
+                    }}
+                  >
+                    {badge}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-ash-muted">{l.contact.name}</span>
+                  {l.concept.publicPreviewUrl ? (
+                    <span className="text-xs" style={{ color: 'var(--mb-jade)' }}>✓ published</span>
+                  ) : l.concept.status !== 'not_started' ? (
+                    <span className="text-xs" style={{ color: 'var(--mb-brass)' }}>⏳ unpublished</span>
+                  ) : null}
+                </div>
+                <p className="text-xs text-ash-muted mt-0.5 truncate">
+                  {LEAD_STAGE_LABELS[l.stage]} · Score {l.score}
+                </p>
+              </button>
+            );
+          })}
+        </div>
       </div>
     );
   }
@@ -73,7 +126,7 @@ export function LeadDossier() {
   ];
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto">
+    <div className="flex flex-col h-full">
       {/* Dossier header */}
       <div
         className="flex items-start justify-between px-4 py-3 border-b flex-shrink-0"
@@ -93,7 +146,7 @@ export function LeadDossier() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={lead ? scrollRef : undefined}>
 
         {/* Concept status badge */}
         <section>
@@ -232,6 +285,28 @@ export function LeadDossier() {
               )}
             </p>
           )}
+        </section>
+
+        {/* Concept Preview — embedded preview + public URL + send readiness */}
+        <section
+          className="rounded-lg border p-3"
+          style={{
+            background: 'rgba(0,0,0,0.12)',
+            borderColor: 'rgba(255,255,255,0.05)',
+          }}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-ash-muted">Concept Preview</h3>
+            {concept.publicPreviewUrl && (
+              <span
+                className="text-xs font-mono px-1.5 py-0.5 rounded"
+                style={{ color: 'var(--mb-jade)', background: 'rgba(80,200,120,0.08)', border: '1px solid rgba(80,200,120,0.2)' }}
+              >
+                ✓ Published
+              </span>
+            )}
+          </div>
+          <ConceptPreview lead={lead} />
         </section>
 
         {/* Agent routing */}
