@@ -24,7 +24,7 @@ const GATE_STATUS_CONFIG: Record<EmailGateStoreItem['gateStatus'], { label: stri
     border: 'rgba(201,160,58,0.20)',
   },
   human_approved: {
-    label: 'Approved',
+    label: 'Approved — concept required to send',
     color: 'var(--mb-jade)',
     bg: 'rgba(80,200,120,0.06)',
     border: 'rgba(80,200,120,0.20)',
@@ -61,6 +61,22 @@ const CONFIDENCE_CONFIG: Record<EmailGateStoreItem['confidence'], { label: strin
   low:    { label: 'Low confidence',   color: 'var(--mb-red)' },
 };
 
+/** Concept status → visual config for CRM badge on email gate cards */
+const CONCEPT_BADGE_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  not_started:         { label: '✗ No concept',         color: 'var(--mb-ash)', bg: 'rgba(128,128,120,0.10)' },
+  brief_ready:         { label: '📋 Brief ready',         color: 'var(--mb-brass)', bg: 'rgba(201,160,58,0.10)' },
+  building:            { label: '⏳ Building…',           color: 'var(--mb-brass)', bg: 'rgba(201,160,58,0.08)' },
+  internal_review:     { label: '🔍 Review',             color: 'rgba(96,165,250,0.9)', bg: 'rgba(96,165,250,0.08)' },
+  approved:            { label: '✓ Concept approved',   color: 'var(--mb-jade)', bg: 'rgba(80,200,120,0.08)' },
+  rework_needed:       { label: '⚠ Rework needed',       color: 'var(--mb-red)', bg: 'rgba(232,96,58,0.08)' },
+  attached_to_outreach:{ label: '✓ Attached to outreach', color: 'var(--mb-jade)', bg: 'rgba(80,200,120,0.08)' },
+};
+
+function getConceptBadge(conceptStatus?: string) {
+  if (!conceptStatus) return null;
+  return CONCEPT_BADGE_CONFIG[conceptStatus] ?? { label: conceptStatus, color: 'var(--mb-ash)', bg: 'rgba(128,128,120,0.08)' };
+}
+
 interface EmailGateCardProps {
   gate: EmailGateStoreItem;
   onJumpToThread: () => void;
@@ -72,10 +88,18 @@ interface EmailGateCardProps {
 export function EmailGateCard({ gate, onJumpToThread, onApprove, onDeny, onRetrySend }: EmailGateCardProps) {
   const statusCfg = GATE_STATUS_CONFIG[gate.gateStatus];
   const confidenceCfg = CONFIDENCE_CONFIG[gate.confidence];
-  const isSendable = gate.gateStatus === 'human_approved';
+  const conceptBadge = getConceptBadge(gate.conceptStatus);
+
+  const isApproved = gate.gateStatus === 'human_approved';
   const isDenied = gate.gateStatus === 'human_denied';
   const isSent = gate.gateStatus === 'sent' || gate.gateStatus === 'send_failed';
   const isSending = gate.gateStatus === 'sending';
+
+  // Concept-gated send rule: send only when email approved AND concept is approved/attached
+  const conceptApproved =
+    gate.conceptStatus === 'approved' || gate.conceptStatus === 'attached_to_outreach';
+  const canSend = isApproved && conceptApproved;
+  const sendBlockedByConcept = isApproved && !conceptApproved;
 
   return (
     <div
@@ -106,6 +130,16 @@ export function EmailGateCard({ gate, onJumpToThread, onApprove, onDeny, onRetry
           >
             {statusCfg.label}
           </span>
+          {/* CRM concept badge — shows concept readiness for this lead */}
+          {conceptBadge && (
+            <span
+              className="text-xs font-mono px-1.5 py-0.5 rounded"
+              style={{ color: conceptBadge.color, background: conceptBadge.bg, border: `1px solid ${conceptBadge.color}30` }}
+              title="Concept readiness for this lead"
+            >
+              {conceptBadge.label}
+            </span>
+          )}
           {/* Executive badge */}
           {gate.isExecutive && (
             <span
@@ -137,6 +171,32 @@ export function EmailGateCard({ gate, onJumpToThread, onApprove, onDeny, onRetry
       <p className="text-xs text-ivory-dim leading-relaxed mb-3 italic">
         {gate.rationale}
       </p>
+
+      {/* Send blocker — concept not ready but email is human-approved */}
+      {sendBlockedByConcept && (
+        <div
+          className="text-xs p-2.5 rounded mb-3 flex flex-col gap-1"
+          style={{
+            background: 'rgba(201,160,58,0.06)',
+            border: '1px solid rgba(201,160,58,0.22)',
+          }}
+        >
+          <div className="flex items-center gap-1.5">
+            <span style={{ color: 'var(--mb-brass)' }}>⚠</span>
+            <span className="font-semibold text-brass">Send blocked — concept not ready</span>
+          </div>
+          <p className="text-ivory-dim pl-5">
+            Email is approved but the concept is &quot;
+            <span className="text-brass">{gate.conceptStatus?.replace(/_/g, ' ') ?? 'not started'}</span>
+            &quot;. The concept must be approved before this email can be sent.
+          </p>
+          {gate.leadId && (
+            <p className="text-ash-muted pl-5 text-xs">
+              Lead: <span className="text-ivory-dim font-mono">{gate.leadId}</span>
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Send error */}
       {gate.sendError && (
@@ -171,7 +231,7 @@ export function EmailGateCard({ gate, onJumpToThread, onApprove, onDeny, onRetry
       {/* Actions */}
       {!isSent && !isSending && (
         <div className="flex items-center gap-2">
-          {isSendable && onApprove && (
+          {canSend && onApprove && (
             <button
               onClick={() => onApprove(gate)}
               className="flex-1 text-xs font-semibold py-1.5 rounded-md transition-all duration-150 hover:opacity-90"
@@ -179,6 +239,18 @@ export function EmailGateCard({ gate, onJumpToThread, onApprove, onDeny, onRetry
               data-automation-id="email-gate-send-button"
             >
               Send ↗
+            </button>
+          )}
+          {/* Disabled send — concept not approved */}
+          {sendBlockedByConcept && (
+            <button
+              disabled
+              className="flex-1 text-xs font-semibold py-1.5 rounded-md opacity-50 cursor-not-allowed"
+              style={{ background: 'var(--mb-graphite)', color: 'var(--mb-ash)' }}
+              title={`Concept must be approved before send. Current: ${gate.conceptStatus ?? 'not started'}`}
+              data-automation-id="email-gate-send-button-disabled"
+            >
+              Send ↗ (concept required)
             </button>
           )}
           {(gate.gateStatus === 'needs_review' || gate.gateStatus === 'ready_for_approval') && onDeny && (

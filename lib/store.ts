@@ -21,6 +21,10 @@ import type { EmailGateAuditEntry } from '@/lib/openclaw/adapter/types';
 export interface EmailGateStoreItem {
   id: string;
   threadId?: string;
+  /** CRM: which lead this email is for */
+  leadId?: string;
+  /** CRM: current concept status for this lead — mirrors the lead's concept state */
+  conceptStatus?: string;
   summary: string;
   toRecipient: string;
   toRole?: string;
@@ -58,16 +62,19 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
   {
     id: 'gate-brian-mcgary',
     threadId: 'thread-hermes-1',
-    summary: 'Brian McGarry — website studio deployment approval follow-up',
+    leadId: 'brian-mcgarry-plumber',
+    conceptStatus: 'building',
+    summary: 'Brian McGarry — Verdantia website concept follow-up',
     toRecipient: 'Brian McGarry',
-    toRole: 'Commercial Director, CPK',
-    toEmail: 'brian.mcgary@cpk.example.com',
+    toRole: 'Owner',
+    toEmail: 'brian@example.com',
     isExecutive: false,
     isNewTopic: true,
     confidence: 'high',
     rationale:
       'Higher scrutiny: first contact with this recipient about this topic. ' +
-      'Review carefully before approving. Gbemi — your approval is required before this can be sent.',
+      'Review carefully before approving. Concept is currently in build. ' +
+      'Gbemi — your approval is required before this can be sent.',
     proposedTiming: 'Within 24 hours',
     gateStatus: 'needs_review',
     lastChangedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
@@ -76,41 +83,46 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
       { at: new Date(Date.now() - 28 * 60 * 1000).toISOString(), action: 'submitted_for_review' },
     ],
     proposedEmail: {
-      subject: 'Verdantia — Your website is ready to go live',
-      body: `Hi Brian,\n\nFollowing our conversation, I'm pleased to let you know your Verdantia website is fully built and ready for your review.\n\nAre you available for a 20-minute call this week?\n\nBest regards,\nOluwagbemi Akadiri`,
+      subject: 'Verdantia — Your website concept is ready to review',
+      body: `Hi Brian,\n\nFollowing our conversation, I've built a custom website concept tailored for Brian McGarry Plumbing. I'd love to walk you through it — takes about 15 minutes.\n\nAre you available for a call this week?\n\nBest regards,\nOluwagbemi Akadiri`,
       footer: '-- \nOluwagbemi Akadiri\nVerdantia Ltd\nAI Consulting & Training\nwww.verdantia.ai',
     },
   },
   {
     id: 'gate-larkfield-followup',
     threadId: 'thread-hermes-2',
-    summary: 'Larkfield — Q2 strategy meeting follow-up',
+    leadId: 'larkfield-plumbing-contractors',
+    conceptStatus: 'not_started',
+    summary: 'Larkfield — custom website concept introduction',
     toRecipient: 'Sarah McGarry',
-    toRole: 'Managing Partner, Larkfield',
-    toEmail: 'sarah.mcgarry@larkfield.example.com',
+    toRole: 'Managing Partner',
+    toEmail: 'sarah@larkfield.example.com',
     isExecutive: false,
-    isNewTopic: false,
-    confidence: 'high',
+    isNewTopic: true,
+    confidence: 'medium',
     rationale:
-      'Standard review. This is a routine outreach or follow-up to an existing contact — ' +
-      'but your approval is still required before this goes out.',
+      'Higher scrutiny: first contact about a new topic (website concept). ' +
+      'Concept has not been started yet — outreach draft references the concept that will be built. ' +
+      'Gbemi — your approval is required before this can be sent.',
     proposedTiming: 'Within SLA window',
-    gateStatus: 'ready_for_approval',
+    gateStatus: 'needs_review',
     lastChangedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     auditLog: [
       { at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), action: 'draft_created' },
       { at: new Date(Date.now() - 90 * 60 * 1000).toISOString(), action: 'submitted_for_review' },
     ],
     proposedEmail: {
-      subject: 'Verdantia — Q2 strategy session',
-      body: `Hi Sarah,\n\nThank you for your time on our call. As discussed, I'm following up with a tailored proposal for Larkfield's Q2 priorities.\n\nBest,\nOluwagbemi Akadiri`,
+      subject: 'Verdantia — Custom website concept for Larkfield',
+      body: `Hi Sarah,\n\nThank you for your time on our call. As discussed, I've begun working on a custom website concept tailored for Larkfield Plumbing Contractors.\n\nBefore I send the full concept over — would you have 15 minutes this week to review it together?\n\nBest,\nOluwagbemi Akadiri`,
       footer: '-- \nOluwagbemi Akadiri\nVerdantia Ltd\nAI Consulting & Training\nwww.verdantia.ai',
     },
   },
   {
     id: 'gate-cfo-escalation',
     threadId: 'thread-hermes-3',
-    summary: 'Verdantia expansion — proposal to CFO',
+    leadId: undefined,
+    conceptStatus: undefined,
+    summary: 'Verdantia expansion — internal proposal follow-up',
     toRecipient: 'Adedolapo Grace Babalola',
     toRole: 'CFO',
     toEmail: 'grace.babalola@verdantia.example.com',
@@ -136,6 +148,8 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
   {
     id: 'gate-approved-demo',
     threadId: 'thread-hermes-4',
+    leadId: undefined,
+    conceptStatus: undefined,
     summary: 'Follow-up after AI workshop — prospective client',
     toRecipient: 'Michael Okafor',
     toRole: 'Head of Learning, TechCorp',
@@ -164,6 +178,8 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
   {
     id: 'gate-denied-revision',
     threadId: 'thread-hermes-5',
+    leadId: undefined,
+    conceptStatus: undefined,
     summary: 'Initial outreach — potential AI consulting lead',
     toRecipient: 'David Walsh',
     toRole: 'Operations Director, FinServe Ltd',
@@ -276,6 +292,9 @@ interface SignalLoomStore {
   runtime: RuntimeState;
   approvalsPanelOpen: boolean;
   emailComposerOpen: boolean;
+  /** CRM Lead Dossier panel — concept-first workflow */
+  crmPanelOpen: boolean;
+  toggleCrmPanel: () => void;
 
   // Sprint 2: Legacy split view (kept for migration compatibility)
   splitView: SplitViewState;
@@ -350,6 +369,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   runtime: mockRuntime,
   approvalsPanelOpen: false,
   emailComposerOpen: false,
+  crmPanelOpen: false,
 
   // Sprint 2 legacy (migrated to workspace in 2.5)
   splitView: {
@@ -537,6 +557,11 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   toggleEmailComposer: () =>
     set((state) => ({
       emailComposerOpen: !state.emailComposerOpen,
+    })),
+
+  toggleCrmPanel: () =>
+    set((state) => ({
+      crmPanelOpen: !state.crmPanelOpen,
     })),
 
   // ---- Sprint 3: OpenClaw adapter data loading ----

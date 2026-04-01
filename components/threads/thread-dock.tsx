@@ -1,10 +1,13 @@
 'use client';
 
 import { useSignalLoomStore } from '@/lib/store';
+import { useCrmStore } from '@/lib/crm/store';
 import { ThreadListItem } from './thread-list-item';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Thread } from '@/lib/types';
 import type { EmailGateStoreItem } from '@/lib/store';
+import { getConceptBadgeLabel, getConceptBadgeColor } from '@/lib/crm/concept';
+import type { Lead } from '@/lib/crm/types';
 
 export function ThreadDock() {
   const { threads, selectedThreadId, selectThread, sessionsLoading, sessionsError, sessionsFetchedAt, loadSessions } =
@@ -159,6 +162,7 @@ function ThreadListItemWrapper({
   onSelect: () => void;
 }) {
   const { emailGates } = useSignalLoomStore();
+  const { leads, getConceptBadge } = useCrmStore();
 
   const pendingEmailGates = (emailGates as EmailGateStoreItem[]).filter(
     (g) =>
@@ -168,6 +172,15 @@ function ThreadListItemWrapper({
   const hasPendingEmail = pendingEmailGates.length > 0;
   const hasReviewRequired = pendingEmailGates.some((g) => g.gateStatus === 'needs_review');
 
+  // Find the lead associated with this thread via email gate leadId
+  const leadId = (emailGates as EmailGateStoreItem[]).find(
+    (g) => g.threadId === thread.id && g.leadId
+  )?.leadId;
+  const lead: Lead | undefined = leadId ? leads.find((l) => l.id === leadId) : undefined;
+
+  // Concept badge for CRM leads
+  const conceptBadge = lead ? getConceptBadge(lead) : null;
+
   return (
     <ThreadListItem
       thread={thread}
@@ -175,6 +188,7 @@ function ThreadListItemWrapper({
       onSelect={onSelect}
       hasPendingEmail={hasPendingEmail}
       emailGateUrgent={hasReviewRequired}
+      conceptBadge={conceptBadge}
     />
   );
 }
