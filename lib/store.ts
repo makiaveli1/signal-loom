@@ -63,17 +63,17 @@ const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
     id: 'gate-brian-mcgary',
     threadId: 'thread-hermes-1',
     leadId: 'brian-mcgarry-plumber',
-    conceptStatus: 'building',
+    conceptStatus: 'brief_ready',
     summary: 'Brian McGarry — Verdantia website concept follow-up',
     toRecipient: 'Brian McGarry',
     toRole: 'Owner',
-    toEmail: 'brian@example.com',
+    toEmail: 'brianmcgarry90@gmail.com',
     isExecutive: false,
     isNewTopic: true,
     confidence: 'high',
     rationale:
       'Higher scrutiny: first contact with this recipient about this topic. ' +
-      'Review carefully before approving. Concept is currently in build. ' +
+      'Review carefully before approving. Concept brief is ready — Forge builds next. ' +
       'Gbemi — your approval is required before this can be sent.',
     proposedTiming: 'Within 24 hours',
     gateStatus: 'needs_review',

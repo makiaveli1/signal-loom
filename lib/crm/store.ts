@@ -58,81 +58,111 @@ export interface CrmStore {
 // Mock leads — Sprint 3.5 baseline
 // ---------------------------------------------------------------------------
 
+/**
+ * CRM — Lead data (migrated from workspace LEADS/ markdown files, 2026-04-01)
+ *
+ * Outreach rule: phone-only leads (CPK, Larkfield) cannot receive email outreach.
+ * They are tracked here for concept pipeline but email gates do not apply.
+ * Phone/SMS outreach is a deferred capability (pending Round 2).
+ */
 const MOCK_LEADS: Lead[] = [
   {
     id: 'brian-mcgarry-plumber',
     name: 'Brian McGarry',
     businessName: 'Brian McGarry Plumber',
     industry: 'Plumbing',
-    location: 'Ireland',
-    website: 'https://brianmcgarryplumber.ie',
+    location: 'Dublin 12, Ireland',
+    website: undefined,
     score: 44,
     contact: {
       name: 'Brian McGarry',
       role: 'Owner',
-      email: 'brian@example.com',
-      phone: '+353 87 123 4567',
+      email: 'brianmcgarry90@gmail.com',
+      phone: '087 618 2500',
+      phoneSecondary: '01-4424089',
     },
-    stage: 'concept_in_build',
+    stage: 'concept_brief_ready',
     concept: {
-      status: 'building',
+      status: 'brief_ready',
       conceptType: 'homepage_mock',
       tier: 1,
       previewUrl: undefined,
       screenshots: [],
-      notes: 'Single-page homepage concept — plumber in Dublin. Strong local SEO opportunity.',
-      lastChangedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      notes:
+        'Sole-trader plumber, Dublin 12 (Walkinstown). 11+ years in business. ' +
+        'No website, no GBP. Primary differentiator: local address + 11 years + direct phone access. ' +
+        'Mobile-first tap-to-call site. Hero: name + phone. 5 sections max. ' +
+        'No contact form. RGI status TBC. ' +
+        'GBP must be paired with website for local SEO.',
+      lastChangedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
     },
-    notes: 'Brian was responsive in initial contact. Confirmed interest in a website. Strong local SEO case.',
+    notes:
+      'Genuine sole trader since 2014. Responsive in initial contact. ' +
+      'Personal Gmail usable. Strong local SEO case. ' +
+      'GBP does not exist — must be claimed/created. ' +
+      'Content gaps: RGI status unconfirmed, 0 testimonials, no photography. ' +
+      'Launch blockers: RGI confirmation + 3 testimonials + service list. ' +
+      'CONCEPT_BRIEF.md exists — full spec ready for Forge.',
     createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
     outbound: {
-      pitchEmail: undefined, // not yet drafted
+      pitchEmail: undefined,
       sendStatus: undefined,
     },
-    tags: ['plumber', 'dublin', 'local-seo'],
+    tags: ['plumber', 'dublin', 'local-seo', 'no-website', 'sole-trader', 'real'],
   },
   {
     id: 'cpk-heating-plumbing',
-    name: 'Brian McGarry (CPK)',
+    name: 'Brian McGarry',
     businessName: 'CPK Heating & Plumbing',
     industry: 'HVAC / Plumbing',
-    location: 'Ireland',
-    website: 'https://cpkheating.ie',
+    location: 'Dublin 12, Ireland',
+    website: 'https://cpkheatingandplumbing.ie',
     score: 42,
     contact: {
       name: 'Brian McGarry',
       role: 'Commercial Director',
       email: undefined,
-      phone: '+353 87 123 4567',
+      phone: '087 232 6258',
+      phoneSecondary: '01 455 9506',
     },
     stage: 'qualified',
     concept: createEmptyConcept(),
-    notes: 'UK entity dissolved Oct 2024. Irish entity active. Phone-only contact — no email found.',
+    notes:
+      '⚠️ CONCERN: UK entity (CPK PLUMBING & HEATING LTD) dissolved Oct 2024. ' +
+      'Irish entity active (CRO). Website: 2/10 design quality, AI boilerplate, 404s on /about and /contact. ' +
+      'Phone-only contact. RGI claimed on website. ' +
+      'Email absent — outreach route unclear. ' +
+      'Parked pending email contact route or phone/SMS capability.',
     createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    tags: ['hvac', 'plumbing', 'concern-flag'],
+    tags: ['hvac', 'plumbing', 'concern-flag', 'phone-only', 'no-email', 'real'],
   },
   {
     id: 'larkfield-plumbing-contractors',
     name: 'Sarah McGarry',
     businessName: 'Larkfield Plumbing Contractors Ltd',
     industry: 'Plumbing',
-    location: 'Ireland',
-    website: 'https://larkfield.ie',
+    location: 'Dublin 6W / Kimmage, Ireland',
+    website: undefined,
     score: 41,
     contact: {
       name: 'Sarah McGarry',
       role: 'Managing Partner',
       email: undefined,
-      phone: '+353 86 123 4567',
+      phone: '086 248 6922',
     },
     stage: 'opportunity_brief_ready',
     concept: createEmptyConcept(),
-    notes: 'RGI listed. 29 years in operation. Strong commercial fit but phone-only.',
+    notes:
+      'Irish Ltd (CRO #249634) since 1996 — 29 years. Status: NORMAL. ' +
+      'RGI listed. No website. Phone-only contact. ' +
+      'Strong commercial fit — established Ltd with RGI and 29-year track record. ' +
+      'Email absent — outreach route unclear. ' +
+      'Parked pending email contact route or phone/SMS capability.',
     createdAt: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    tags: ['plumbing', 'commercial', 'rgi-listed'],
+    tags: ['plumbing', 'commercial', 'rgi-listed', 'phone-only', 'no-email', 'irish-ltd', 'real'],
   },
 ];
 

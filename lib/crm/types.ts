@@ -136,6 +136,7 @@ export interface LeadContact {
   role?: string;
   email?: string;
   phone?: string;
+  phoneSecondary?: string;
   linkedin?: string;
 }
 
