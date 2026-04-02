@@ -173,7 +173,9 @@ export async function loadApprovals(): Promise<AdapterResult<Approval[]>> {
 
   try {
     // Load sessions to derive approval candidates
-    const sessionsResult = await loadSessionsReal();
+    // Use loadSessions() — it routes through /api/openclaw/sessions from the browser
+    // (avoids CORS when calling gateway directly from browser)
+    const sessionsResult = await loadSessions();
 
     if (!sessionsResult.ok || !sessionsResult.data) {
       return { ok: false, error: 'Could not load sessions', retryable: true };
@@ -396,7 +398,7 @@ export async function loadDelegationEvents(): Promise<AdapterResult<DelegationEv
   //
   // All derived events are labeled as honestly as the evidence allows.
   try {
-    const sessionsResult = await loadSessionsReal();
+    const sessionsResult = await loadSessions();
     if (!sessionsResult.ok) {
       return { ok: false, error: 'Could not load sessions', retryable: true };
     }
