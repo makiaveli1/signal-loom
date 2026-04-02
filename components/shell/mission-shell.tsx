@@ -20,6 +20,7 @@ export function MissionShell() {
     emailGates,
     updateEmailGate,
     sendEmail,
+    loadSessions,
     loadAgents,
     loadApprovals,
     loadRuntimeHealth,
@@ -31,13 +32,14 @@ export function MissionShell() {
   // the adapter's gatewayFetch which fails from browser (relative URL → Next.js → 404).
   useEffect(() => {
     initEmailGates();
+    loadSessions();
     loadAgents();
     loadApprovals();
     loadRuntimeHealth();
 
     const interval = setInterval(loadRuntimeHealth, 30_000);
     return () => clearInterval(interval);
-  }, [loadAgents, loadApprovals, loadRuntimeHealth, initEmailGates]);
+  }, [loadSessions, loadAgents, loadApprovals, loadRuntimeHealth, initEmailGates]);
 
   return (
     <TooltipProvider>

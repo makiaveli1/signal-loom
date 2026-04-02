@@ -652,7 +652,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       }
 
       // Build task preview from session metadata
-      const childTag = session.tags.find((t) => t.startsWith('delegated:'));
+      const childTag = session.tags.find((t: string) => t.startsWith('delegated:'));
       const childCount = childTag ? parseInt(childTag.split(':')[1]) : 0;
       const taskPreview = childCount > 0
         ? `Delegated ${childCount} subagent${childCount > 1 ? 's' : ''}`
@@ -700,7 +700,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       const ageMs = now - new Date(session.lastMessageAt).getTime();
       if (ageMs > THREE_HRS) continue;
 
-      const childTag = session.tags.find((t) => t.startsWith('delegated:'));
+      const childTag = session.tags.find((t: string) => t.startsWith('delegated:'));
       const childCount = childTag ? parseInt(childTag.split(':')[1]) : 0;
 
       if (childCount > 0) {

@@ -49,6 +49,7 @@ interface RawSession {
   totalTokens?: number;
   contextTokens?: number;
   displayName?: string;
+  label?: string;  // human-set session label, used as clean title
   channel?: string;
   kind?: string;
   origin?: Record<string, unknown>;
@@ -117,19 +118,36 @@ function deriveAgentId(key: string, displayName?: string): string {
 }
 
 function deriveSessionTitle(raw: RawSession): string {
-  // Build a human-readable title from available fields
+  // Priority: label (human-set) > displayName (structured) > key (raw)
+  if (raw.label) {
+    return raw.label.replace(/^(cron:\s*)/i, '').trim();
+  }
+
   if (raw.displayName) {
     // displayName is like "webchat:g-agent-main-main" — clean it up
     const name = raw.displayName
-      .replace(/^webchat:/, 'webchat ')
-      .replace(/^telegram:/, 'telegram ')
-      .replace(/:/g, ' ');
-    return name.charAt(0).toUpperCase() + name.slice(1);
+      .replace(/^webchat:/i, '')
+      .replace(/^telegram:/i, 'Telegram ')
+      .replace(/^cron:/i, '')
+      .replace(/g-agent-/g, '')
+      .replace(/main-/g, '')
+      .replace(/-/g, ' ')
+      .replace(/:/g, ' · ');
+    return name.charAt(0).toUpperCase() + name.slice(1).trim();
   }
-  // Fall back to channel + key
-  const channel = raw.channel ?? 'session';
-  const shortKey = raw.key.split(':').pop() ?? raw.key;
-  return `${channel} ${shortKey}`.trim();
+
+  // Fall back to channel + last key segment
+  const channel = raw.channel && raw.channel !== 'unknown' ? raw.channel : null;
+  const keyParts = raw.key.split(':');
+  const keyType = keyParts[keyParts.length - 2] ?? null;
+  const shortKey = keyParts[keyParts.length - 1] ?? raw.key;
+  // If the last key segment is a UUID, don't show it — use type + "session"
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}/i.test(shortKey);
+  if (isUuid) {
+    const label = keyType ? `${keyType} session` : 'Subagent session';
+    return channel ? `${channel} ${label}` : label;
+  }
+  return channel ? `${channel} ${shortKey}` : shortKey;
 }
 
 function agentNameFromId(id: string): string {

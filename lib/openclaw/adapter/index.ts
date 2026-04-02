@@ -11,6 +11,7 @@
  */
 
 export type { OpenClawSession, OpenClawAgent, OpenClawRuntimeHealth } from './types';
+import type { OpenClawSession } from './types';
 
 // ---------------------------------------------------------------------------
 // Feature flag
@@ -31,11 +32,30 @@ export { loadSessionsReal } from './sessions';
 
 import { loadSessionsReal } from './sessions';
 
-export async function loadSessions() {
+export async function loadSessions(): Promise<AdapterResult<OpenClawSession[]>> {
+  // On the client (browser), call the Next.js API route to avoid CORS.
+  // On the server, call loadSessionsReal directly (has access to gateway token).
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/openclaw/sessions');
+      if (!res.ok) {
+        return { ok: false, error: `API error ${res.status}`, retryable: true };
+      }
+      const data = await res.json() as OpenClawSession[];
+      return { ok: true, data, fetchedAt: new Date().toISOString() };
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : 'Failed to load sessions',
+        retryable: true,
+      };
+    }
+  }
+
   return withMock(
     {
       ok: true,
-      data: [],
+      data: [] as OpenClawSession[],
       fetchedAt: new Date().toISOString(),
     },
     loadSessionsReal,
