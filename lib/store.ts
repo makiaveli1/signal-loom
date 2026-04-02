@@ -15,6 +15,7 @@ import type {
   WorkspacePreset,
   Pane,
 } from '@/lib/types';
+import type { OpenClawSession } from '@/lib/openclaw/adapter/types';
 import type { EmailGateAuditEntry } from '@/lib/openclaw/adapter/types';
 
 /** Minimal email gate shape stored in the Signal Loom state */
@@ -291,6 +292,8 @@ function calcWidthRatio(deltaX: number, containerWidth: number, startA: number, 
 
 interface SignalLoomStore {
   threads: Thread[];
+  /** Raw OpenClaw sessions — used to build Thread objects for selection */
+  sessions: OpenClawSession[];
   selectedThreadId: string;
   agents: Agent[];
   approvals: Approval[];
@@ -328,7 +331,7 @@ interface SignalLoomStore {
   sendEmail: (gateId: string) => Promise<void>;
 
   // Actions
-  selectThread: (id: string) => void;
+  selectThread: (id: string, session?: OpenClawSession) => void;
   markThreadRead: (id: string) => void;
   toggleApprovalsPanel: () => void;
   toggleEmailComposer: () => void;
@@ -368,6 +371,7 @@ interface SignalLoomStore {
 
 export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   threads: mockThreads,
+  sessions: [] as OpenClawSession[],
   selectedThreadId: 'thread-1',
   agents: mockAgents,
   approvals: [], // loaded from adapter on mount; store shows empty while loading
@@ -514,9 +518,37 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
 
   // ---- Actions ----
 
-  selectThread: (id) =>
+  selectThread: (id, session) =>
     set((state) => {
       const ws = state.workspace;
+
+      // If thread is not in threads list, look it up from sessions and create a Thread entry
+      const existingThread = state.threads.find((t) => t.id === id);
+      const threadList = existingThread
+        ? state.threads
+        : [
+            ...state.threads,
+            // Create a Thread from session metadata — will be populated with messages async
+            ((): Thread => {
+              // Look up session from stored sessions
+              const sess = session ?? state.sessions.find((s) => s.id === id);
+              return {
+                id,
+                title: sess?.title ?? id,
+                status: sess?.status === 'active'
+                  ? 'active'
+                  : sess?.status === 'idle' || sess?.status === 'done'
+                  ? 'done'
+                  : 'active',
+                lastActive: sess?.lastMessageAt ?? new Date().toISOString(),
+                unreadCount: 0,
+                hasApproval: false,
+                linkedAgents: [],
+                messages: [],
+              };
+            })(),
+          ];
+
       // Find which pane currently holds this thread
       const paneWithThread = ws.panes.find((p) => p.threadId === id);
       if (paneWithThread) {
@@ -529,7 +561,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
             activePaneId: paneWithThread.id,
             panes: ws.panes.map((p) => ({ ...p, active: p.id === paneWithThread.id })),
           },
-          threads: state.threads.map((t) => (t.id === id ? { ...t, unreadCount: 0 } : t)),
+          threads: threadList.map((t) => (t.id === id ? { ...t, unreadCount: 0 } : t)),
         };
       }
 
@@ -543,7 +575,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
             p.id === ws.activePaneId ? { ...p, threadId: id } : p
           ),
         },
-        threads: state.threads.map((t) => (t.id === id ? { ...t, unreadCount: 0 } : t)),
+        threads: threadList.map((t) => (t.id === id ? { ...t, unreadCount: 0 } : t)),
       };
     }),
 
@@ -734,6 +766,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
     // ---- Update store ----
     set((state) => ({
       threads: adaptedThreads.length > 0 ? adaptedThreads : state.threads,
+      sessions: result.data,  // store raw sessions for thread creation on select
       sessionsLoading: false,
       sessionsFetchedAt: result.fetchedAt,
       sessionsError: null,

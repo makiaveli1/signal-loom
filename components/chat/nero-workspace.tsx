@@ -50,6 +50,7 @@ export function NeroWorkspace() {
   const {
     threads,
     workspace,
+    selectedThreadId,
     setActivePaneById,
     closePane,
     sessionsLoading,
@@ -95,7 +96,12 @@ export function NeroWorkspace() {
   }, [workspace.panes, workspace.activePaneId, setActivePaneById]);
 
   const primaryPane = workspace.panes.find((p) => p.role === 'primary');
-  const primaryThread = primaryPane ? threads.find((t) => t.id === primaryPane.threadId) : null;
+  // Resolve primary thread: prefer selectedThreadId (canonical for real sessions),
+  // fall back to primaryPane.threadId (for initial mock-thread state).
+  const primaryThread =
+    (selectedThreadId && threads.find((t) => t.id === selectedThreadId)) ??
+    (primaryPane && threads.find((t) => t.id === primaryPane.threadId)) ??
+    null;
 
   if (!primaryThread) {
     return <EmptyState loading={sessionsLoading} />;
