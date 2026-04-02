@@ -615,24 +615,38 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       set({ sessionsLoading: false, sessionsError: cleanError || 'Sessions unavailable' });
       return;
     }
-    // Map OpenClawSession[] → Thread[]
-    const adaptedThreads: Thread[] = result.data.map((s) => ({
-      id: s.id,
-      title: s.title,
-      messages: [] as Thread["messages"], // loaded lazily
-      linkedAgents: [],
-      delegationEvents: [],
-      linkedThreads: [],
-      tags: s.tags,
-      status: s.status === 'active' ? 'active'
-        : s.status === 'done' ? 'done'
-        : s.status === 'idle' ? 'done'
-        : 'active',
-      unreadCount: 0,
-      hasApproval: false,
-      lastActive: s.lastMessageAt ?? new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-    }));
+    // Map OpenClawSession[] → Thread[], filtering subagent sessions
+    const adaptedThreads: Thread[] = result.data
+      .filter((s) => {
+        // Exclude pure subagent sessions — background workers, not delegation contexts
+        if (s.agentName === 'Subagent') return false;
+        return true;
+      })
+      .map((s) => {
+        // Derive status from actual session state + recency
+        let status: Thread['status'] = 'active';
+        if (s.status === 'done' || s.status === 'idle') {
+          status = 'done';
+        } else if (s.status === 'active' && s.lastMessageAt) {
+          const ageMin = (Date.now() - new Date(s.lastMessageAt).getTime()) / 60_000;
+          if (ageMin > 30) status = 'done';
+        }
+        return {
+          id: s.id,
+          title: s.title,
+          messages: [] as Thread["messages"],
+          linkedAgents: [],
+          delegationEvents: [],
+          linkedThreads: [],
+          tags: s.tags,
+          status,
+          unreadCount: 0,
+          hasApproval: false,
+          lastActive: s.lastMessageAt ?? new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          session: s,
+        } as Thread;
+      });
 
     // ---- Derive agent statuses from real session data ----
     const sessions = result.data;
