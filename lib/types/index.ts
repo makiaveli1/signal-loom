@@ -1,3 +1,5 @@
+import type { OpenClawSession } from '@/lib/openclaw/adapter/types';
+
 // Thread statuses
 export type ThreadStatus =
   | 'active'
@@ -17,6 +19,8 @@ export interface Thread {
   linkedAgents: string[];
   pinned?: boolean;
   messages: Message[];
+  /** Raw OpenClaw session — attached when thread is created from a real session */
+  session?: OpenClawSession;
 }
 
 export type MessageRole = 'user' | 'nero' | 'system' | 'action-summary';

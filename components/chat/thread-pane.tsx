@@ -36,6 +36,119 @@ const ROLE_LABELS: Record<PaneRole, string> = {
   monitor: 'Monitor',
 };
 
+/** Format a date string as a human-readable relative time */
+function relativeTime(iso: string | null | undefined): string {
+  if (!iso) return 'Unknown';
+  try {
+    const ms = new Date(iso).getTime();
+    const diff = Date.now() - ms;
+    const mins = Math.floor(diff / 60_000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 7) return `${days}d ago`;
+    return new Date(iso).toLocaleDateString('en-IE', { day: 'numeric', month: 'short' });
+  } catch {
+    return 'Unknown';
+  }
+}
+
+/** Session metadata card — shown for real OpenClaw sessions with no message history */
+function SessionMetadataCard({ thread }: { thread: Thread }) {
+  const s = thread.session;
+  if (!s) return null;
+
+  return (
+    <div
+      className="mx-4 my-3 rounded-lg border px-4 py-3 text-xs"
+      style={{
+        background: 'rgba(255,255,255,0.02)',
+        borderColor: 'rgba(255,255,255,0.08)',
+        color: 'var(--mb-ash)',
+      }}
+    >
+      {/* Header row */}
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-ivory/60 font-medium uppercase tracking-wider text-[10px]">
+          Session Details
+        </span>
+        {thread.status === 'done' ? (
+          <span className="text-jade text-[10px] font-mono">✓ Done</span>
+        ) : (
+          <span className="text-teal text-[10px] font-mono">● Active</span>
+        )}
+      </div>
+
+      {/* Metadata grid */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-3">
+        {s.agentName && (
+          <div>
+            <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Agent</span>
+            <div className="text-ivory/80 font-mono mt-0.5">{s.agentName}</div>
+          </div>
+        )}
+        <div>
+          <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Session ID</span>
+          <div className="text-ivory/60 font-mono mt-0.5 text-[10px] truncate" title={s.id}>
+            {s.shortId ?? s.id.split(':').pop()?.slice(0, 8) ?? s.id}
+          </div>
+        </div>
+        <div>
+          <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Last active</span>
+          <div className="text-ivory/80 mt-0.5">{relativeTime(thread.lastActive)}</div>
+        </div>
+        <div>
+          <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Messages</span>
+          <div className="text-ivory/80 mt-0.5">{s.messageCount ?? 0} stored</div>
+        </div>
+        {s.preview && (
+          <div>
+            <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Preview</span>
+            <div className="text-ivory/80 mt-0.5 capitalize truncate" title={s.preview}>{s.preview}</div>
+          </div>
+        )}
+        {(s.tags ?? []).length > 0 && (
+          <div className="col-span-2">
+            <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Tags</span>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {(s.tags ?? []).map((tag) => (
+                <span
+                  key={tag}
+                  className="px-1.5 py-0.5 rounded text-[10px] font-mono"
+                  style={{
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    color: 'var(--mb-ivory-dimmed)',
+                  }}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Honest note about message history */}
+      <div
+        className="text-[11px] leading-relaxed pt-2 border-t"
+        style={{ borderColor: 'rgba(255,255,255,0.06)' }}
+      >
+        <span className="text-ivory/40">
+          No message history available for this session through the current adapter.{" "}
+        </span>
+        <span className="text-ivory/25 italic">
+          Transcript access via OpenClaw session tooling.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+
+
 export function ThreadPane({
   thread,
   isActive,
@@ -171,6 +284,9 @@ export function ThreadPane({
           }}
         />
       )}
+
+      {/* Real session metadata card — shown for real OpenClaw sessions */}
+      {thread.session && <SessionMetadataCard thread={thread} />}
 
       {/* Context enrichment block — sparse threads ≤2 messages */}
       {thread.messages.length <= 2 && !isSplit && (

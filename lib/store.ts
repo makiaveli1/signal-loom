@@ -545,6 +545,8 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
                 hasApproval: false,
                 linkedAgents: [],
                 messages: [],
+                // Attach the full OpenClawSession for metadata card
+                session: sess ?? undefined,
               };
             })(),
           ];
@@ -765,7 +767,16 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
 
     // ---- Update store ----
     set((state) => ({
-      threads: adaptedThreads.length > 0 ? adaptedThreads : state.threads,
+      threads: (() => {
+        // If adaptedThreads is empty, update existing threads with fresh session metadata
+        // so dynamically-created real-session threads get their thread.session field populated
+        if (adaptedThreads.length > 0) return adaptedThreads;
+        const newSessions = result.data;
+        return state.threads.map((t) => {
+          const sess = newSessions.find((s) => s.id === t.id);
+          return sess ? { ...t, session: sess } : t;
+        });
+      })(),
       sessions: result.data,  // store raw sessions for thread creation on select
       sessionsLoading: false,
       sessionsFetchedAt: result.fetchedAt,
