@@ -212,6 +212,9 @@ export function ThreadPane({
     sessionMessages,
     sessionMessagesLoading,
     loadMessagesForThread,
+    childSessionIds,
+    openChildSession,
+    activeDelegationEventId,
   } = useSignalLoomStore();
 
   // Sprint 7: Load transcript when a real session is selected and not yet loaded
@@ -332,7 +335,10 @@ export function ThreadPane({
       {!isSplit && <PanePresetSwitcher />}
 
       {/* Thread header */}
-      <ThreadHeader thread={thread} />
+      <ThreadHeader
+        thread={thread}
+        delegationCount={childSessionIds[thread.id]?.length ?? 0}
+      />
 
       {/* Delegation timeline — above messages */}
       {showDelegationTimeline && (
@@ -344,6 +350,11 @@ export function ThreadPane({
               highlightMessage(event.linkedMessageId);
             }
           }}
+          onOpenChildSession={(childSessionId) =>
+            openChildSession(childSessionId, threadEvents.find((e) => e.childSessionIds?.includes(childSessionId))?.id)
+          }
+          inlineMode={true}
+          activeEventId={activeDelegationEventId}
         />
       )}
 

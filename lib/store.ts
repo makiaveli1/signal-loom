@@ -333,6 +333,14 @@ interface SignalLoomStore {
   }>;
   sessionMessagesLoading: Record<string, boolean>;
 
+  // Sprint 8: Parent-child session relationships
+  /** Maps parent session key → array of child session IDs */
+  childSessionIds: Record<string, string[]>;
+  /** Open a child session in the secondary pane (creates one if needed) */
+  openChildSession: (childSessionId: string, delegationEventId?: string) => void;
+  /** Sprint 8: ID of the delegation event the user is currently viewing (for visual marking) */
+  activeDelegationEventId: string | null;
+
   // Sprint 3 DE: Human email gate (Hermès)
   // Minimal shape to avoid circular adapter imports in store
   emailGates: EmailGateStoreItem[];
@@ -432,6 +440,11 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   // Sprint 7: Session transcript state
   sessionMessages: {},
   sessionMessagesLoading: {},
+
+  // Sprint 8: Parent-child session relationships
+  childSessionIds: {},
+  // Sprint 8: Active delegation event being viewed
+  activeDelegationEventId: null,
 
   // Sprint 3 DE: Human email gate (Hermès)
   emailGates: [],
@@ -757,6 +770,36 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
         } satisfies Agent;
       });
 
+    // ---- Derive childSessionIds map: Record<parentId, childId[]> ----
+    // Parent sessions have the 'delegated:N' tag. Subagent sessions are children.
+    // We associate subagent sessions with the most recent parent session that has a
+    // delegation count, in order of recency (approximate — gateway doesn't give us
+    // a direct parent reference for subagent sessions).
+    const childSessionIds: Record<string, string[]> = {};
+    const parentSessions = sessions
+      .filter((s) => s.tags?.some((t: string) => t.startsWith('delegated:')))
+      .sort((a, b) => {
+        const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+        const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+        return bTime - aTime; // newest parents first
+      });
+    const subagentSessions = sessions.filter((s) =>
+      s.id.includes(':subagent:') && s.status === 'done'
+    );
+    // Assign subagent sessions to parent sessions in round-robin fashion
+    // (approximation — gateway doesn't give direct parent reference)
+    for (const parent of parentSessions) {
+      const childTag = parent.tags?.find((t: string) => t.startsWith('delegated:'));
+      const childCount = childTag ? parseInt(childTag.split(':')[1]) : 0;
+      childSessionIds[parent.id] = [];
+      for (let i = 0; i < childCount && subagentSessions.length > 0; i++) {
+        const child = subagentSessions[i % subagentSessions.length];
+        if (!childSessionIds[parent.id].includes(child.id)) {
+          childSessionIds[parent.id].push(child.id);
+        }
+      }
+    }
+
     // ---- Derive delegation events from sessions (honest — no invented data) ----
     const THREE_HRS = 3 * 60 * 60 * 1000;
     const derivedEvents: DelegationEvent[] = [];
@@ -766,7 +809,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       const ageMs = now - new Date(session.lastMessageAt).getTime();
       if (ageMs > THREE_HRS) continue;
 
-      const childTag = session.tags.find((t: string) => t.startsWith('delegated:'));
+      const childTag = session.tags?.find((t: string) => t.startsWith('delegated:'));
       const childCount = childTag ? parseInt(childTag.split(':')[1]) : 0;
 
       if (childCount > 0) {
@@ -777,6 +820,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
           actor: 'nero',
           title: `Nero delegated to specialist (${childCount} sub-session${childCount > 1 ? 's' : ''})`,
           createdAt: session.lastMessageAt,
+          childSessionIds: childSessionIds[session.id] ?? [],
         });
       }
 
@@ -835,6 +879,8 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       agents: derivedAgents,
       // Populate delegation timeline from real session data
       delegationEvents: derivedEvents.length > 0 ? derivedEvents : state.delegationEvents,
+      // Sprint 8: parent-child session relationships
+      childSessionIds,
       selectedThreadId: firstRealSession?.id ?? state.selectedThreadId,
       workspace: firstRealSession
         ? {
@@ -1372,6 +1418,99 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   // Sprint 2: Message highlighting
   highlightMessage: (messageId) =>
     set({ highlightedMessageId: messageId }),
+
+  // Sprint 8: Open a child session in a secondary pane
+  openChildSession: (childSessionId, delegationEventId) => {
+    set((state) => {
+      // Find the child session in stored sessions
+      const childSession = state.sessions.find((s) => s.id === childSessionId);
+      if (!childSession) {
+        console.warn('[store] openChildSession: session not in store', childSessionId);
+        return {};
+      }
+
+      // Build a Thread for the child session
+      const childThread: Thread = {
+        id: childSession.id,
+        title: childSession.title ?? childSession.shortId ?? childSessionId,
+        status:
+          childSession.status === 'done' || childSession.status === 'idle'
+            ? 'done'
+            : 'active',
+        lastActive: childSession.lastMessageAt ?? new Date().toISOString(),
+        unreadCount: 0,
+        hasApproval: false,
+        linkedAgents: [],
+        messages: [],
+        session: childSession,
+      };
+
+      // Add child thread if not already present
+      const existingChild = state.threads.find((t) => t.id === childSessionId);
+      const updatedThreads = existingChild
+        ? state.threads
+        : [...state.threads, childThread];
+
+      // Determine workspace transition based on current preset
+      // Strategy: open child in secondary pane; keep parent visible in primary
+      const ws = state.workspace;
+      const isFocus = ws.panes.length === 1;
+
+      let nextPanes: typeof ws.panes;
+      let activePaneId: string;
+
+      if (isFocus) {
+        // Switch from Focus to Duo: primary keeps current thread, secondary gets child
+        const primaryThreadId = ws.panes[0]?.threadId ?? state.selectedThreadId;
+        nextPanes = [
+          { id: 'pane-left', role: 'primary', threadId: primaryThreadId, widthRatio: 0.5, active: true, collapsed: false },
+          { id: 'pane-right', role: 'secondary', threadId: childSessionId, widthRatio: 0.5, active: false, collapsed: false },
+        ];
+        activePaneId = 'pane-right'; // child is now active in secondary pane
+      } else if (ws.preset === 'operator') {
+        // Operator: expand monitor pane to show child
+        nextPanes = ws.panes.map((p) =>
+          p.role === 'monitor'
+            ? { ...p, threadId: childSessionId, collapsed: false, active: true }
+            : { ...p, active: p.role === 'primary' } // keep primary active too
+        );
+        activePaneId = nextPanes.find((p) => p.role === 'monitor')?.id ?? 'pane-monitor';
+      } else {
+        // Duo / Duo+Monitor: open in secondary pane, keep primary visible
+        nextPanes = ws.panes.map((p) =>
+          p.role === 'secondary'
+            ? { ...p, threadId: childSessionId, active: true }
+            : { ...p, active: p.role === 'primary' ? true : false }
+        );
+        activePaneId = nextPanes.find((p) => p.role === 'secondary')?.id ?? ws.activePaneId;
+      }
+
+      // Update childSessionIds map: find parent sessions that own this child
+      const parentSessionIds = state.sessions
+        .filter((s) =>
+          s.id !== childSessionId &&
+          s.tags?.some((t) => t.startsWith('delegated:') && parseInt(t.split(':')[1]) > 0)
+        )
+        .map((s) => s.id);
+
+      return {
+        threads: updatedThreads,
+        selectedThreadId: childSessionId,
+        workspace: {
+          ...ws,
+          preset: isFocus ? 'duo' : ws.preset,
+          panes: nextPanes,
+          activePaneId,
+        },
+        childSessionIds: {
+          ...state.childSessionIds,
+          [childSessionId]: parentSessionIds,
+        },
+        // Sprint 8: Mark the delegation event as active so parent timeline shows it highlighted
+        activeDelegationEventId: delegationEventId ?? null,
+      };
+    });
+  },
 }));
 
 // Re-export types for convenience

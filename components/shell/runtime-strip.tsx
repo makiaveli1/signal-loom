@@ -3,7 +3,10 @@
 import { useSignalLoomStore } from '@/lib/store';
 
 export function RuntimeStrip() {
-  const { runtime, healthLoading } = useSignalLoomStore();
+  const { runtime, healthLoading, selectedThreadId, threads } = useSignalLoomStore();
+
+  const activeThread = threads.find((t) => t.id === selectedThreadId);
+  const activeSessionTitle = activeThread?.session?.title ?? activeThread?.title ?? null;
 
   const browserLaneDots = Array.from({ length: 4 }, (_, i) => i < runtime.browserLanes);
 
@@ -68,6 +71,40 @@ export function RuntimeStrip() {
         </span>
         {!runtime.canvasEnabled && (
           <span style={{ color: 'var(--mb-ash-muted)', fontSize: '10px' }}>· canvas off</span>
+        )}
+      </div>
+
+      {/* Sprint 8: Left — active session indicator */}
+      <div className="flex items-center gap-3 flex-shrink-0">
+        {activeSessionTitle ? (
+          <div
+            className="flex items-center gap-1.5 px-2 py-0.5 rounded text-xs"
+            style={{
+              background: 'rgba(155,141,200,0.08)',
+              border: '1px solid rgba(155,141,200,0.20)',
+              color: 'var(--mb-ivory-dim)',
+            }}
+            title={`Active session: ${activeSessionTitle}`}
+          >
+            {/* Small monitor icon */}
+            <svg width="9" height="9" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <circle cx="6" cy="6" r="2.5" stroke="#9b8dc8" strokeWidth="1.2" fill="none" />
+              <path
+                d="M1 6C2 3.5 4 2 6 2s4 1.5 5 4c-1 2.5-3 4-5 4S2 8.5 1 6z"
+                stroke="#9b8dc8"
+                strokeWidth="1.2"
+                fill="none"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="max-w-[140px] truncate" style={{ color: '#9b8dc8' }}>
+              {activeSessionTitle}
+            </span>
+          </div>
+        ) : (
+          <span className="text-xs text-ash-muted" style={{ color: 'var(--mb-ash-muted)' }}>
+            No session selected
+          </span>
         )}
       </div>
 

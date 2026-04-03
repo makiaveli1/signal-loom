@@ -37,6 +37,12 @@ interface DelegationTimelineProps {
   /** ISO timestamp of when events were last fetched — shown as "last updated" */
   fetchedAt?: string | null;
   onEventClick?: (event: DelegationEvent) => void;
+  /** Sprint 8: Called when user wants to open a child session in the secondary pane */
+  onOpenChildSession?: (childSessionId: string, delegationEventId: string) => void;
+  /** Sprint 8: When true, show inline "View" buttons on delegated events */
+  inlineMode?: boolean;
+  /** Sprint 8: ID of the delegation event whose child is currently open (for visual marking) */
+  activeEventId?: string | null;
 }
 
 const ALL_AGENTS: AgentId[] = ['hephaestus', 'argus', 'ariadne', 'orion', 'hermes'];
@@ -45,9 +51,19 @@ const ALL_AGENTS: AgentId[] = ['hephaestus', 'argus', 'ariadne', 'orion', 'herme
 function TimelineEvent({
   event,
   onClick,
+  onOpenChildSession,
+  inlineMode,
+  isActive,
+  delegationEventId,
 }: {
   event: DelegationEvent;
   onClick?: () => void;
+  onOpenChildSession?: (childSessionId: string, delegationEventId: string) => void;
+  inlineMode?: boolean;
+  /** Sprint 8: True when this event is the one whose child session is currently open */
+  isActive?: boolean;
+  /** Sprint 8: Pass to onOpenChildSession when user clicks the open action */
+  delegationEventId?: string;
 }) {
   const [time, setTime] = useState(event.createdAt);
 
@@ -66,10 +82,17 @@ function TimelineEvent({
   const color = EVENT_COLORS[event.type];
   const actorColor = AGENT_COLORS[event.actor] ?? 'var(--mb-ash)';
 
+  // Sprint 8: Determine child session open action
+  const canOpenChild =
+    event.type === 'delegated' &&
+    (event.childSessionIds?.length ?? 0) > 0 &&
+    onOpenChildSession != null;
+  const primaryChildId = event.childSessionIds?.[0];
+
   return (
     <div
-      className="flex items-start gap-3 py-1.5 cursor-pointer group"
-      onClick={onClick}
+      className={`flex items-start gap-3 py-1.5 group relative${isActive ? ' rounded-md' : ''}`}
+      style={isActive ? { background: 'rgba(155,141,200,0.06)', border: '1px solid rgba(155,141,200,0.20)' } : undefined}
     >
       {/* Vertical line connector */}
       <div className="flex flex-col items-center flex-shrink-0 w-4">
@@ -88,6 +111,7 @@ function TimelineEvent({
 
       {/* Content */}
       <div className="flex-1 min-w-0">
+        {/* Row 1: actor + title + action */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* Actor badge */}
           <span
@@ -98,14 +122,51 @@ function TimelineEvent({
           </span>
           {/* Event phrase */}
           <span className="text-xs text-ivory-dim">{event.title}</span>
+
+          {/* Sprint 8: Open child session action */}
+          {canOpenChild && (
+            <button
+              onClick={() => primaryChildId && onOpenChildSession(primaryChildId, delegationEventId ?? '')}
+              title={
+                event.childSessionIds!.length === 1
+                  ? 'View child session'
+                  : `${event.childSessionIds!.length} child sessions — opening the first one`
+              }
+              className="flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded-full border flex-shrink-0 transition-all duration-100 cursor-pointer hover:opacity-90 active:scale-95"
+              style={{
+                borderColor: 'rgba(155,141,200,0.35)',
+                color: '#9b8dc8',
+                background: 'rgba(155,141,200,0.08)',
+              }}
+            >
+              {/* Monitor/eye icon */}
+              <svg width="9" height="9" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <circle cx="6" cy="6" r="2.5" stroke="currentColor" strokeWidth="1.2" fill="none" />
+                <path d="M1 6C2 3.5 4 2 6 2s4 1.5 5 4c-1 2.5-3 4-5 4S2 8.5 1 6z" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinejoin="round" />
+              </svg>
+              {inlineMode
+                ? 'View'
+                : event.childSessionIds!.length === 1
+                ? 'View session'
+                : `${event.childSessionIds!.length} sessions`}
+            </button>
+          )}
         </div>
-        {/* suppressHydrationWarning — server renders ISO, client fixes after mount */}
-        <span
-          className="text-xs text-ash-muted font-mono"
-          suppressHydrationWarning
-        >
-          {time}
-        </span>
+
+        {/* Row 2: timestamp + click hint */}
+        <div className="flex items-center gap-2">
+          <span
+            className="text-xs text-ash-muted font-mono"
+            suppressHydrationWarning
+          >
+            {time}
+          </span>
+          {!inlineMode && canOpenChild && (
+            <span className="text-xs text-ash-dimmed italic">
+              · click to open
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Approval brass accent */}
@@ -119,7 +180,14 @@ function TimelineEvent({
   );
 }
 
-export function DelegationTimeline({ events, onEventClick, fetchedAt }: DelegationTimelineProps) {
+export function DelegationTimeline({
+  events,
+  onEventClick,
+  onOpenChildSession,
+  fetchedAt,
+  inlineMode = false,
+  activeEventId,
+}: DelegationTimelineProps) {
   const [filter, setFilter] = useState<AgentId | 'all'>('all');
   const [expanded, setExpanded] = useState(false);
 
@@ -288,11 +356,15 @@ export function DelegationTimeline({ events, onEventClick, fetchedAt }: Delegati
               }
 
               // Regular event
+              const isActive = item.id === activeEventId;
               return (
                 <div key={item.id}>
                   <TimelineEvent
                     event={item}
                     onClick={() => onEventClick?.(item)}
+                    onOpenChildSession={onOpenChildSession}
+                    inlineMode={inlineMode}
+                    isActive={isActive}
                   />
                   {idx < visible.length - 1 && (
                     <div

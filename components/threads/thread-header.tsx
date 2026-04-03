@@ -22,7 +22,14 @@ const STATUS_COLORS: Record<Thread['status'], string> = {
   done: 'var(--mb-jade)',
 };
 
-export function ThreadHeader({ thread }: { thread: Thread }) {
+export function ThreadHeader({
+  thread,
+  delegationCount,
+}: {
+  thread: Thread;
+  /** Number of child sessions delegated from this session (from DelegationEvent.childSessionIds) */
+  delegationCount?: number;
+}) {
   const statusColor = STATUS_COLORS[thread.status];
 
   return (
@@ -71,6 +78,22 @@ export function ThreadHeader({ thread }: { thread: Thread }) {
           {thread.linkedAgents.map((agentId) => (
             <AgentChip key={agentId} agentId={agentId} />
           ))}
+        </div>
+      )}
+
+      {/* Sprint 8: Delegation count badge */}
+      {delegationCount != null && delegationCount > 0 && (
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <span
+            className="text-xs font-mono px-2 py-0.5 rounded-full border"
+            style={{
+              borderColor: 'rgba(155,141,200,0.3)',
+              color: '#9b8dc8',
+              background: 'rgba(155,141,200,0.08)',
+            }}
+          >
+            {delegationCount} child session{delegationCount !== 1 ? 's' : ''}
+          </span>
         </div>
       )}
     </div>

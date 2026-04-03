@@ -110,6 +110,8 @@ export interface DelegationEvent {
   detail?: string;
   createdAt: string;
   linkedMessageId?: string;
+  /** Child session IDs for delegated events (derived from delegated:N tag count) */
+  childSessionIds?: string[];
 }
 
 // Sprint 2: Split View (legacy — superseded by pane system)
