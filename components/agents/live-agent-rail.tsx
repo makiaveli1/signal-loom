@@ -48,8 +48,10 @@ export function LiveAgentRail() {
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
-        <div className="p-2 space-y-2">
+      {/* Inner flex container enforces height constraint on ScrollArea */}
+      <div className="flex flex-col min-h-0 flex-1 overflow-hidden">
+        <ScrollArea className="flex-1">
+          <div className="p-2 space-y-2">
           {/* Honest empty state — no agents derived from real sessions */}
           {agents.length === 0 && (
             <div className="py-6 px-2 text-center">
@@ -82,6 +84,8 @@ export function LiveAgentRail() {
           )}
         </div>
       </ScrollArea>
+      {/* /inner flex container */}
+      </div>
     </aside>
   );
 }
