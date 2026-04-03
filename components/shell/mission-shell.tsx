@@ -57,7 +57,7 @@ export function MissionShell() {
         </div>
 
         {/* Main content area */}
-        <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 min-h-0" style={{ height: '100%' }}>
           {/* Thread dock — left */}
           <ThreadDock />
 
