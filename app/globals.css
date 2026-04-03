@@ -165,6 +165,18 @@
     outline-color: color-mix(in oklch, var(--ring) 50%, transparent);
   }
 
+  /* ============================================================
+     SHELL LAYOUT ANCHOR — DO NOT REMOVE OR OVERRIDE
+     These rules anchor Signal Loom's flexbox height chain.
+     See docs/LAYOUT_DISCIPLINE.md for the full layout ruleset.
+
+     The chain is:
+       html/body → MissionShell (100dvh) → main row (100%) →
+       ThreadDock/LiveAgentRail (h-full) → ScrollArea (100%)
+
+     overflow:hidden on html/body prevents viewport-level scroll.
+     height:100% on both ensures the dvh value resolves correctly.
+     ============================================================ */
   html {
     height: 100%;
     overflow: hidden;

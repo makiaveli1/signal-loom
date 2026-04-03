@@ -115,9 +115,7 @@ export function ThreadDock() {
 
       {/* Thread list */}
       {!sessionsLoading && threads.length > 0 && (
-        {/* Inner flex container enforces height constraint on ScrollArea — required
-       * for flex-1 to propagate correctly through ScrollArea.Root to its viewport. */}
-      <div className="flex flex-col min-h-0 flex-1 overflow-hidden">
+        <div className="flex flex-col min-h-0 flex-1 overflow-hidden">
         <ScrollArea className="flex-1">
           <div className="p-2 space-y-1">
             {pinned.length > 0 && (
