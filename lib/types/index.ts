@@ -159,6 +159,14 @@ export interface ResizeState {
 // Sprint 2: Composer
 export interface ComposerState {
   isSending: boolean;
+  /**
+   * Streaming response accumulator.
+   * While a stream is in progress, this holds the partial response text.
+   * Set to null when streaming completes or when not streaming.
+   */
+  streamingResponse: string | null;
+  /** True while a stream is actively receiving chunks. */
+  isStreaming: boolean;
   error: string | null;
   lastSentAt: string | null;
 }

@@ -222,6 +222,7 @@ import {
   loadRuntimeHealth as adapterLoadRuntimeHealth,
   loadSessionMessages as adapterLoadSessionMessages,
   sendMessage as adapterSendMessage,
+  streamMessage,
   loadDelegationEvents as adapterLoadDelegationEvents,
   resolveApproval as adapterResolveApproval,
 } from '@/lib/openclaw/adapter';
@@ -322,6 +323,16 @@ interface SignalLoomStore {
   healthLoading: boolean;
   sessionsFetchedAt: string | null;
 
+  // Sprint 7: Session transcript/history — keyed by session key
+  sessionMessages: Record<string, {
+    messages: Thread['messages'];
+    truncated?: boolean;
+    contentTruncated?: boolean;
+    droppedMessages?: boolean;
+    fetchedAt: string;
+  }>;
+  sessionMessagesLoading: Record<string, boolean>;
+
   // Sprint 3 DE: Human email gate (Hermès)
   // Minimal shape to avoid circular adapter imports in store
   emailGates: EmailGateStoreItem[];
@@ -363,6 +374,7 @@ interface SignalLoomStore {
 
   // Sprint 2: Composer actions
   sendMessage: (threadId: string, content: string) => Promise<void>;
+  sendStreamingMessage: (threadId: string, content: string) => Promise<void>;
   clearComposerError: () => void;
 
   // Sprint 2: Message highlighting
@@ -389,6 +401,8 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   },
   composerState: {
     isSending: false,
+    streamingResponse: null,
+    isStreaming: false,
     error: null,
     lastSentAt: null,
   },
@@ -414,6 +428,10 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   sessionsError: null,
   healthLoading: true,
   sessionsFetchedAt: null,
+
+  // Sprint 7: Session transcript state
+  sessionMessages: {},
+  sessionMessagesLoading: {},
 
   // Sprint 3 DE: Human email gate (Hermès)
   emailGates: [],
@@ -779,18 +797,35 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
+    // Select first real session when sessions are loaded.
+    // Priority: adaptedThreads[0] (filtered) > result.data[0] > keep current.
+    const firstRealSession = adaptedThreads[0] ?? result.data[0] ?? null;
+
     // ---- Update store ----
     set((state) => ({
       threads: (() => {
-        // Always backfill session metadata into existing threads.
-        // Adapted thread IDs are title-derived (e.g. "ariadne-canvas-refine"),
-        // while actual session IDs are full keys (e.g. "agent:main:subagent:...").
-        // Match by title so all threads (adapted + dynamically created) get session metadata.
         const newSessions = result.data;
-        return (adaptedThreads.length > 0 ? adaptedThreads : state.threads).map((t) => {
-          const sess = newSessions.find((s) => s.title === t.title);
-          return sess ? { ...t, session: sess } : t;
-        });
+        if (adaptedThreads.length > 0) {
+          // Backfill session metadata into adapted threads.
+          return adaptedThreads.map((t) => {
+            const sess = newSessions.find((s) => s.title === t.title);
+            return sess ? { ...t, session: sess } : t;
+          }) as Thread[];
+        }
+        // adaptedThreads is empty (likely all sessions filtered as subagent).
+        // Add the first real session as a thread so the workspace can display it.
+        if (newSessions.length > 0) {
+          const first = newSessions[0];
+          return [{
+            id: first.id,          // real session key as thread ID
+            title: first.title,
+            status: (first.status === 'done' || first.status === 'idle' ? 'done' : 'active') as Thread['status'],
+            messages: [] as Thread['messages'],
+            lastActive: first.lastMessageAt ?? null,
+            session: first,
+          }] as Thread[];
+        }
+        return state.threads;
       })(),
       sessions: result.data,  // store raw sessions for thread creation on select
       sessionsLoading: false,
@@ -800,15 +835,13 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       agents: derivedAgents,
       // Populate delegation timeline from real session data
       delegationEvents: derivedEvents.length > 0 ? derivedEvents : state.delegationEvents,
-      // Select first thread if nothing is selected
-      selectedThreadId: state.selectedThreadId || (adaptedThreads[0]?.id ?? state.selectedThreadId),
-      // Update workspace to use first session as primary thread
-      workspace: adaptedThreads.length > 0
+      selectedThreadId: firstRealSession?.id ?? state.selectedThreadId,
+      workspace: firstRealSession
         ? {
             ...state.workspace,
             panes: state.workspace.panes.map((p) =>
               p.role === 'primary'
-                ? { ...p, threadId: adaptedThreads[0].id }
+                ? { ...p, threadId: firstRealSession.id }
                 : p
             ),
           }
@@ -882,20 +915,43 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   },
 
   loadMessagesForThread: async (sessionKey: string) => {
+    // Sprint 7: Load real transcript via sessions_history tool
+    // Use adapterLoadSessionMessages from adapter — already resolves to the real implementation
+    set((state) => ({
+      sessionMessagesLoading: { ...state.sessionMessagesLoading, [sessionKey]: true },
+    }));
     const result = await adapterLoadSessionMessages(sessionKey);
-    if (!result.ok || result.data.length === 0) return;
-    const adaptedMessages = result.data.map((m) => ({
+    if (!result.ok) {
+      set((state) => ({
+        sessionMessagesLoading: { ...state.sessionMessagesLoading, [sessionKey]: false },
+      }));
+      return;
+    }
+    const adaptedMessages = result.data.messages.map((m) => ({
       id: m.id,
-      role: m.role === 'action-summary' ? 'action-summary' : m.role,
+      role: (m.role === 'action-summary' ? 'action-summary' : m.role) as Thread['messages'][0]['role'],
       content: m.content,
       timestamp: m.timestamp,
     }));
     set((state) => ({
+      // Store transcript separately for honest partial/available tracking
+      sessionMessages: {
+        ...state.sessionMessages,
+        [sessionKey]: {
+          messages: adaptedMessages as Thread['messages'],
+          truncated: result.data.truncated,
+          contentTruncated: result.data.contentTruncated,
+          droppedMessages: result.data.droppedMessages,
+          fetchedAt: result.fetchedAt,
+        },
+      },
+      // Also populate thread messages so MessageList renders them
       threads: state.threads.map((t) =>
         t.id === sessionKey
           ? { ...t, messages: adaptedMessages as Thread['messages'] }
           : t
       ),
+      sessionMessagesLoading: { ...state.sessionMessagesLoading, [sessionKey]: false },
     }));
   },
 
@@ -1124,7 +1180,13 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   // Sprint 2: Composer
   sendMessage: async (threadId, content) => {
     set((state) => ({
-      composerState: { ...state.composerState, isSending: true, error: null },
+      composerState: {
+        ...state.composerState,
+        isSending: true,
+        isStreaming: false,
+        streamingResponse: null,
+        error: null,
+      },
     }));
 
     // Optimistically add the user message to the thread
@@ -1154,6 +1216,8 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
         composerState: {
           ...state.composerState,
           isSending: false,
+          isStreaming: false,
+          streamingResponse: null,
           error: result.error,
         },
       }));
@@ -1176,7 +1240,120 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       ),
       composerState: {
         isSending: false,
+        streamingResponse: null,
+        isStreaming: false,
         error: null,
+        lastSentAt: new Date().toISOString(),
+      },
+    }));
+  },
+
+  // Sprint 7: Streaming message send
+  sendStreamingMessage: async (threadId, content) => {
+    set((state) => ({
+      composerState: {
+        ...state.composerState,
+        isSending: true,
+        isStreaming: true,
+        streamingResponse: '',
+        error: null,
+      },
+    }));
+
+    // Optimistically add the user message to the thread
+    const userMessageId = `msg-${threadId}-${Date.now()}`;
+    const assistantMessageId = `msg-${threadId}-${Date.now()}-resp`;
+    const userMessage = {
+      id: userMessageId,
+      role: 'user' as const,
+      content,
+      timestamp: new Date().toISOString(),
+    };
+
+    set((state) => ({
+      threads: state.threads.map((t) =>
+        t.id === threadId
+          ? { ...t, messages: [...t.messages, userMessage], lastActive: new Date().toISOString() }
+          : t
+      ),
+    }));
+
+    // Start with an empty assistant message that we'll stream into
+    const emptyAssistant = {
+      id: assistantMessageId,
+      role: 'assistant' as const,
+      content: '',
+      timestamp: new Date().toISOString(),
+    };
+
+    set((state) => ({
+      threads: state.threads.map((t) =>
+        t.id === threadId
+          ? { ...t, messages: [...t.messages, emptyAssistant] as Thread['messages'], lastActive: new Date().toISOString() }
+          : t
+      ),
+    }));
+
+    try {
+      const stream = streamMessage({
+        sessionKey: threadId,
+        content,
+      });
+      const reader = stream.getReader();
+      let accumulated = '';
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done || !value) break;
+
+        accumulated += value;
+
+        // Update streaming response in composer state
+        set((state) => ({
+          composerState: {
+            ...state.composerState,
+            streamingResponse: accumulated,
+          },
+        }));
+
+        // Update the assistant message content progressively
+        set((state) => ({
+          threads: state.threads.map((t) =>
+            t.id === threadId
+              ? {
+                  ...t,
+                  messages: t.messages.map((m) =>
+                    m.id === assistantMessageId
+                      ? { ...m, content: accumulated }
+                      : m
+                  ),
+                }
+              : t
+          ),
+        }));
+      }
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : 'Stream failed';
+      set((state) => ({
+        composerState: {
+          ...state.composerState,
+          isSending: false,
+          isStreaming: false,
+          streamingResponse: null,
+          error: errorMsg,
+        },
+      }));
+      setTimeout(() => { get().clearComposerError(); }, 5000);
+      return;
+    }
+
+    // Stream complete
+    set((state) => ({
+      composerState: {
+        ...state.composerState,
+        isSending: false,
+        isStreaming: false,
+        streamingResponse: null,
         lastSentAt: new Date().toISOString(),
       },
     }));
@@ -1184,7 +1361,12 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
 
   clearComposerError: () =>
     set((state) => ({
-      composerState: { ...state.composerState, error: null },
+      composerState: {
+        ...state.composerState,
+        error: null,
+        streamingResponse: null,
+        isStreaming: false,
+      },
     })),
 
   // Sprint 2: Message highlighting

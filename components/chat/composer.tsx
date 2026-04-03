@@ -8,12 +8,53 @@ interface ComposerProps {
   threadId: string;
 }
 
+/** Streaming mode indicator — shows progressive response as it arrives */
+function StreamingIndicator({ text }: { text: string }) {
+  const PREVIEW_LEN = 300;
+  const preview = text.length > PREVIEW_LEN
+    ? text.slice(0, PREVIEW_LEN) + '…'
+    : text;
+
+  return (
+    <div
+      className="mb-2 px-3 py-2.5 rounded-lg border text-xs"
+      style={{
+        background: 'rgba(0,200,150,0.04)',
+        borderColor: 'rgba(0,200,150,0.15)',
+        color: 'var(--mb-ivory-dim)',
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span
+          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+          style={{ background: 'var(--mb-teal)', animation: 'pulse-dot 1s ease-in-out infinite' }}
+        />
+        <span
+          className="text-[10px] font-mono uppercase tracking-widest"
+          style={{ color: 'var(--mb-teal)' }}
+        >
+          Streaming
+        </span>
+        <span className="text-ivory/20 ml-auto text-[10px]">
+          {text.length} chars
+        </span>
+      </div>
+      {/* Progressive text preview */}
+      <p className="leading-relaxed whitespace-pre-wrap break-words text-ivory/80">
+        {preview}
+      </p>
+    </div>
+  );
+}
+
 export function Composer({ threadId }: ComposerProps) {
-  const { composerState, sendMessage } = useSignalLoomStore();
+  const { composerState, sendMessage, sendStreamingMessage } = useSignalLoomStore();
   const [value, setValue] = useState('');
+  const [streamingMode, setStreamingMode] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { isSending, error, lastSentAt } = composerState;
+  const { isSending, isStreaming, streamingResponse, error, lastSentAt } = composerState;
 
   // Auto-resize textarea
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -30,7 +71,11 @@ export function Composer({ threadId }: ComposerProps) {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
-    await sendMessage(threadId, trimmed);
+    if (streamingMode) {
+      await sendStreamingMessage(threadId, trimmed);
+    } else {
+      await sendMessage(threadId, trimmed);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -40,12 +85,14 @@ export function Composer({ threadId }: ComposerProps) {
     }
   };
 
-  // Focus management
+  // Focus management — don't steal focus from textarea while typing
   useEffect(() => {
     if (!isSending && textareaRef.current) {
       textareaRef.current.focus();
     }
   }, [isSending]);
+
+  const canSend = value.trim().length > 0 && !isSending;
 
   return (
     <div
@@ -55,17 +102,23 @@ export function Composer({ threadId }: ComposerProps) {
         borderColor: 'rgba(255,255,255,0.05)',
       }}
     >
-      {/* Sending / error indicator */}
-      {isSending && (
+      {/* Streaming indicator — shows progressive response */}
+      {isStreaming && streamingResponse !== null && (
+        <StreamingIndicator text={streamingResponse} />
+      )}
+
+      {/* Sending indicator (non-streaming) */}
+      {isSending && !isStreaming && (
         <div
           className="flex items-center gap-2 mb-2 text-xs font-mono"
           style={{ color: 'var(--mb-brass)' }}
         >
           <span className="animate-pulse">◷</span>
-          <span>Sending...</span>
+          <span>Sending…</span>
         </div>
       )}
 
+      {/* Error banner */}
       {error && (
         <div
           className="flex items-center justify-between mb-2 px-3 py-2 rounded-lg text-xs"
@@ -85,73 +138,136 @@ export function Composer({ threadId }: ComposerProps) {
         </div>
       )}
 
-      {/* Composer input area */}
-      <div
-        className="flex items-end gap-2 px-3 py-2.5 rounded-lg border transition-all duration-150"
-        style={{
-          background: 'var(--mb-panel)',
-          borderColor: value.trim()
-            ? 'rgba(232,96,58,0.25)'
-            : error
-            ? 'rgba(232,96,58,0.30)'
-            : 'rgba(255,255,255,0.08)',
-          boxShadow:
-            value.trim()
-              ? '0 0 0 1px rgba(232,96,58,0.10), inset 0 0 0 1px rgba(232,96,58,0.05)'
+      {/* Composer input row */}
+      <div className="flex items-end gap-2">
+        {/* Stream mode toggle */}
+        <button
+          onClick={() => setStreamingMode((v) => !v)}
+          title={streamingMode ? 'Disable streaming mode' : 'Enable streaming mode — streams response in real time'}
+          className="flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center transition-all duration-150 mb-0.5"
+          style={{
+            background: streamingMode
+              ? 'rgba(0,200,150,0.15)'
+              : 'rgba(255,255,255,0.04)',
+            border: streamingMode
+              ? '1px solid rgba(0,200,150,0.30)'
+              : '1px solid rgba(255,255,255,0.08)',
+            color: streamingMode ? 'var(--mb-teal)' : 'var(--mb-ash-muted)',
+            cursor: isSending ? 'not-allowed' : 'pointer',
+            opacity: isSending ? 0.5 : 1,
+          }}
+          disabled={isSending}
+          aria-label={streamingMode ? 'Streaming mode on — click to disable' : 'Streaming mode off — click to enable'}
+        >
+          {/* Lightning bolt SVG */}
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <path
+              d="M7 1L3 7H6L5 11L9 5H6L7 1Z"
+              fill="currentColor"
+              stroke="currentColor"
+              strokeWidth="0.5"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+
+        {/* Input area */}
+        <div
+          className="flex-1 flex items-end gap-2 px-3 py-2.5 rounded-lg border transition-all duration-150"
+          style={{
+            background: 'var(--mb-panel)',
+            borderColor: canSend
+              ? streamingMode
+                ? 'rgba(0,200,150,0.25)'
+                : 'rgba(232,96,58,0.25)'
+              : error
+              ? 'rgba(232,96,58,0.30)'
+              : 'rgba(255,255,255,0.08)',
+            boxShadow: canSend
+              ? streamingMode
+                ? '0 0 0 1px rgba(0,200,150,0.10), inset 0 0 0 1px rgba(0,200,150,0.05)'
+                : '0 0 0 1px rgba(232,96,58,0.10), inset 0 0 0 1px rgba(232,96,58,0.05)'
               : error
               ? '0 0 0 1px rgba(232,96,58,0.15)'
               : 'none',
-        }}
-      >
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={handleInput}
-          onKeyDown={handleKeyDown}
-          placeholder="Message Nero..."
-          rows={1}
-          disabled={isSending}
-          className={cn(
-            'flex-1 bg-transparent text-sm text-ivory placeholder:text-ash-muted resize-none outline-none leading-relaxed',
-            isSending && 'opacity-50'
-          )}
-          style={{ minHeight: '22px', maxHeight: '120px' }}
-        />
-        <button
-          onClick={handleSend}
-          className={cn(
-            'flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center transition-all duration-150',
-            value.trim() && !isSending
-              ? 'cursor-pointer'
-              : 'cursor-not-allowed'
-          )}
-          style={{
-            background: value.trim() && !isSending ? 'var(--mb-red)' : 'var(--mb-graphite)',
-            color: value.trim() && !isSending ? 'var(--mb-ivory)' : 'var(--mb-ash-muted)',
-            transform: value.trim() && !isSending ? 'scale(1)' : 'scale(0.95)',
-            opacity: value.trim() || isSending ? 1 : 0.6,
           }}
-          disabled={!value.trim() || isSending}
-          aria-label="Send message"
         >
-          {isSending ? (
-            <span className="animate-spin" style={{ fontSize: '10px' }}>◷</span>
-          ) : (
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-              <path d="M1 6L11 1L6 11L5 7L1 6Z" fill="currentColor" />
-            </svg>
-          )}
-        </button>
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={handleInput}
+            onKeyDown={handleKeyDown}
+            placeholder="Message Nero…"
+            rows={1}
+            disabled={isSending}
+            className={cn(
+              'flex-1 bg-transparent text-sm text-ivory placeholder:text-ash-muted resize-none outline-none leading-relaxed',
+              isSending && 'opacity-50'
+            )}
+            style={{ minHeight: '22px', maxHeight: '120px' }}
+          />
+          <button
+            onClick={handleSend}
+            className={cn(
+              'flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center transition-all duration-150',
+              canSend ? 'cursor-pointer' : 'cursor-not-allowed'
+            )}
+            style={{
+              background: canSend
+                ? streamingMode
+                  ? 'var(--mb-teal)'
+                  : 'var(--mb-red)'
+                : 'var(--mb-graphite)',
+              color: canSend
+                ? 'var(--mb-ivory)'
+                : 'var(--mb-ash-muted)',
+              transform: canSend ? 'scale(1)' : 'scale(0.95)',
+              opacity: canSend || isSending ? 1 : 0.6,
+            }}
+            disabled={!canSend}
+            aria-label="Send message"
+          >
+            {isSending ? (
+              <span className="animate-spin" style={{ fontSize: '10px' }}>◷</span>
+            ) : (
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path d="M1 6L11 1L6 11L5 7L1 6Z" fill="currentColor" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Footer hint */}
-      <p className="text-xs text-ash-muted mt-1.5 px-1">
-        {isSending
-          ? 'Sending...'
-          : lastSentAt
-          ? `Sent at ${new Date(lastSentAt).toLocaleTimeString()}`
-          : 'Nero is monitoring · routing is live'}
+      <p className="text-xs text-ash-muted mt-1.5 px-1 flex items-center gap-2">
+        {isSending && !isStreaming && <span>Sending…</span>}
+        {isSending && isStreaming && <span className="animate-pulse">◷ Streaming response…</span>}
+        {!isSending && lastSentAt && (
+          <span>Last sent {new Date(lastSentAt).toLocaleTimeString()}</span>
+        )}
+        {!isSending && !lastSentAt && (
+          <span>
+            <span
+              className="inline-flex items-center gap-1"
+              style={{ color: streamingMode ? 'var(--mb-teal)' : 'var(--mb-ash-muted)' }}
+            >
+              {streamingMode && (
+                <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+                  <path d="M7 1L3 7H6L5 11L9 5H6L7 1Z" fill="currentColor" />
+                </svg>
+              )}
+              {streamingMode ? 'Streaming mode · Enter to send' : 'Nero is monitoring · routing is live'}
+            </span>
+          </span>
+        )}
       </p>
+
+      <style>{`
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
+        }
+      `}</style>
     </div>
   );
 }

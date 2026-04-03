@@ -20,6 +20,7 @@
 
 import type {
   OpenClawSession,
+  OpenClawMessage,
   SessionStatus,
   AdapterResult,
 } from './types';
@@ -295,6 +296,161 @@ export async function loadSessionsReal(): Promise<AdapterResult<OpenClawSession[
     return {
       ok: false,
       error: e instanceof Error ? e.message : 'Failed to load sessions from gateway',
+      retryable: true,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Session messages — transcript/history via sessions_history tool
+// ---------------------------------------------------------------------------
+
+interface SessionsHistoryMessage {
+  role: string;
+  content: Array<{
+    type: 'thinking' | 'text' | 'tool_use' | 'tool_result' | 'image';
+    thinking?: string;
+    text?: string;
+    id?: string;
+    name?: string;
+    input?: unknown;
+    content?: string;
+  }>;
+  timestamp: number; // Unix ms
+  responseId?: string;
+  model?: string;
+  provider?: string;
+  stopReason?: string;
+  __openclaw?: { id: string; seq: number };
+}
+
+interface SessionsHistoryResult {
+  sessionKey: string;
+  messages: SessionsHistoryMessage[];
+  truncated: boolean;
+  droppedMessages: boolean;
+  contentTruncated: boolean;
+  contentRedacted: boolean;
+  bytes: number;
+}
+
+/**
+ * Flatten sessions_history content blocks to a single display string.
+ *
+ * The sessions_history tool returns content as an array of typed blocks:
+ * - type 'thinking' — raw reasoning (emitted before the model produces text)
+ * - type 'text'     — final response text
+ * - type 'tool_use' — tool invocation metadata
+ * - type 'tool_result' — tool output
+ *
+ * We render thinking as a labeled block for transparency; tool_use and tool_result
+ * are summarized inline; all text blocks are concatenated.
+ *
+ * The raw transcript is too verbose for a UI message list, so we apply a
+ * moderate condensation strategy:
+ * - Thinking blocks → one-line prefix showing "[Reasoning] ..." (first 80 chars)
+ * - Text blocks → full text
+ * - Tool blocks → single-line summary
+ */
+function flattenContent(
+  blocks: SessionsHistoryMessage['content'],
+): string {
+  const parts: string[] = [];
+  for (const block of blocks) {
+    if (block.type === 'thinking' && block.thinking) {
+      const preview = block.thinking.slice(0, 120).replace(/\n/g, ' ').trim();
+      parts.push(`[Reasoning] ${preview}${block.thinking.length > 120 ? '…' : ''}`);
+    } else if (block.type === 'text' && block.text) {
+      parts.push(block.text);
+    } else if (block.type === 'tool_use' && block.name) {
+      parts.push(`[Tool: ${block.name}]`);
+    } else if (block.type === 'tool_result' && block.content) {
+      const preview = String(block.content).slice(0, 80).replace(/\n/g, ' ');
+      parts.push(`[Result] ${preview}${String(block.content).length > 80 ? '…' : ''}`);
+    }
+  }
+  return parts.join('\n');
+}
+
+/**
+ * Load transcript messages for a specific session.
+ *
+ * Calls the sessions_history tool. Returns the most recent messages (limit=50 by default).
+ * Results are truncated by the gateway if the session is very long.
+ *
+ * Honest limitations:
+ * - contentTruncated: the full session is longer than what was returned
+ * - contentRedacted: some content was redacted by the gateway (e.g. tool results)
+ * - droppedMessages: some messages were dropped by the gateway
+ *
+ * These limitations are surfaced in the returned metadata so the UI can be honest.
+ */
+export async function loadSessionMessages(
+  sessionKey: string,
+  limit = 50,
+): Promise<AdapterResult<{
+  messages: OpenClawMessage[];
+  truncated: boolean;
+  contentTruncated: boolean;
+  droppedMessages: boolean;
+  totalBytes: number;
+}>> {
+  try {
+    // Use the API route when called from the browser (CORS-safe).
+    // The /api/openclaw/sessions/history route proxies to the gateway server-side.
+    // Next.js server-side code (including API routes) has process.env.NEXT_RUNTIME === 'nodejs'.
+    // We detect browser by checking that NEXT_RUNTIME is NOT 'nodejs'.
+    const isNodeServer = process.env.NEXT_RUNTIME === 'nodejs';
+    let raw: SessionsHistoryResult;
+    if (!isNodeServer) {
+      // Browser — use the Next.js API route to avoid CORS issues with direct gateway calls.
+      const url = `/api/openclaw/sessions/history?sessionKey=${encodeURIComponent(sessionKey)}&limit=${limit}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`sessions/history API returned ${res.status}`);
+      }
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error ?? 'sessions_history failed');
+      raw = json.data;
+    } else {
+      // Server-side — call the gateway directly via invokeTool.
+      raw = await invokeTool<SessionsHistoryResult>('sessions_history', { sessionKey, limit });
+    }
+    const result = raw;
+
+    const messages: OpenClawMessage[] = result.messages.map((m) => {
+      // Normalize role: 'assistant' | 'user' | 'system'
+      const role = m.role === 'user'
+        ? ('user' as const)
+        : m.role === 'system'
+          ? ('system' as const)
+          : ('assistant' as const);
+
+      return {
+        id: m.__openclaw?.id ?? m.responseId ?? `msg-${m.timestamp}`,
+        role,
+        content: flattenContent(m.content),
+        timestamp: new Date(m.timestamp).toISOString(),
+        agentId: m.provider ?? m.model ?? undefined,
+      } satisfies OpenClawMessage;
+    });
+
+    return {
+      ok: true,
+      data: {
+        messages,
+        truncated: result.truncated,
+        contentTruncated: result.contentTruncated,
+        droppedMessages: result.droppedMessages,
+        totalBytes: result.bytes,
+      },
+      fetchedAt: new Date().toISOString(),
+    };
+  } catch (e) {
+    console.error('[OpenClaw adapter] loadSessionMessages failed:', e);
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : 'Failed to load session history',
       retryable: true,
     };
   }

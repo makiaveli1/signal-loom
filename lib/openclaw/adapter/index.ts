@@ -305,13 +305,13 @@ export async function resolveApproval(args: {
 // Session messages — load messages for a specific session
 // ---------------------------------------------------------------------------
 
-export async function loadSessionMessages(_sessionKey: string): Promise<AdapterResult<OpenClawMessage[]>> {
-  return {
-    ok: true,
-    data: [],
-    fetchedAt: new Date().toISOString(),
-  };
-}
+export { loadSessionMessages } from './sessions';
+import { loadSessionMessages } from './sessions';
+
+// ---------------------------------------------------------------------------
+// Streaming message — server-side streaming via /api/openclaw/chat/stream
+// ---------------------------------------------------------------------------
+export { streamMessage } from './chat';
 
 // ---------------------------------------------------------------------------
 // Send message — post a message to a session

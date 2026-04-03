@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useSignalLoomStore } from '@/lib/store';
 import type { Thread, PaneRole, Agent } from '@/lib/types';
 import { MessageList } from './message-list';
@@ -55,10 +56,23 @@ function relativeTime(iso: string | null | undefined): string {
   }
 }
 
-/** Session metadata card — shown for real OpenClaw sessions with no message history */
-function SessionMetadataCard({ thread }: { thread: Thread }) {
+/**
+ * TranscriptBlock — shows session history/transcript availability state.
+ *
+ * States:
+ * - loading: spinner while messages are being fetched
+ * - available: transcript loaded, optionally with truncation note
+ * - partial: transcript loaded but truncated (session too long)
+ * - unavailable: no transcript available for this session
+ */
+function TranscriptBlock({ thread }: { thread: Thread }) {
   const s = thread.session;
+  const { sessionMessagesLoading, sessionMessages } = useSignalLoomStore();
+
   if (!s) return null;
+
+  const isLoading = sessionMessagesLoading[thread.id] ?? false;
+  const transcript = sessionMessages[thread.id];
 
   return (
     <div
@@ -131,17 +145,48 @@ function SessionMetadataCard({ thread }: { thread: Thread }) {
         )}
       </div>
 
-      {/* Honest note about message history */}
+      {/* Transcript state */}
       <div
         className="text-[11px] leading-relaxed pt-2 border-t"
         style={{ borderColor: 'rgba(255,255,255,0.06)' }}
       >
-        <span className="text-ivory/40">
-          No message history available for this session through the current adapter.{" "}
-        </span>
-        <span className="text-ivory/25 italic">
-          Transcript access via OpenClaw session tooling.
-        </span>
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-ivory/40">
+            <span className="animate-spin" style={{ fontSize: '10px' }}>◷</span>
+            <span>Loading transcript…</span>
+          </div>
+        ) : transcript && transcript.messages.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <span className="text-jade">✓</span>
+              <span className="text-ivory/50">
+                {transcript.messages.length} message{transcript.messages.length !== 1 ? 's' : ''} loaded
+              </span>
+            </div>
+            {(transcript.contentTruncated || transcript.truncated) && (
+              <div className="text-ivory/25 italic">
+                Note: session is long — only the most recent messages were retrieved.
+              </div>
+            )}
+            {transcript.droppedMessages && (
+              <div className="text-ivory/25 italic">
+                Some older messages were dropped by the gateway.
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <span className="text-ivory/30">—</span>
+              <span className="text-ivory/40">
+                No transcript available for this session.
+              </span>
+            </div>
+            <span className="text-ivory/20 italic">
+              Transcript access via OpenClaw session tooling.
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -158,7 +203,24 @@ export function ThreadPane({
   onClose,
   showDelegationTimeline,
 }: ThreadPaneProps) {
-  const { delegationEvents, approvals, highlightMessage, agents, sessionsFetchedAt } = useSignalLoomStore();
+  const {
+    delegationEvents,
+    approvals,
+    highlightMessage,
+    agents,
+    sessionsFetchedAt,
+    sessionMessages,
+    sessionMessagesLoading,
+    loadMessagesForThread,
+  } = useSignalLoomStore();
+
+  // Sprint 7: Load transcript when a real session is selected and not yet loaded
+  useEffect(() => {
+    if (!thread.session) return; // no real session — nothing to load
+    if (sessionMessages[thread.id]) return; // already loaded
+    if (sessionMessagesLoading[thread.id]) return; // already loading
+    loadMessagesForThread(thread.id);
+  }, [thread.id, thread.session, sessionMessages, sessionMessagesLoading, loadMessagesForThread]);
 
   const threadEvents = delegationEvents.filter((e) => e.threadId === thread.id);
   const pendingApproval = approvals.find((a) => a.linkedThreadId === thread.id);
@@ -285,8 +347,8 @@ export function ThreadPane({
         />
       )}
 
-      {/* Real session metadata card — shown for real OpenClaw sessions */}
-      {thread.session && <SessionMetadataCard thread={thread} />}
+      {/* Real session transcript block — shows history availability state */}
+      {thread.session && <TranscriptBlock thread={thread} />}
 
       {/* Context enrichment block — sparse threads ≤2 messages */}
       {thread.messages.length <= 2 && !isSplit && (
