@@ -9,18 +9,21 @@ function ScrollArea({
   className,
   children,
   onScroll,
+  style,
   ...props
 }: ScrollAreaPrimitive.Root.Props & { onScroll?: React.ReactEventHandler<HTMLDivElement> }) {
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
       className={cn("relative", className)}
+      style={{ height: '100%', ...style }}
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
         className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
         onScroll={onScroll}
+        style={{ height: '100%' }}
       >
         {children}
       </ScrollAreaPrimitive.Viewport>
