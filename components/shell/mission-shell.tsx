@@ -44,8 +44,12 @@ export function MissionShell() {
   return (
     <TooltipProvider>
       <div
-        className="flex flex-col h-screen overflow-hidden"
-        style={{ background: 'var(--mb-carbon)' }}
+        className="flex flex-col"
+        style={{
+          background: 'var(--mb-carbon)',
+          height: '100dvh',
+          overflow: 'hidden',
+        }}
       >
         {/* Shell header */}
         <div className="flex-shrink-0">
