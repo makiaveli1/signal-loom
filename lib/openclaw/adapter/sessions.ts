@@ -305,17 +305,21 @@ export async function loadSessionsReal(): Promise<AdapterResult<OpenClawSession[
 // Session messages — transcript/history via sessions_history tool
 // ---------------------------------------------------------------------------
 
+type ContentBlock =
+  | { type: 'thinking'; thinking?: string }
+  | { type: 'text'; text?: string }
+  | { type: 'tool_use'; name?: string; id?: string; input?: unknown }
+  | { type: 'tool_result'; content?: string }
+  | { type: 'image' }
+  | { type: string; [key: string]: unknown }; //兜底
+
 interface SessionsHistoryMessage {
   role: string;
-  content: Array<{
-    type: 'thinking' | 'text' | 'tool_use' | 'tool_result' | 'image';
-    thinking?: string;
-    text?: string;
-    id?: string;
-    name?: string;
-    input?: unknown;
-    content?: string;
-  }>;
+  // Gateway returns content as either:
+  // - A plain string (direct text, e.g. "Hello world" or "[Reasoning] ...")
+  // - An array of typed blocks (thinking/text/tool blocks)
+  // We accept both shapes.
+  content: string | ContentBlock[];
   timestamp: number; // Unix ms
   responseId?: string;
   model?: string;
@@ -335,38 +339,41 @@ interface SessionsHistoryResult {
 }
 
 /**
- * Flatten sessions_history content blocks to a single display string.
+ * Flatten sessions_history content to a single display string.
  *
- * The sessions_history tool returns content as an array of typed blocks:
- * - type 'thinking' — raw reasoning (emitted before the model produces text)
- * - type 'text'     — final response text
- * - type 'tool_use' — tool invocation metadata
- * - type 'tool_result' — tool output
+ * The gateway returns content in two possible shapes:
+ * 1. Plain string — direct text (e.g. "Hello", "[Reasoning] ...", "[Subagent Context] ...")
+ *    These are used verbatim.
+ * 2. Typed block array — structured content with thinking/text/tool blocks.
  *
- * We render thinking as a labeled block for transparency; tool_use and tool_result
- * are summarized inline; all text blocks are concatenated.
- *
- * The raw transcript is too verbose for a UI message list, so we apply a
- * moderate condensation strategy:
- * - Thinking blocks → one-line prefix showing "[Reasoning] ..." (first 80 chars)
+ * Condensation strategy:
+ * - String content → used verbatim (preserve full text including thinking and context)
+ * - Thinking blocks → "[Reasoning] <first 500 chars>" label (expanded from 120 for visibility)
  * - Text blocks → full text
  * - Tool blocks → single-line summary
  */
-function flattenContent(
-  blocks: SessionsHistoryMessage['content'],
-): string {
+function flattenContent(content: SessionsHistoryMessage['content']): string {
+  // Shape 1: plain string — use verbatim
+  if (typeof content === 'string') {
+    return content;
+  }
+
+  // Shape 2: typed block array
   const parts: string[] = [];
-  for (const block of blocks) {
-    if (block.type === 'thinking' && block.thinking) {
-      const preview = block.thinking.slice(0, 120).replace(/\n/g, ' ').trim();
-      parts.push(`[Reasoning] ${preview}${block.thinking.length > 120 ? '…' : ''}`);
-    } else if (block.type === 'text' && block.text) {
-      parts.push(block.text);
-    } else if (block.type === 'tool_use' && block.name) {
+  for (const block of content) {
+    if (!block || typeof block !== 'object') continue;
+
+    if (block.type === 'thinking' && typeof block.thinking === 'string') {
+      const thinking = block.thinking;
+      const preview = thinking.slice(0, 500).replace(/\n/g, ' ').trim();
+      parts.push(`[Reasoning] ${preview}${thinking.length > 500 ? '…' : ''}`);
+    } else if (block.type === 'text' && typeof block.text === 'string') {
+      parts.push(block.text as string);
+    } else if (block.type === 'tool_use' && typeof block.name === 'string') {
       parts.push(`[Tool: ${block.name}]`);
-    } else if (block.type === 'tool_result' && block.content) {
-      const preview = String(block.content).slice(0, 80).replace(/\n/g, ' ');
-      parts.push(`[Result] ${preview}${String(block.content).length > 80 ? '…' : ''}`);
+    } else if (block.type === 'tool_result' && typeof block.content === 'string') {
+      const preview = block.content.slice(0, 120).replace(/\n/g, ' ');
+      parts.push(`[Result] ${preview}${block.content.length > 120 ? '…' : ''}`);
     }
   }
   return parts.join('\n');
