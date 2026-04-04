@@ -175,6 +175,15 @@ export function MessageCard({ message, isHighlighted, isStreaming, isNew, isChil
 
   const { chunks, hasReasoning, answerOnly } = parseContentStream(message.content);
   const [reasoningExpanded, setReasoningExpanded] = useState(false);
+
+  // Sprint 10.5 defensive: strip any [Reasoning] that slipped through parseContentStream.
+  // Handles edge cases where streaming arrives in chunks that confuse the regex,
+  // or where flattenContent produces formats the parser didn't account for.
+  const safeAnswerText = (() => {
+    const raw = chunks.find((c) => c.kind === 'answer')?.text ?? answerOnly;
+    // Final safety net — remove any remaining [Reasoning] sections before render
+    return raw.replace(/\s*\[Reasoning\][\s\S]*?(?=\[Reasoning\]|\[Tool:|\[Result\]|$)/g, '').trim();
+  })();
   const reasoningChunks = chunks.filter((c) => c.kind === 'reasoning');
   const answerText = chunks.find((c) => c.kind === 'answer')?.text ?? answerOnly;
   const pureAnswer = !hasReasoning;
@@ -244,27 +253,28 @@ export function MessageCard({ message, isHighlighted, isStreaming, isNew, isChil
             // Pure answer: full content, MotionText for streaming reveal
             <>
               <MotionText
-                text={answerText}
+                text={safeAnswerText}
                 className="whitespace-pre-wrap"
                 isStreaming={isStreaming}
               />
               {streamingCursor}
             </>
           ) : reasoningExpanded ? (
-            // Expanded: answer + reasoning stream via InterleavedContent
+            // Expanded: show complete answer once (safeAnswerText = fully stripped, no duplication)
+            // then InterleavedContent renders non-first answer chunks + all reasoning sections
             <>
               <MotionText
-                text={answerText}
+                text={safeAnswerText}
                 className="whitespace-pre-wrap"
                 isStreaming={isStreaming}
               />
-              <InterleavedContent chunks={chunks} isStreaming={isStreaming} />
+              <InterleavedContent chunks={chunks} isStreaming={isStreaming} skipFirst={true} />
             </>
           ) : (
             // Collapsed: truncated answer + reasoning toggle
             <>
               <MotionText
-                text={answerText.length > 400 ? answerText.slice(0, 400).trimEnd() + '…' : answerText}
+                text={safeAnswerText.length > 400 ? safeAnswerText.slice(0, 400).trimEnd() + '…' : safeAnswerText}
                 className="whitespace-pre-wrap"
                 isStreaming={isStreaming}
               />
@@ -416,15 +426,21 @@ export function MessageCard({ message, isHighlighted, isStreaming, isNew, isChil
 }
 
 // Sprint 9.5: Answer chunks only — reasoning lives in the thought capsule
-function InterleavedContent({ chunks, isStreaming }: { chunks: ContentChunk[]; isStreaming?: boolean }) {
+// InterleavedContent always skips the first answer chunk to avoid duplication
+// when used alongside safeAnswerText (which is answerOnly = complete stripped answer).
+// In expanded mode: safeAnswerText shows the full answer, InterleavedContent shows
+// non-first answer chunks + all reasoning sections.
+function InterleavedContent({ chunks, isStreaming, skipFirst }: { chunks: ContentChunk[]; isStreaming?: boolean; skipFirst?: boolean }) {
   const answerChunks = chunks.filter((c) => c.kind === 'answer');
+  const startIdx = skipFirst ? 1 : 0;
   return (
     <>
-      {answerChunks.map((c, i) => (
+      {answerChunks.slice(startIdx).map((c, i) => (
         <span key={`a-${i}`}>
           <MotionText text={c.text} className="whitespace-pre-wrap" isStreaming={isStreaming} />
         </span>
       ))}
+      {/* Reasoning sections render in the collapsible Thought Capsule below */}
     </>
   );
 }

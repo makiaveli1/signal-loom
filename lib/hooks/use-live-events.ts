@@ -4,31 +4,14 @@
  * Bridges /api/openclaw/live (SSE) → gateway WebSocket → store updates.
  * When a session.message event arrives (new message from any channel),
  * reloads the thread's messages so the UI updates live.
+ *
+ * Also handles sessions.changed to refresh the agent roster and thread list.
  */
 
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useSignalLoomStore } from '@/lib/store';
-
-interface GatewaySessionMessageEvent {
-  type: 'session.message';
-  data: {
-    sessionKey: string;
-    messageId: string;
-    role: string;
-    content?: string;
-    timestamp: string;
-  };
-}
-
-interface GatewaySessionsChangedEvent {
-  type: 'sessions.changed';
-  data: {
-    action: 'created' | 'updated' | 'deleted';
-    sessionKey: string;
-  };
-}
 
 export function useLiveEvents() {
   const { loadMessagesForThread, loadSessions, setLiveConnected } = useSignalLoomStore();
@@ -46,30 +29,42 @@ export function useLiveEvents() {
 
       // Mark live connection as active when SSE stream opens
       es.addEventListener('connected', () => {
-        if (mounted) setLiveConnected(true);
+        if (!mounted) return;
+        setLiveConnected(true);
+        // Refresh session/agent state on reconnect so roster is always current
+        loadSessions();
       }, { once: true });
 
+      // Handle all gateway event types
       es.addEventListener('gateway', (e) => {
+        if (!mounted) return;
         try {
-          const msg = JSON.parse(e.data) as
-            | GatewaySessionMessageEvent
-            | GatewaySessionsChangedEvent;
+          const msg = JSON.parse(e.data as string) as { type: string; data?: unknown };
 
           if (msg.type === 'session.message') {
-            // New message arrived in a session — reload messages for that session
-            const { sessionKey } = msg.data;
-
-            // Get fresh threads from store to avoid stale closure
-            const { threads } = useSignalLoomStore.getState();
-            const thread = threads.find((t) => t.id === sessionKey);
-            if (thread) {
-              loadMessagesForThread(sessionKey);
+            // New message arrived — reload messages for that session
+            const data = msg.data as { sessionKey?: string };
+            if (data?.sessionKey) {
+              const { threads } = useSignalLoomStore.getState();
+              const thread = threads.find((t) => t.id === data.sessionKey);
+              if (thread) {
+                loadMessagesForThread(data.sessionKey);
+              }
             }
-
-            // Also reload sessions list to pick up any new sessions
+            // Also refresh sessions list to pick up new sessions / updated agent statuses
             loadSessions();
+
           } else if (msg.type === 'sessions.changed') {
-            // Session list changed — refresh
+            // Session list changed — full refresh for agent roster + thread list
+            loadSessions();
+
+          } else if (msg.type === 'session.tool') {
+            // Tool event — refresh session state
+            loadSessions();
+
+          } else {
+            // Unknown event type — still refresh sessions as a catch-all
+            // This ensures agent roster updates for any gateway event we don't handle explicitly
             loadSessions();
           }
         } catch {
@@ -78,6 +73,7 @@ export function useLiveEvents() {
       });
 
       es.onerror = () => {
+        if (!mounted) return;
         setLiveConnected(false);
         es.close();
         esRef.current = null;

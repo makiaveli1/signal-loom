@@ -336,6 +336,7 @@ interface SignalLoomStore {
     fetchedAt: string;
   }>;
   sessionMessagesLoading: Record<string, boolean>;
+  liveConnected: boolean;
 
   // Sprint 8: Parent-child session relationships
   /** Maps parent session key → array of child session IDs */
@@ -373,6 +374,7 @@ interface SignalLoomStore {
 
   // Sprint 2: Legacy split view actions
   setSplitView: (enabled: boolean, secondaryThreadId?: string) => void;
+  setLiveConnected: (connected: boolean) => void;
   setActivePane: (pane: PaneSide) => void;
   closeSplit: () => void;
 
@@ -448,6 +450,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   // Sprint 7: Session transcript state
   sessionMessages: {},
   sessionMessagesLoading: {},
+  liveConnected: false,
 
   // Sprint 8: Parent-child session relationships
   childSessionIds: {},
@@ -1049,6 +1052,9 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
         highlightedMessageId: null,
       };
     }),
+
+  setLiveConnected: (connected) =>
+    set(() => ({ liveConnected: connected })),
 
   setActivePane: (pane) =>
     set((state) => {
