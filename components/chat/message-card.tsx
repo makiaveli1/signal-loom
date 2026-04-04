@@ -157,14 +157,10 @@ export function MessageCard({ message, isHighlighted, isStreaming, isNew }: Mess
     // Animation plays once via CSS; no state update needed
   }, [isNew]);
 
-  // Determine if this message has only answer chunks (no reasoning at all)
+  // Sprint 10 fix: pureAnswer means NO truncation — show full message content always
   const pureAnswer = !hasReasoning;
-
-  // Collapsed preview: show the first answer chunk or a truncated answer-only string
-  const previewText = chunks.find((c) => c.kind === 'answer')?.text ?? answerOnly;
-  const collapsedPreview = previewText.length > 280
-    ? previewText.slice(0, 280).trimEnd() + '…'
-    : previewText;
+  // Preview text derived from first answer chunk
+  const answerText = chunks.find((c) => c.kind === 'answer')?.text ?? answerOnly;
 
   return (
     <div
@@ -228,48 +224,57 @@ export function MessageCard({ message, isHighlighted, isStreaming, isNew }: Mess
         <div className="relative">
           <p
             className={cn(
-              "text-sm leading-relaxed",
+              "text-sm leading-relaxed whitespace-pre-wrap",
               message.role === 'nero' ? "text-ivory" : "text-ivory-dim"
             )}
           >
-            {/* Sprint 9.5: Render content as continuous stream */}
-            {reasoningExpanded
-              ? (
-                // Expanded: full interleaved stream
-                <InterleavedContent chunks={chunks} isStreaming={isStreaming} />
-              )
-              : (
-                // Collapsed: answer preview only (reasoning hidden)
-                <>
-                  {collapsedPreview}
-                  {/* Blinking cursor while streaming */}
-                  {isStreaming && (
-                    <span
-                      className="inline-block w-1.5 h-3 ml-0.5 rounded-sm"
-                      style={{
-                        background: 'var(--mb-teal)',
-                        animation: 'signal-pulse 1s ease-in-out infinite',
-                        verticalAlign: 'text-bottom',
-                      }}
-                      aria-hidden="true"
-                    />
-                  )}
-                </>
-              )}
+            {/*
+              Sprint 10 fix: three cases, no truncation for pure answers
+              1. pureAnswer → always show full answer text + streaming cursor
+              2. reasoningExpanded → full interleaved stream
+              3. !reasoningExpanded → truncated preview + reasoning toggle
+            */}
+            {pureAnswer ? (
+              /* Case 1: full message, no reasoning, no truncation */
+              <>
+                {answerText}
+                {/* Streaming cursor */}
+                {isStreaming && (
+                  <span
+                    className="inline-block w-1.5 h-3 ml-0.5 rounded-sm"
+                    style={{
+                      background: 'var(--mb-teal)',
+                      animation: 'signal-pulse 1s ease-in-out infinite',
+                      verticalAlign: 'text-bottom',
+                    }}
+                    aria-hidden="true"
+                  />
+                )}
+              </>
+            ) : reasoningExpanded ? (
+              /* Case 2: expanded — full interleaved stream + streaming cursor */
+              <InterleavedContent chunks={chunks} isStreaming={isStreaming} />
+            ) : (
+              /* Case 3: collapsed — truncated preview + streaming cursor */
+              <>
+                {(answerText.length > 400
+                  ? answerText.slice(0, 400).trimEnd() + '…'
+                  : answerText)}
+                {/* Streaming cursor for collapsed streaming */}
+                {isStreaming && (
+                  <span
+                    className="inline-block w-1.5 h-3 ml-0.5 rounded-sm"
+                    style={{
+                      background: 'var(--mb-teal)',
+                      animation: 'signal-pulse 1s ease-in-out infinite',
+                      verticalAlign: 'text-bottom',
+                    }}
+                    aria-hidden="true"
+                  />
+                )}
+              </>
+            )}
           </p>
-
-          {/* Sprint 9.5: Show "still thinking…" indicator for streaming with reasoning */}
-          {isStreaming && reasoningExpanded && (
-            <span
-              className="inline-block w-1.5 h-3 ml-0.5 rounded-sm"
-              style={{
-                background: 'var(--mb-teal)',
-                animation: 'signal-pulse 1s ease-in-out infinite',
-                verticalAlign: 'text-bottom',
-              }}
-              aria-hidden="true"
-            />
-          )}
         </div>
 
         {/* Sprint 9.5/10: Reasoning toggle + animated expand/collapse — only shown when reasoning exists */}
