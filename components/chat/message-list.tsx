@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageCard } from './message-card';
 import type { Thread } from '@/lib/types';
@@ -10,7 +11,9 @@ interface MessageListProps {
   thread: Thread;
 }
 
-const BOTTOM_THRESHOLD = 80; // px from bottom to consider "at bottom"
+// Sprint 10.5: Threshold increased to 150px — forgiving enough to feel natural,
+// small enough to not auto-scroll when user is mid-read
+const BOTTOM_THRESHOLD = 150;
 
 export function MessageList({ thread }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -23,7 +26,7 @@ export function MessageList({ thread }: MessageListProps) {
   const prevMessageCountRef = useRef(thread.messages.length);
   // Sprint 10: Track the newest message ID for entrance animation
   const newestMessageIdRef = useRef<string | null>(null);
-  const { highlightedMessageId, composerState } = useSignalLoomStore();
+  const { highlightedMessageId, composerState, childToParentMap } = useSignalLoomStore();
 
   const isStreaming = composerState.isStreaming;
   const streamingContent = composerState.streamingResponse;
@@ -56,6 +59,18 @@ export function MessageList({ thread }: MessageListProps) {
     setIsAtBottom(atBottom);
     if (atBottom) setNewMessageCount(0); // reset when back at bottom
   }, []);
+
+  // Sprint 10.5: Return-to-live — when user scrolls back within threshold, rejoin live follow
+  const wasAwayRef = useRef(false);
+  useEffect(() => {
+    if (isAtBottom && wasAwayRef.current) {
+      // User just scrolled back into live zone — gentle nudge to bottom
+      scrollToBottom(true);
+      wasAwayRef.current = false;
+    } else if (!isAtBottom) {
+      wasAwayRef.current = true;
+    }
+  }, [isAtBottom]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track new messages: if user scrolled away, count new arrivals instead of auto-scrolling
   useEffect(() => {
@@ -104,7 +119,7 @@ export function MessageList({ thread }: MessageListProps) {
     <div className="flex flex-col flex-1 min-h-0 relative">
       <ScrollArea
         ref={scrollRef}
-        className="flex-1 px-4 py-4"
+        className="flex-1 px-4 py-4 transcript-scroll"
         onScroll={handleScroll}
       >
         <div className="space-y-1">
@@ -125,6 +140,8 @@ export function MessageList({ thread }: MessageListProps) {
                   isStreaming={isLast && isLastMsgStreaming}
                   // Sprint 10: Trigger entrance animation on the newest message
                   isNew={isLast && newestMessageIdRef.current === message.id}
+                  // Sprint 10.5: Teal accent for child/specialist session messages
+                  isChildSession={!!childToParentMap[thread.id]}
                 />
               </div>
             );
@@ -133,29 +150,38 @@ export function MessageList({ thread }: MessageListProps) {
         </div>
       </ScrollArea>
 
-      {/* Sprint 9/10: Jump-to-latest pill — appears when scrolled away and new messages arrived */}
-      {newMessageCount > 0 && (
-        <button
-          onClick={() => {
-            scrollToBottom(true);
-            setNewMessageCount(0);
-          }}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full text-xs font-mono cursor-pointer hover:scale-105 active:scale-95 shadow-lg jump-pill-enter"
-          style={{
-            background: 'var(--mb-teal)',
-            color: 'var(--mb-carbon)',
-            border: '1px solid rgba(0,0,0,0.15)',
-            zIndex: 10,
-          }}
-          aria-label={`Jump to ${newMessageCount} new message${newMessageCount !== 1 ? 's' : ''}`}
-        >
-          <span
-            className="w-1.5 h-1.5 rounded-full flex-shrink-0 badge-live"
-            style={{ background: 'var(--mb-carbon)' }}
-          />
-          ↓ {newMessageCount} new message{newMessageCount !== 1 ? 's' : ''} — jump to latest
-        </button>
-      )}
+      {/* Sprint 9/10/10.5: Jump-to-latest pill — slides in from below when scrolled away */}
+      <AnimatePresence>
+        {newMessageCount > 0 && (
+          <motion.button
+            key="jump-pill"
+            initial={{ opacity: 0, y: 12, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.95 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 30, mass: 0.6 }}
+            onClick={() => {
+              scrollToBottom(true);
+              setNewMessageCount(0);
+            }}
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full text-xs font-mono cursor-pointer hover:scale-105 active:scale-95 shadow-lg"
+            style={{
+              background: 'var(--mb-teal)',
+              color: 'var(--mb-carbon)',
+              border: '1px solid rgba(0,0,0,0.15)',
+              zIndex: 10,
+            }}
+            aria-label={`Jump to ${newMessageCount} new message${newMessageCount !== 1 ? 's' : ''}`}
+          >
+            <motion.span
+              className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+              animate={{ scale: [1, 1.2, 1] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+              style={{ background: 'var(--mb-carbon)' }}
+            />
+            ↓ {newMessageCount} new message{newMessageCount !== 1 ? 's' : ''} — jump to latest
+          </motion.button>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
