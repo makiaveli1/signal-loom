@@ -8,7 +8,7 @@
 
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useSignalLoomStore } from '@/lib/store';
 
 interface GatewaySessionMessageEvent {
@@ -31,7 +31,7 @@ interface GatewaySessionsChangedEvent {
 }
 
 export function useLiveEvents() {
-  const { loadMessagesForThread, loadSessions, threads, setLiveConnected } = useSignalLoomStore();
+  const { loadMessagesForThread, loadSessions, setLiveConnected } = useSignalLoomStore();
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -59,7 +59,8 @@ export function useLiveEvents() {
             // New message arrived in a session — reload messages for that session
             const { sessionKey } = msg.data;
 
-            // Find the thread that owns this session
+            // Get fresh threads from store to avoid stale closure
+            const { threads } = useSignalLoomStore.getState();
             const thread = threads.find((t) => t.id === sessionKey);
             if (thread) {
               loadMessagesForThread(sessionKey);
