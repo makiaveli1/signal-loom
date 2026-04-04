@@ -31,46 +31,109 @@ interface MessageCardProps {
   isStreaming?: boolean;
 }
 
-// Sprint 9: Parse message content into reasoning and answer sections.
-// Detects [Reasoning] ... blocks (from gateway thinking blocks) and separates
-// them from the main answer text. Reasoning is collapsed by default.
-function parseContent(content: string): {
-  answer: string;
-  reasoningSections: string[];
+// Sprint 9.5: Parse message content into an ordered interleaved stream.
+// Detects [Reasoning] blocks and interleaves them with answer text in original order.
+// This enables rendering reasoning as a continuous stream rather than separate chunks.
+type ContentChunk =
+  | { kind: 'answer'; text: string }
+  | { kind: 'reasoning'; text: string };
+
+function parseContentStream(content: string): {
+  chunks: ContentChunk[];
+  /** True if content contains any reasoning blocks */
   hasReasoning: boolean;
+  /** Plain answer text with reasoning blocks stripped — used for collapsed preview */
+  answerOnly: string;
 } {
-  // Match [Reasoning] <text> blocks — the gateway flattens thinking blocks this way.
-  // Uses [\s\S] instead of dotAll flag to avoid ES2018 target requirement.
-  const reasoningSections: string[] = [];
+  const chunks: ContentChunk[] = [];
 
-  // Pattern 1: multi-line [Reasoning]\n\n<text> form (blank line after the tag)
-  const MULTI = /\[Reasoning\]\n\n([\s\S]+?)(?=\[Reasoning\]|\[Tool\]|\[Result\]|$)/g;
-  let match;
-  while ((match = MULTI.exec(content)) !== null) {
-    const block = (match[1] ?? '').trim();
-    if (block) reasoningSections.push(block);
+  // Two patterns to detect reasoning blocks:
+  // Pattern A: multi-line [Reasoning]\n\n<text> (reasoning preceded by blank line)
+  // Pattern B: inline [Reasoning] <text> on same line
+  // Both patterns use [\s\S] instead of dotAll flag for ES2017 compatibility.
+
+  const BLOCK_PATTERN = /\[Reasoning\]\n\n([\s\S]+?)(?=\[Reasoning\]\n\n|\[Reasoning\]\s|\[Tool:|\[Result\]|$)/g;
+  const INLINE_PATTERN = /\[Reasoning\]\s*(.+?)(?=\[Reasoning\]\s|\[Tool:|\[Result\]|$)/g;
+
+  // Walk through content building an ordered list of answer/reasoning chunks.
+  // Track the end of the last match to find the answer text between reasoning blocks.
+  let lastEnd = 0;
+  let match: RegExpExecArray | null;
+
+  // Process all multi-line reasoning blocks first
+  const blockMatches: Array<{ start: number; end: number; text: string }> = [];
+  BLOCK_PATTERN.lastIndex = 0;
+  while ((match = BLOCK_PATTERN.exec(content)) !== null) {
+    blockMatches.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      text: (match[1] ?? '').trim(),
+    });
   }
 
-  // Pattern 2: inline [Reasoning] <text> form (single line)
-  const SINGLE = /\[Reasoning\]\s*(.+?)(?=\[Reasoning\]|\[Tool\]|\[Result\]|$)/g;
-  while ((match = SINGLE.exec(content)) !== null) {
-    const block = (match[1] ?? '').trim();
-    if (block && !reasoningSections.includes(block)) reasoningSections.push(block);
+  // Also find all inline reasoning blocks that aren't part of multi-line blocks
+  const inlineMatches: Array<{ start: number; end: number; text: string }> = [];
+  INLINE_PATTERN.lastIndex = 0;
+  while ((match = INLINE_PATTERN.exec(content)) !== null) {
+    // Skip if this match falls inside a block match
+    const insideBlock = blockMatches.some(
+      (b) => match!.index >= b.start && match!.index < b.end
+    );
+    if (!insideBlock && match[1]) {
+      inlineMatches.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        text: (match[1] ?? '').trim(),
+      });
+    }
   }
 
-  // Remove reasoning blocks from the answer text
-  const answer = content
-    .replace(/\[Reasoning\]\n\n[\s\S]+?(?=\[Reasoning\]|\[Tool\]|\[Result\]|$)/g, '')
-    .replace(/\[Reasoning\]\s*.+?(?=\[Reasoning\]|\[Tool\]|\[Result\]|$)/g, '')
+  // Merge and sort all reasoning positions
+  const allReasoning = [...blockMatches, ...inlineMatches].sort((a, b) => a.start - b.start);
+
+  // Build ordered chunks: answer text between reasoning blocks, then each reasoning block
+  let searchStart = 0;
+  for (const r of allReasoning) {
+    if (r.start > searchStart) {
+      const answerText = content.slice(searchStart, r.start)
+        .replace(/\[Tool:[^\]]*\]/g, '')
+        .replace(/\[Result\]\s*.+?$/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      if (answerText) {
+        chunks.push({ kind: 'answer', text: answerText });
+      }
+    }
+    if (r.text) {
+      chunks.push({ kind: 'reasoning', text: r.text });
+    }
+    searchStart = r.end;
+  }
+
+  // Remaining answer text after last reasoning block
+  if (searchStart < content.length) {
+    const answerText = content.slice(searchStart)
+      .replace(/\[Tool:[^\]]*\]/g, '')
+      .replace(/\[Result\]\s*.+?$/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    if (answerText) {
+      chunks.push({ kind: 'answer', text: answerText });
+    }
+  }
+
+  // Build answer-only (no reasoning) for collapsed preview
+  const answerOnly = content
+    .replace(/\[Reasoning\][\s\S]*?(?=\[Reasoning\]|\[Tool:|\[Result\]|$)/g, '')
     .replace(/\[Tool:[^\]]*\]/g, '')
     .replace(/\[Result\]\s*.+?$/g, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
   return {
-    answer,
-    reasoningSections,
-    hasReasoning: reasoningSections.length > 0,
+    chunks: chunks.length > 0 ? chunks : [{ kind: 'answer', text: content }],
+    hasReasoning: allReasoning.length > 0,
+    answerOnly,
   };
 }
 
@@ -79,9 +142,18 @@ export function MessageCard({ message, isHighlighted, isStreaming }: MessageCard
     return <ActionSummaryCard message={message} isHighlighted={isHighlighted} />;
   }
 
-  // Sprint 9: Parse reasoning sections from content
-  const { answer, reasoningSections, hasReasoning } = parseContent(message.content);
+  // Sprint 9.5: Parse into ordered content stream
+  const { chunks, hasReasoning, answerOnly } = parseContentStream(message.content);
   const [reasoningExpanded, setReasoningExpanded] = useState(false);
+
+  // Determine if this message has only answer chunks (no reasoning at all)
+  const pureAnswer = !hasReasoning;
+
+  // Collapsed preview: show the first answer chunk or a truncated answer-only string
+  const previewText = chunks.find((c) => c.kind === 'answer')?.text ?? answerOnly;
+  const collapsedPreview = previewText.length > 280
+    ? previewText.slice(0, 280).trimEnd() + '…'
+    : previewText;
 
   return (
     <div
@@ -137,18 +209,45 @@ export function MessageCard({ message, isHighlighted, isStreaming }: MessageCard
         )}
       </div>
 
-      {/* Content */}
+      {/* Content — Sprint 9.5: continuous stream rendering */}
       <div className="flex-1 min-w-0">
-        {/* Main answer text */}
-        <p
-          className={cn(
-            "text-sm leading-relaxed",
-            message.role === 'nero' ? "text-ivory" : "text-ivory-dim"
-          )}
-        >
-          {answer || <span className="text-ivory/30 italic">waiting for response…</span>}
-          {/* Sprint 9: Blinking cursor while streaming */}
-          {isStreaming && (
+
+        {/* Main content area — answer always visible */}
+        <div className="relative">
+          <p
+            className={cn(
+              "text-sm leading-relaxed",
+              message.role === 'nero' ? "text-ivory" : "text-ivory-dim"
+            )}
+          >
+            {/* Sprint 9.5: Render content as continuous stream */}
+            {reasoningExpanded
+              ? (
+                // Expanded: full interleaved stream
+                <InterleavedContent chunks={chunks} isStreaming={isStreaming} />
+              )
+              : (
+                // Collapsed: answer preview only (reasoning hidden)
+                <>
+                  {collapsedPreview}
+                  {/* Blinking cursor while streaming */}
+                  {isStreaming && (
+                    <span
+                      className="inline-block w-1.5 h-3 ml-0.5 rounded-sm"
+                      style={{
+                        background: 'var(--mb-teal)',
+                        animation: 'signal-pulse 1s ease-in-out infinite',
+                        verticalAlign: 'text-bottom',
+                      }}
+                      aria-hidden="true"
+                    />
+                  )}
+                </>
+              )}
+          </p>
+
+          {/* Sprint 9.5: Show "still thinking…" indicator for streaming with reasoning */}
+          {isStreaming && reasoningExpanded && (
             <span
               className="inline-block w-1.5 h-3 ml-0.5 rounded-sm"
               style={{
@@ -159,14 +258,20 @@ export function MessageCard({ message, isHighlighted, isStreaming }: MessageCard
               aria-hidden="true"
             />
           )}
-        </p>
+        </div>
 
-        {/* Sprint 9: Collapsible reasoning section */}
+        {/* Sprint 9.5: Reasoning toggle — only shown when reasoning exists */}
         {hasReasoning && (
-          <div className="mt-2">
+          <div className="mt-1.5">
+            {/* Collapse/expand toggle */}
             <button
               onClick={() => setReasoningExpanded((v) => !v)}
-              className="flex items-center gap-1.5 text-[10px] font-mono transition-opacity hover:opacity-80"
+              className={cn(
+                "flex items-center gap-1.5 text-[10px] font-mono transition-all duration-150",
+                "hover:opacity-80 active:scale-[0.98]",
+                reasoningExpanded ? "text-brass/50" : "text-brass/60"
+              )}
+              style={reasoningExpanded ? { color: 'rgba(201,160,58,0.5)' } : { color: 'rgba(201,160,58,0.6)' }}
               aria-expanded={reasoningExpanded}
             >
               <svg
@@ -178,27 +283,12 @@ export function MessageCard({ message, isHighlighted, isStreaming }: MessageCard
               >
                 <path d="M2 1L6 4L2 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <span style={{ color: 'var(--mb-brass)', opacity: 0.7 }}>
-                {reasoningExpanded
-                  ? 'Hide reasoning'
-                  : `Show reasoning (${reasoningSections.length})`}
-              </span>
+              {reasoningExpanded ? (
+                <span>hide reasoning</span>
+              ) : (
+                <span>reasoning ({countReasoningWords(chunks)})</span>
+              )}
             </button>
-
-            {reasoningExpanded && (
-              <div
-                className="mt-1.5 rounded border px-3 py-2 text-[11px] leading-relaxed"
-                style={{
-                  background: 'rgba(201,160,58,0.04)',
-                  borderColor: 'rgba(201,160,58,0.12)',
-                  color: 'var(--mb-ash)',
-                }}
-              >
-                {reasoningSections.map((section, i) => (
-                  <p key={i} className="mb-1 last:mb-0">{section}</p>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
@@ -216,6 +306,120 @@ export function MessageCard({ message, isHighlighted, isStreaming }: MessageCard
       )}
     </div>
   );
+}
+
+// Sprint 9.5: Render an ordered list of answer + reasoning chunks as a continuous stream.
+// Answer chunks render in normal text; reasoning chunks render in a visually distinct
+// inline style with a left accent bar, creating the feel of one continuous thought.
+function InterleavedContent({
+  chunks,
+  isStreaming,
+}: {
+  chunks: ContentChunk[];
+  isStreaming?: boolean;
+}) {
+  const answerChunks = chunks.filter((c) => c.kind === 'answer');
+  const reasoningChunks = chunks.filter((c) => c.kind === 'reasoning');
+  const hasReasoning = reasoningChunks.length > 0;
+
+  if (!hasReasoning) {
+    // No reasoning — render answer normally with streaming cursor
+    return (
+      <>
+        {chunks.map((c, i) => (
+          <span key={i}>{c.text}</span>
+        ))}
+        {isStreaming && (
+          <span
+            className="inline-block w-1.5 h-3 ml-0.5 rounded-sm"
+            style={{
+              background: 'var(--mb-teal)',
+              animation: 'signal-pulse 1s ease-in-out infinite',
+              verticalAlign: 'text-bottom',
+            }}
+            aria-hidden="true"
+          />
+        )}
+      </>
+    );
+  }
+
+  // Sprint 9.5: Continuous stream layout:
+  // 1. Answer text (primary, prominent)
+  // 2. A subtle divider
+  // 3. Reasoning stream (visually distinct, subdued, left accent bar)
+
+  return (
+    <>
+      {/* Primary answer text */}
+      {answerChunks.map((c, i) => (
+        <span key={`a-${i}`}>{c.text}</span>
+      ))}
+
+      {/* Divider — subtle horizontal rule between answer and reasoning */}
+      {answerChunks.length > 0 && reasoningChunks.length > 0 && (
+        <span
+          className="block my-2 opacity-20"
+          style={{
+            borderTop: '1px solid rgba(201,160,58,0.5)',
+            width: '60%',
+          }}
+        />
+      )}
+
+      {/* Reasoning stream — subdued, left accent, continuous */}
+      <span
+        className="block"
+        style={{
+          color: 'rgba(201,160,58,0.65)',
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+          fontSize: '11px',
+          lineHeight: '1.6',
+          paddingLeft: '10px',
+          borderLeft: '2px solid rgba(201,160,58,0.35)',
+          marginLeft: '2px',
+        }}
+      >
+        {/* Sprint 9.5: Show reasoning label */}
+        <span
+          className="block text-[9px] uppercase tracking-widest mb-1 opacity-50 font-sans"
+          style={{ color: 'rgba(201,160,58,0.4)', letterSpacing: '0.1em' }}
+        >
+          reasoning
+        </span>
+
+        {/* All reasoning sections as one continuous block */}
+        {reasoningChunks.map((c, i) => (
+          <span key={`r-${i}`} className="block mb-1 last:mb-0">
+            {c.text}
+          </span>
+        ))}
+
+        {/* Streaming cursor at end of reasoning stream */}
+        {isStreaming && (
+          <span
+            className="inline-block w-1 h-2 ml-1 rounded-sm"
+            style={{
+              background: 'rgba(201,160,58,0.6)',
+              animation: 'signal-pulse 1.2s ease-in-out infinite',
+              verticalAlign: 'text-bottom',
+            }}
+            aria-hidden="true"
+          />
+        )}
+      </span>
+    </>
+  );
+}
+
+// Sprint 9.5: Count total reasoning words for the toggle label
+function countReasoningWords(chunks: ContentChunk[]): string {
+  const words = chunks
+    .filter((c) => c.kind === 'reasoning')
+    .reduce((acc, c) => acc + c.text.split(/\s+/).length, 0);
+  if (words === 0) return '';
+  if (words < 50) return `${words}w`;
+  return `${Math.round(words / 100) * 100}w+`;
 }
 
 function ActionSummaryCard({ message, isHighlighted }: MessageCardProps) {
