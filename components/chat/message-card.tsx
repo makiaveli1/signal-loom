@@ -16,8 +16,6 @@ interface MessageTimestampProps {
 }
 
 function MessageTimestamp({ isoString }: MessageTimestampProps) {
-  // Server renders the raw ISO string — zero chance of mismatch.
-  // useEffect only runs after hydration, so client has no setState-before-mount issue.
   const [display, setDisplay] = useState(isoString);
   useEffect(() => {
     const timer = setTimeout(() => setDisplay(formatLocalTime(isoString)), 0);
@@ -29,12 +27,61 @@ function MessageTimestamp({ isoString }: MessageTimestampProps) {
 interface MessageCardProps {
   message: Message;
   isHighlighted?: boolean;
+  /** Sprint 9: true when this message is actively receiving streaming content */
+  isStreaming?: boolean;
 }
 
-export function MessageCard({ message, isHighlighted }: MessageCardProps) {
+// Sprint 9: Parse message content into reasoning and answer sections.
+// Detects [Reasoning] ... blocks (from gateway thinking blocks) and separates
+// them from the main answer text. Reasoning is collapsed by default.
+function parseContent(content: string): {
+  answer: string;
+  reasoningSections: string[];
+  hasReasoning: boolean;
+} {
+  // Match [Reasoning] <text> blocks — the gateway flattens thinking blocks this way.
+  // Uses [\s\S] instead of dotAll flag to avoid ES2018 target requirement.
+  const reasoningSections: string[] = [];
+
+  // Pattern 1: multi-line [Reasoning]\n\n<text> form (blank line after the tag)
+  const MULTI = /\[Reasoning\]\n\n([\s\S]+?)(?=\[Reasoning\]|\[Tool\]|\[Result\]|$)/g;
+  let match;
+  while ((match = MULTI.exec(content)) !== null) {
+    const block = (match[1] ?? '').trim();
+    if (block) reasoningSections.push(block);
+  }
+
+  // Pattern 2: inline [Reasoning] <text> form (single line)
+  const SINGLE = /\[Reasoning\]\s*(.+?)(?=\[Reasoning\]|\[Tool\]|\[Result\]|$)/g;
+  while ((match = SINGLE.exec(content)) !== null) {
+    const block = (match[1] ?? '').trim();
+    if (block && !reasoningSections.includes(block)) reasoningSections.push(block);
+  }
+
+  // Remove reasoning blocks from the answer text
+  const answer = content
+    .replace(/\[Reasoning\]\n\n[\s\S]+?(?=\[Reasoning\]|\[Tool\]|\[Result\]|$)/g, '')
+    .replace(/\[Reasoning\]\s*.+?(?=\[Reasoning\]|\[Tool\]|\[Result\]|$)/g, '')
+    .replace(/\[Tool:[^\]]*\]/g, '')
+    .replace(/\[Result\]\s*.+?$/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return {
+    answer,
+    reasoningSections,
+    hasReasoning: reasoningSections.length > 0,
+  };
+}
+
+export function MessageCard({ message, isHighlighted, isStreaming }: MessageCardProps) {
   if (message.role === 'action-summary') {
     return <ActionSummaryCard message={message} isHighlighted={isHighlighted} />;
   }
+
+  // Sprint 9: Parse reasoning sections from content
+  const { answer, reasoningSections, hasReasoning } = parseContent(message.content);
+  const [reasoningExpanded, setReasoningExpanded] = useState(false);
 
   return (
     <div
@@ -58,9 +105,7 @@ export function MessageCard({ message, isHighlighted }: MessageCardProps) {
                 : undefined,
             }
           : isHighlighted
-          ? {
-              boxShadow: '0 0 0 2px rgba(201,160,58,0.3)',
-            }
+          ? { boxShadow: '0 0 0 2px rgba(201,160,58,0.3)' }
           : {}
       }
     >
@@ -94,14 +139,69 @@ export function MessageCard({ message, isHighlighted }: MessageCardProps) {
 
       {/* Content */}
       <div className="flex-1 min-w-0">
+        {/* Main answer text */}
         <p
           className={cn(
             "text-sm leading-relaxed",
             message.role === 'nero' ? "text-ivory" : "text-ivory-dim"
           )}
         >
-          {message.content}
+          {answer || <span className="text-ivory/30 italic">waiting for response…</span>}
+          {/* Sprint 9: Blinking cursor while streaming */}
+          {isStreaming && (
+            <span
+              className="inline-block w-1.5 h-3 ml-0.5 rounded-sm"
+              style={{
+                background: 'var(--mb-teal)',
+                animation: 'signal-pulse 1s ease-in-out infinite',
+                verticalAlign: 'text-bottom',
+              }}
+              aria-hidden="true"
+            />
+          )}
         </p>
+
+        {/* Sprint 9: Collapsible reasoning section */}
+        {hasReasoning && (
+          <div className="mt-2">
+            <button
+              onClick={() => setReasoningExpanded((v) => !v)}
+              className="flex items-center gap-1.5 text-[10px] font-mono transition-opacity hover:opacity-80"
+              aria-expanded={reasoningExpanded}
+            >
+              <svg
+                width="7"
+                height="7"
+                viewBox="0 0 8 8"
+                fill="none"
+                className={cn('transition-transform duration-200', reasoningExpanded && 'rotate-90')}
+              >
+                <path d="M2 1L6 4L2 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span style={{ color: 'var(--mb-brass)', opacity: 0.7 }}>
+                {reasoningExpanded
+                  ? 'Hide reasoning'
+                  : `Show reasoning (${reasoningSections.length})`}
+              </span>
+            </button>
+
+            {reasoningExpanded && (
+              <div
+                className="mt-1.5 rounded border px-3 py-2 text-[11px] leading-relaxed"
+                style={{
+                  background: 'rgba(201,160,58,0.04)',
+                  borderColor: 'rgba(201,160,58,0.12)',
+                  color: 'var(--mb-ash)',
+                }}
+              >
+                {reasoningSections.map((section, i) => (
+                  <p key={i} className="mb-1 last:mb-0">{section}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <span className="text-xs font-mono text-ash-muted mt-1 block">
           <MessageTimestamp isoString={message.timestamp} />
         </span>

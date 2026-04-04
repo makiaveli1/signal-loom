@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSignalLoomStore } from '@/lib/store';
 import type { Thread, PaneRole, Agent } from '@/lib/types';
 import { MessageList } from './message-list';
@@ -66,13 +66,26 @@ function relativeTime(iso: string | null | undefined): string {
  * - unavailable: no transcript available for this session
  */
 function TranscriptBlock({ thread }: { thread: Thread }) {
-  const s = thread.session;
-  const { sessionMessagesLoading, sessionMessages } = useSignalLoomStore();
-
-  if (!s) return null;
-
+  const _session = thread.session;
+  if (!_session) return null;
+  // TypeScript doesn't narrow const-assigned prop fields in JSX; use non-null assertion after guard
+  const session = _session as import('@/lib/openclaw/adapter/types').OpenClawSession;
+  const { sessionMessagesLoading, sessionMessages, sessionsFetchedAt } = useSignalLoomStore();
+  const [secondsAgo, setSecondsAgo] = useState(0);
   const isLoading = sessionMessagesLoading[thread.id] ?? false;
   const transcript = sessionMessages[thread.id];
+
+  // Sprint 9: Tick seconds for live sessions
+  useEffect(() => {
+    if (thread.status !== 'active') return;
+    const tick = setInterval(() => {
+      if (sessionsFetchedAt) {
+        const secs = Math.floor((Date.now() - new Date(sessionsFetchedAt).getTime()) / 1000);
+        setSecondsAgo(secs);
+      }
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [thread.status, sessionsFetchedAt]);
 
   return (
     <div
@@ -91,22 +104,31 @@ function TranscriptBlock({ thread }: { thread: Thread }) {
         {thread.status === 'done' ? (
           <span className="text-jade text-[10px] font-mono">✓ Done</span>
         ) : (
-          <span className="text-teal text-[10px] font-mono">● Active</span>
+          <span
+            className="flex items-center gap-1.5 text-[10px] font-mono"
+            style={{ color: 'var(--mb-teal)' }}
+          >
+            <span
+              className="w-1.5 h-1.5 rounded-full flex-shrink-0 signal-pulse"
+              style={{ background: 'var(--mb-teal)' }}
+            />
+            Live · {secondsAgo}s ago
+          </span>
         )}
       </div>
 
       {/* Metadata grid */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-3">
-        {s.agentName && (
+        {session.agentName && (
           <div>
             <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Agent</span>
-            <div className="text-ivory/80 font-mono mt-0.5">{s.agentName}</div>
+            <div className="text-ivory/80 font-mono mt-0.5">{session.agentName}</div>
           </div>
         )}
         <div>
           <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Session ID</span>
-          <div className="text-ivory/60 font-mono mt-0.5 text-[10px] truncate" title={s.id}>
-            {s.shortId ?? s.id.split(':').pop()?.slice(0, 8) ?? s.id}
+          <div className="text-ivory/60 font-mono mt-0.5 text-[10px] truncate" title={session.id}>
+            {session.shortId ?? session.id.split(':').pop()?.slice(0, 8) ?? session.id}
           </div>
         </div>
         <div>
@@ -115,19 +137,19 @@ function TranscriptBlock({ thread }: { thread: Thread }) {
         </div>
         <div>
           <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Messages</span>
-          <div className="text-ivory/80 mt-0.5">{s.messageCount ?? 0} stored</div>
+          <div className="text-ivory/80 mt-0.5">{session.messageCount ?? 0} stored</div>
         </div>
-        {s.preview && (
+        {session.preview && (
           <div>
             <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Preview</span>
-            <div className="text-ivory/80 mt-0.5 capitalize truncate" title={s.preview}>{s.preview}</div>
+            <div className="text-ivory/80 mt-0.5 capitalize truncate" title={session.preview}>{session.preview}</div>
           </div>
         )}
-        {(s.tags ?? []).length > 0 && (
+        {(session.tags ?? []).length > 0 && (
           <div className="col-span-2">
             <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Tags</span>
             <div className="flex flex-wrap gap-1 mt-1">
-              {(s.tags ?? []).map((tag) => (
+              {(session.tags ?? []).map((tag) => (
                 <span
                   key={tag}
                   className="px-1.5 py-0.5 rounded text-[10px] font-mono"
@@ -228,6 +250,18 @@ export function ThreadPane({
     if (sessionMessagesLoading[thread.id]) return; // already loading
     loadMessagesForThread(thread.id);
   }, [thread.id, thread.session, sessionMessages, sessionMessagesLoading, loadMessagesForThread]);
+
+  // Sprint 9: Poll active sessions for new messages every 5 seconds
+  useEffect(() => {
+    if (!thread.session) return;
+    if (thread.status !== 'active') return;
+
+    const interval = setInterval(() => {
+      loadMessagesForThread(thread.id);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [thread.id, thread.session, thread.status, loadMessagesForThread]);
 
   const threadEvents = delegationEvents.filter((e) => e.threadId === thread.id);
   const pendingApproval = approvals.find((a) => a.linkedThreadId === thread.id);

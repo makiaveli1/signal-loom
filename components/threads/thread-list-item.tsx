@@ -77,11 +77,19 @@ export function ThreadListItem({ thread, isSelected, onSelect, conceptBadge, chi
         <div className="flex items-start justify-between gap-2 mb-2">
           <p
             className={cn(
-              "text-xs leading-snug truncate pr-2 transition-colors duration-150",
+              "text-xs leading-snug truncate pr-2 transition-colors duration-150 flex items-center gap-1.5",
               isActive ? "text-ivory font-medium" : "text-ivory-dim group-hover:text-ivory",
               isSelected && "text-ivory font-medium"
             )}
           >
+            {/* Sprint 9: Live pulse dot for active sessions in dock */}
+            {isActive && (
+              <span
+                className="w-1.5 h-1.5 rounded-full flex-shrink-0 signal-pulse"
+                style={{ background: 'var(--mb-teal)' }}
+                title="Active session"
+              />
+            )}
             {thread.title}
           </p>
           {/* Sprint 8: Child sessions indicator */}
