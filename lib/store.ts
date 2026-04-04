@@ -1030,21 +1030,41 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       }
     }
     const firstRealSession = adaptedThreads[0] ?? result.data[0] ?? null;
-    set((state) => ({
-      threads: adaptedThreads.map((t) => {
+    set((state) => {
+      // Sprint 10.6: Preserve locally-derived thread state across session refreshes.
+      // Only session-derived fields (title, status, lastActive, session, tags) come from
+      // the backend. Local UI state (messages, delegationEvents, pinned, etc.) must not
+      // be wiped when silentReloadSessions refreshes thread metadata in the background.
+      const refreshedThreads = adaptedThreads.map((t) => {
         const sess = result.data.find((s) => s.title === t.title);
-        return { ...t, session: sess, linkedChildren: childSessionIds[t.id] ?? [] } as Thread;
-      }),
-      sessions: result.data,
-      sessionsFetchedAt: result.fetchedAt,
-      agents: derivedAgents,
-      delegationEvents: state.delegationEvents,
-      childSessionIds,
-      childToParentMap: Object.fromEntries(
-        Object.entries(childSessionIds).flatMap(([parentId, childIds]) => childIds.map((childId) => [childId, parentId]))
-      ),
-      selectedThreadId: firstRealSession?.id ?? state.selectedThreadId,
-    }));
+        const existing = state.threads.find((et) => et.id === t.id);
+        return {
+          ...t,
+          session: sess ?? t.session,
+          // Preserve locally-derived state that should survive a session refresh
+          messages: existing?.messages ?? t.messages,
+          linkedChildren: existing?.linkedChildren ?? childSessionIds[t.id] ?? [],
+          unreadCount: existing?.unreadCount ?? t.unreadCount,
+          hasApproval: existing?.hasApproval ?? t.hasApproval,
+          pinned: existing?.pinned ?? t.pinned,
+          followed: existing?.followed ?? t.followed,
+        } satisfies Thread;
+      });
+
+
+      return {
+        threads: refreshedThreads,
+        sessions: result.data,
+        sessionsFetchedAt: result.fetchedAt,
+        agents: derivedAgents,
+        delegationEvents: state.delegationEvents,
+        childSessionIds,
+        childToParentMap: Object.fromEntries(
+          Object.entries(childSessionIds).flatMap(([parentId, childIds]) => childIds.map((childId) => [childId, parentId]))
+        ),
+        selectedThreadId: firstRealSession?.id ?? state.selectedThreadId,
+      };
+    });
   },
 
   loadAgents: async () => {
