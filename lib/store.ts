@@ -366,6 +366,8 @@ interface SignalLoomStore {
 
   // Sprint 3: Data loading via OpenClaw adapter
   loadSessions: () => Promise<void>;
+  /** Silent background reload — updates threads/agents without triggering the loading spinner */
+  silentReloadSessions: () => Promise<void>;
   loadAgents: () => Promise<void>;
   loadApprovals: () => Promise<void>;
   resolveApproval: (approvalId: string, decision: 'approved' | 'denied' | 'revised', note?: string) => Promise<void>;
@@ -919,6 +921,129 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       // Sprint 8: preserve active delegation event selection across session reloads
       activeDelegationEventId: state.activeDelegationEventId,
       followedSessionIds: state.followedSessionIds,
+    }));
+  },
+
+  // Sprint 10.6: silent background reload — same logic as loadSessions but does NOT
+  // set sessionsLoading, so the thread list stays visible and stable during live updates.
+  silentReloadSessions: async () => {
+    const result = await adapterLoadSessions();
+    if (!result.ok) return;
+    const adaptedThreads: Thread[] = result.data
+      .filter((s) => {
+        if (s.agentName === 'Subagent') return false;
+        return true;
+      })
+      .map((s) => {
+        let status: Thread['status'] = 'active';
+        if (s.status === 'done' || s.status === 'idle') {
+          status = 'done';
+        } else if (s.status === 'active' && s.lastMessageAt) {
+          const ageMin = (Date.now() - new Date(s.lastMessageAt).getTime()) / 60_000;
+          if (ageMin > 30) status = 'done';
+        }
+        return {
+          id: s.id,
+          title: s.title,
+          messages: [] as Thread["messages"],
+          linkedAgents: [],
+          delegationEvents: [],
+          linkedThreads: [],
+          tags: s.tags,
+          status,
+          unreadCount: 0,
+          hasApproval: false,
+          lastActive: s.lastMessageAt ?? new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          session: s,
+        } as Thread;
+      });
+    const sessions = result.data;
+    const now = Date.now();
+    const FIVE_MINS = 5 * 60 * 1000;
+    const SESSION_AGENT_MAP: Array<{ prefix: string; agentId: Agent['id'] }> = [
+      { prefix: 'agent:forge:subagent:', agentId: 'hephaestus' },
+      { prefix: 'agent:sentinel:subagent:', agentId: 'argus' },
+      { prefix: 'agent:studio:subagent:', agentId: 'ariadne' },
+      { prefix: 'agent:scout:subagent:', agentId: 'orion' },
+      { prefix: 'agent:mercury:subagent:', agentId: 'hermes' },
+    ];
+    type AgentDerivation = { status: Agent['status']; taskPreview: string; lastActiveMs: number };
+    const derivedAgentsMap = new Map<Agent['id'], AgentDerivation>();
+    for (const session of sessions) {
+      const mapping = SESSION_AGENT_MAP.find(({ prefix }) => session.id.startsWith(prefix));
+      if (!mapping) continue;
+      const agentId = mapping.agentId as Agent['id'];
+      const lastActiveMs = session.lastMessageAt ? new Date(session.lastMessageAt).getTime() : 0;
+      const ageMs = now - lastActiveMs;
+      const isRecent = ageMs < FIVE_MINS;
+      const existing = derivedAgentsMap.get(agentId);
+      if (existing && existing.lastActiveMs > lastActiveMs) continue;
+      let status: Agent['status'] = 'idle';
+      if (session.status === 'active' && isRecent) status = 'active';
+      else if (session.status === 'done' && isRecent) status = 'done';
+      else if (session.status === 'idle') status = 'idle';
+      const childTag = session.tags.find((t: string) => t.startsWith('delegated:'));
+      const childCount = childTag ? parseInt(childTag.split(':')[1]) : 0;
+      const taskPreview = childCount > 0
+        ? `Delegated ${childCount} subagent${childCount > 1 ? 's' : ''}`
+        : session.preview ? session.preview.slice(0, 60) : session.title;
+      derivedAgentsMap.set(agentId, { status, taskPreview, lastActiveMs });
+    }
+    const MOCK_AGENT_FIELDS: Record<Agent['id'], { name: string; role: string; browserEnabled: boolean; accentColor: string }> = {
+      hephaestus: { name: 'Hephaestus', role: 'execution', browserEnabled: false, accentColor: '#D44D2C' },
+      argus:      { name: 'Argus',      role: 'review',    browserEnabled: false, accentColor: '#44BB44' },
+      ariadne:   { name: 'Ariadne',   role: 'design',    browserEnabled: false, accentColor: '#CC44CC' },
+      orion:     { name: 'Orion',     role: 'research',  browserEnabled: false, accentColor: '#4A9EFF' },
+      hermes:    { name: 'Hermes',    role: 'commercial', browserEnabled: false, accentColor: '#E8A83C' },
+    };
+    const derivedAgents: Agent[] = (['hephaestus', 'argus', 'ariadne', 'orion', 'hermes'] as Agent['id'][])
+      .map((id) => {
+        const derived = derivedAgentsMap.get(id);
+        const defaults = MOCK_AGENT_FIELDS[id];
+        return {
+          id,
+          name: defaults.name,
+          role: defaults.role,
+          status: derived?.status ?? 'idle',
+          taskPreview: derived?.taskPreview ?? 'Idle',
+          browserEnabled: defaults.browserEnabled,
+          accentColor: defaults.accentColor,
+        } satisfies Agent;
+      });
+    const childSessionIds: Record<string, string[]> = {};
+    const parentSessions = sessions
+      .filter((s) => s.tags?.some((t: string) => t.startsWith('delegated:')))
+      .sort((a, b) => {
+        const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+        const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+        return bTime - aTime;
+      });
+    const subagentSessions = sessions.filter((s) => s.id.includes(':subagent:') && s.status === 'done');
+    for (const parent of parentSessions) {
+      const childTag = parent.tags?.find((t: string) => t.startsWith('delegated:'));
+      const childCount = childTag ? parseInt(childTag.split(':')[1]) : 0;
+      childSessionIds[parent.id] = [];
+      for (let i = 0; i < childCount && subagentSessions.length > 0; i++) {
+        const child = subagentSessions[i % subagentSessions.length];
+        if (!childSessionIds[parent.id].includes(child.id)) childSessionIds[parent.id].push(child.id);
+      }
+    }
+    const firstRealSession = adaptedThreads[0] ?? result.data[0] ?? null;
+    set((state) => ({
+      threads: adaptedThreads.map((t) => {
+        const sess = result.data.find((s) => s.title === t.title);
+        return { ...t, session: sess, linkedChildren: childSessionIds[t.id] ?? [] } as Thread;
+      }),
+      sessions: result.data,
+      sessionsFetchedAt: result.fetchedAt,
+      agents: derivedAgents,
+      delegationEvents: state.delegationEvents,
+      childSessionIds,
+      childToParentMap: Object.fromEntries(
+        Object.entries(childSessionIds).flatMap(([parentId, childIds]) => childIds.map((childId) => [childId, parentId]))
+      ),
+      selectedThreadId: firstRealSession?.id ?? state.selectedThreadId,
     }));
   },
 
