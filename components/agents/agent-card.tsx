@@ -2,6 +2,7 @@
 
 import { cn } from '@/lib/utils';
 import type { Agent } from '@/lib/types';
+import { getAgentLaneMeta } from '@/lib/agents';
 
 const STATUS_CONFIG: Record<Agent['status'], { label: string; color: string }> = {
   active:  { label: 'Active',  color: 'var(--mb-teal)' },
@@ -19,6 +20,8 @@ interface AgentCardProps {
 export function AgentCard({ agent, onClick }: AgentCardProps) {
   const statusCfg = STATUS_CONFIG[agent.status];
   const isActive  = agent.status === 'active';
+  // Sprint 8: Derive lane descriptor from agent metadata
+  const laneMeta = getAgentLaneMeta(agent.id);  
 
   return (
     <div
@@ -54,6 +57,22 @@ export function AgentCard({ agent, onClick }: AgentCardProps) {
           <p className="text-xs font-semibold" style={{ color: agent.accentColor }}>
             {agent.name}
           </p>
+          {/* Sprint 8: Lane badge — Build / Review / Design / Research / Commercial */}
+          {laneMeta && (
+            <span
+              className="text-xs font-mono px-1.5 py-0.5 rounded-full flex-shrink-0"
+              style={{
+                background: `${agent.accentColor}10`,
+                color: agent.accentColor,
+                border: `1px solid ${agent.accentColor}20`,
+                fontSize: '9px',
+                opacity: 0.75,
+              }}
+              title={`Lane: ${laneMeta.lane} — ${laneMeta.delegationReason}`}
+            >
+              {laneMeta.lane}
+            </span>
+          )}
         </div>
 
         {/* Status + browser badge */}
@@ -102,7 +121,7 @@ export function AgentCard({ agent, onClick }: AgentCardProps) {
 
       {/* Role subtitle — de-emphasized */}
       <p className="text-xs text-ash-muted font-mono leading-tight opacity-60">
-        {agent.role.split('—')[1]?.trim()}
+        {laneMeta?.delegationReason ?? agent.role.split('—')[1]?.trim() ?? agent.role}
       </p>
     </div>
   );

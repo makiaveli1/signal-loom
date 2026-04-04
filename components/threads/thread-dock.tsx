@@ -192,6 +192,7 @@ function ThreadListItemWrapper({
       hasPendingEmail={hasPendingEmail}
       emailGateUrgent={hasReviewRequired}
       conceptBadge={conceptBadge}
+      childCount={thread.linkedChildren?.length ?? 0}
     />
   );
 }

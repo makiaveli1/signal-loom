@@ -1,0 +1,47 @@
+Sprint 8: Agent-orchestration visibility + inspectable delegation
+
+Implemented 5 scopes from signal_loom_sprint_8_orchestration_visibility_prompt:
+
+Scope 1 - Delegation spawns inspectable work surfaces:
+- DelegationStrip: compact child session shortcut rows between ThreadHeader
+  and DelegationTimeline in ThreadPane; shows child title, status, Open button
+- ThreadDock: child session count indicator on threads with delegated children
+- ThreadHeader: delegation count badge now clickable - opens first child session
+  in secondary pane
+
+Scope 2 - Agent role legibility:
+- Agent lane descriptors (Build/Review/Design/Research/Commercial) on AgentCard
+  via AGENT_LANE_META lookup
+- AgentCard subtitle shows delegationReason
+- DelegationTimeline: delegated events show inline delegation reason chip
+  next to agent name
+
+Scope 3 - Parent-child task linking:
+- ThreadHeader: Working for label on child session headers
+- Split pane title bar: Parent context button on child sessions
+- childToParentMap: Record<childId, parentId> maintained in openChildSession
+
+Scope 4 - Follow-the-work delegation strip:
+- DelegationStrip component in ThreadPane with compact child session rows
+- followedSessionIds tracks operator-followed sessions
+
+Scope 5 - Pretext deferred:
+- PRETEXT_DEFERRED_ENHANCEMENT_PLAN.md created
+- // PRETEXT: Deferred comment added to store.ts
+
+Store fixes:
+- openChildSession: fixed childSessionIds direction (was child->parent, now parent->child)
+- openChildSession: derives parentId from delegationEvent.threadId
+- loadSessions: populates linkedChildren on thread objects
+- childToParentMap built from childSessionIds in loadSessions
+- activeDelegationEventId added to initial state
+
+New files:
+- lib/agents.ts: AGENT_LANE_META + getAgentLaneMeta()
+- PRETEXT_DEFERRED_ENHANCEMENT_PLAN.md
+
+Type additions:
+- Thread.linkedChildren
+- Thread.followed
+- Agent.lane
+- OpenClawSession.childSessionIds

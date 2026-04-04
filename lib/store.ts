@@ -1,5 +1,9 @@
 'use client';
 
+// PRETEXT: Deferred — see PRETEXT_DEFERRED_ENHANCEMENT_PLAN.md
+// Pretext would help with: internal work-tab virtualization, long child-session label truncation,
+// dock density scaling. Not needed until list/tab density becomes a measurable problem.
+
 import { create } from 'zustand';
 import type {
   Thread,
@@ -336,6 +340,10 @@ interface SignalLoomStore {
   // Sprint 8: Parent-child session relationships
   /** Maps parent session key → array of child session IDs */
   childSessionIds: Record<string, string[]>;
+  /** Maps child session key → parent session key */
+  childToParentMap: Record<string, string>;
+  /** Session keys the operator has chosen to follow (shown with visual indicator in dock) */
+  followedSessionIds: string[];
   /** Open a child session in the secondary pane (creates one if needed) */
   openChildSession: (childSessionId: string, delegationEventId?: string) => void;
   /** Sprint 8: ID of the delegation event the user is currently viewing (for visual marking) */
@@ -443,7 +451,8 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
 
   // Sprint 8: Parent-child session relationships
   childSessionIds: {},
-  // Sprint 8: Active delegation event being viewed
+  childToParentMap: {},
+  followedSessionIds: [],
   activeDelegationEventId: null,
 
   // Sprint 3 DE: Human email gate (Hermès)
@@ -850,23 +859,29 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       threads: (() => {
         const newSessions = result.data;
         if (adaptedThreads.length > 0) {
-          // Backfill session metadata into adapted threads.
+          // Backfill session metadata + Sprint 8 linkedChildren into adapted threads.
           return adaptedThreads.map((t) => {
             const sess = newSessions.find((s) => s.title === t.title);
-            return sess ? { ...t, session: sess } : t;
-          }) as Thread[];
+            return {
+              ...t,
+              session: sess,
+              // Sprint 8: surface child sessions on the parent thread for dock/header affordances
+              linkedChildren: childSessionIds[t.id] ?? [],
+            } as Thread;
+          });
         }
         // adaptedThreads is empty (likely all sessions filtered as subagent).
         // Add the first real session as a thread so the workspace can display it.
         if (newSessions.length > 0) {
           const first = newSessions[0];
           return [{
-            id: first.id,          // real session key as thread ID
+            id: first.id,
             title: first.title,
             status: (first.status === 'done' || first.status === 'idle' ? 'done' : 'active') as Thread['status'],
             messages: [] as Thread['messages'],
             lastActive: first.lastMessageAt ?? null,
             session: first,
+            linkedChildren: childSessionIds[first.id] ?? [],
           }] as Thread[];
         }
         return state.threads;
@@ -881,6 +896,12 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       delegationEvents: derivedEvents.length > 0 ? derivedEvents : state.delegationEvents,
       // Sprint 8: parent-child session relationships
       childSessionIds,
+      // Sprint 8: child→parent reverse map (derived from childSessionIds for "↙ Working for" UI)
+      childToParentMap: Object.fromEntries(
+        Object.entries(childSessionIds).flatMap(([parentId, childIds]) =>
+          childIds.map((childId) => [childId, parentId])
+        )
+      ),
       selectedThreadId: firstRealSession?.id ?? state.selectedThreadId,
       workspace: firstRealSession
         ? {
@@ -892,6 +913,9 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
             ),
           }
         : state.workspace,
+      // Sprint 8: preserve active delegation event selection across session reloads
+      activeDelegationEventId: state.activeDelegationEventId,
+      followedSessionIds: state.followedSessionIds,
     }));
   },
 
@@ -1429,6 +1453,21 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
         return {};
       }
 
+      // Sprint 8: Look up the delegation event to find the parent threadId.
+      // delegationEventId is the event ID; we match it against state.delegationEvents.
+      // The event's threadId IS the parent session.
+      const delegationEvent = delegationEventId
+        ? state.delegationEvents.find((e) => e.id === delegationEventId)
+        : null;
+      const parentSessionId = delegationEvent?.threadId
+        ?? state.sessions
+            .filter((s) => s.id !== childSessionId && s.tags?.some((t) => t.startsWith('delegated:')))
+            .sort((a, b) => {
+              const aT = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+              const bT = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+              return bT - aT;
+            })[0]?.id;
+
       // Build a Thread for the child session
       const childThread: Thread = {
         id: childSession.id,
@@ -1452,7 +1491,6 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
         : [...state.threads, childThread];
 
       // Determine workspace transition based on current preset
-      // Strategy: open child in secondary pane; keep parent visible in primary
       const ws = state.workspace;
       const isFocus = ws.panes.length === 1;
 
@@ -1460,23 +1498,20 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       let activePaneId: string;
 
       if (isFocus) {
-        // Switch from Focus to Duo: primary keeps current thread, secondary gets child
         const primaryThreadId = ws.panes[0]?.threadId ?? state.selectedThreadId;
         nextPanes = [
           { id: 'pane-left', role: 'primary', threadId: primaryThreadId, widthRatio: 0.5, active: true, collapsed: false },
           { id: 'pane-right', role: 'secondary', threadId: childSessionId, widthRatio: 0.5, active: false, collapsed: false },
         ];
-        activePaneId = 'pane-right'; // child is now active in secondary pane
+        activePaneId = 'pane-right';
       } else if (ws.preset === 'operator') {
-        // Operator: expand monitor pane to show child
         nextPanes = ws.panes.map((p) =>
           p.role === 'monitor'
             ? { ...p, threadId: childSessionId, collapsed: false, active: true }
-            : { ...p, active: p.role === 'primary' } // keep primary active too
+            : { ...p, active: p.role === 'primary' }
         );
         activePaneId = nextPanes.find((p) => p.role === 'monitor')?.id ?? 'pane-monitor';
       } else {
-        // Duo / Duo+Monitor: open in secondary pane, keep primary visible
         nextPanes = ws.panes.map((p) =>
           p.role === 'secondary'
             ? { ...p, threadId: childSessionId, active: true }
@@ -1485,16 +1520,39 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
         activePaneId = nextPanes.find((p) => p.role === 'secondary')?.id ?? ws.activePaneId;
       }
 
-      // Update childSessionIds map: find parent sessions that own this child
-      const parentSessionIds = state.sessions
-        .filter((s) =>
-          s.id !== childSessionId &&
-          s.tags?.some((t) => t.startsWith('delegated:') && parseInt(t.split(':')[1]) > 0)
-        )
-        .map((s) => s.id);
+      // Sprint 8: Build updated childSessionIds with correct direction (parent → children)
+      const nextChildSessionIds = { ...state.childSessionIds };
+      if (parentSessionId) {
+        nextChildSessionIds[parentSessionId] = [
+          ...(nextChildSessionIds[parentSessionId] ?? []),
+          childSessionId,
+        ];
+      }
+
+      // Sprint 8: Build child→parent reverse map
+      const nextChildToParentMap = { ...state.childToParentMap };
+      if (parentSessionId) {
+        nextChildToParentMap[childSessionId] = parentSessionId;
+      }
+
+      // Sprint 8: Mark as followed so dock shows the indicator
+      const nextFollowed = state.followedSessionIds.includes(childSessionId)
+        ? state.followedSessionIds
+        : [...state.followedSessionIds, childSessionId];
+
+      // Sprint 8: Update parent's linkedChildren to include this child
+      const threadsWithLinkedChildren = updatedThreads.map((t) => {
+        if (t.id === parentSessionId) {
+          return {
+            ...t,
+            linkedChildren: [...(t.linkedChildren ?? []), childSessionId],
+          };
+        }
+        return t;
+      });
 
       return {
-        threads: updatedThreads,
+        threads: threadsWithLinkedChildren,
         selectedThreadId: childSessionId,
         workspace: {
           ...ws,
@@ -1502,10 +1560,9 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
           panes: nextPanes,
           activePaneId,
         },
-        childSessionIds: {
-          ...state.childSessionIds,
-          [childSessionId]: parentSessionIds,
-        },
+        childSessionIds: nextChildSessionIds,
+        childToParentMap: nextChildToParentMap,
+        followedSessionIds: nextFollowed,
         // Sprint 8: Mark the delegation event as active so parent timeline shows it highlighted
         activeDelegationEventId: delegationEventId ?? null,
       };

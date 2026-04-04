@@ -215,6 +215,10 @@ export function ThreadPane({
     childSessionIds,
     openChildSession,
     activeDelegationEventId,
+    sessions,
+    setActivePaneById,
+    workspace,
+    childToParentMap,
   } = useSignalLoomStore();
 
   // Sprint 7: Load transcript when a real session is selected and not yet loaded
@@ -315,6 +319,21 @@ export function ThreadPane({
                 ▲ {approvals.filter((a) => a.linkedThreadId === thread.id).length}
               </span>
             )}
+            {/* Sprint 8: Parent context link — shown on child sessions in secondary pane */}
+            {paneRole === 'secondary' && childToParentMap[thread.id] && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const primaryPane = workspace.panes.find((p) => p.role === 'primary');
+                  if (primaryPane) setActivePaneById(primaryPane.id);
+                }}
+                className="flex items-center gap-1 text-xs font-mono flex-shrink-0 cursor-pointer transition-opacity hover:opacity-80 active:scale-95"
+                style={{ color: '#3ab8c8', fontSize: '9px', border: '1px solid rgba(58,184,200,0.25)', padding: '1px 6px', borderRadius: '4px', background: 'rgba(58,184,200,0.06)' }}
+                title="Return to parent session"
+              >
+                ↙ Parent context
+              </button>
+            )}
           </div>
           {onClose && (
             <button
@@ -338,7 +357,20 @@ export function ThreadPane({
       <ThreadHeader
         thread={thread}
         delegationCount={childSessionIds[thread.id]?.length ?? 0}
+        onOpenChildSession={
+          (childId) => openChildSession(childId, threadEvents.find((e) => e.childSessionIds?.includes(childId))?.id)
+        }
       />
+
+      {/* Sprint 8: Delegation strip — child session shortcuts shown below header */}
+      {(thread.linkedChildren?.length ?? 0) > 0 && (
+        <DelegationStrip
+          thread={thread}
+          onOpenChildSession={(childId) =>
+            openChildSession(childId, threadEvents.find((e) => e.childSessionIds?.includes(childId))?.id)
+          }
+        />
+      )}
 
       {/* Delegation timeline — above messages */}
       {showDelegationTimeline && (
@@ -389,6 +421,88 @@ export function ThreadPane({
 
       {/* Split view toggle — only in single-pane mode */}
       {!isSplit && <SplitViewToggle />}
+    </div>
+  );
+}
+
+// Sprint 8: DelegationStrip — compact child session shortcut strip
+function DelegationStrip({
+  thread,
+  onOpenChildSession,
+}: {
+  thread: Thread;
+  onOpenChildSession: (childId: string) => void;
+}) {
+  const { sessions } = useSignalLoomStore();
+  const childIds = thread.linkedChildren ?? [];
+
+  if (childIds.length === 0) return null;
+
+  return (
+    <div
+      className="flex flex-col gap-0.5 px-4 py-2 border-b"
+      style={{
+        background: 'rgba(155,141,200,0.04)',
+        borderColor: 'rgba(155,141,200,0.10)',
+      }}
+    >
+      {/* Label row */}
+      <div className="flex items-center gap-2 mb-1">
+        <svg width="9" height="9" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <circle cx="6" cy="6" r="2.5" stroke="#9b8dc8" strokeWidth="1.2" fill="none" />
+          <path d="M1 6C2 3.5 4 2 6 2s4 1.5 5 4c-1 2.5-3 4-5 4S2 8.5 1 6z" stroke="#9b8dc8" strokeWidth="1.2" fill="none" strokeLinejoin="round" />
+        </svg>
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'rgba(155,141,200,0.6)', fontSize: '9px' }}>
+          Delegated Work
+        </span>
+      </div>
+
+      {/* Child session rows */}
+      {childIds.slice(0, 3).map((childId) => {
+        const childSession = sessions.find((s) => s.id === childId);
+        const title = childSession?.title ?? childSession?.shortId ?? childId;
+        const status = childSession?.status === 'active' ? 'active' : 'done';
+
+        return (
+          <div
+            key={childId}
+            className="flex items-center gap-2 px-2 py-1 rounded border transition-all duration-100 cursor-pointer hover:bg-white/5"
+            style={{
+              borderColor: 'rgba(155,141,200,0.15)',
+              background: 'rgba(155,141,200,0.05)',
+            }}
+            onClick={() => onOpenChildSession(childId)}
+          >
+            {/* Status dot */}
+            <span
+              className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+              style={{ background: status === 'active' ? 'var(--mb-teal)' : 'var(--mb-jade)' }}
+            />
+            {/* Title */}
+            <span
+              className="flex-1 text-xs truncate"
+              style={{ color: 'var(--mb-ivory-dim)', fontFamily: 'monospace' }}
+              title={title}
+            >
+              {title}
+            </span>
+            {/* Status */}
+            <span
+              className="text-xs font-mono flex-shrink-0"
+              style={{ color: status === 'active' ? 'var(--mb-teal)' : 'var(--mb-jade)', fontSize: '9px' }}
+            >
+              {status}
+            </span>
+            {/* Open button */}
+            <span
+              className="text-xs font-mono flex-shrink-0"
+              style={{ color: '#9b8dc8', fontSize: '9px' }}
+            >
+              Open ↗
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }

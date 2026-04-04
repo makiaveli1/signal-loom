@@ -39,9 +39,11 @@ interface ThreadListItemProps {
   emailGateUrgent?: boolean;
   /** CRM: concept readiness badge for lead-associated threads */
   conceptBadge?: { label: string; color: string } | null;
+  /** Sprint 8: Number of child sessions delegated from this thread (for indicator) */
+  childCount?: number;
 }
 
-export function ThreadListItem({ thread, isSelected, onSelect, conceptBadge }: ThreadListItemProps) {
+export function ThreadListItem({ thread, isSelected, onSelect, conceptBadge, childCount }: ThreadListItemProps) {
   const statusColor = STATUS_COLORS[thread.status];
   const statusBg    = STATUS_BG[thread.status];
   const isActive    = thread.status === 'active';
@@ -82,6 +84,20 @@ export function ThreadListItem({ thread, isSelected, onSelect, conceptBadge }: T
           >
             {thread.title}
           </p>
+          {/* Sprint 8: Child sessions indicator */}
+          {(childCount ?? 0) > 0 && (
+            <span
+              className="flex items-center gap-0.5 text-xs font-mono flex-shrink-0"
+              style={{ color: '#9b8dc8', fontSize: '9px' }}
+              title={`${childCount} delegated child session${childCount !== 1 ? 's' : ''}`}
+            >
+              <svg width="8" height="8" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <circle cx="6" cy="6" r="2.5" stroke="#9b8dc8" strokeWidth="1.2" fill="none" />
+                <path d="M1 6C2 3.5 4 2 6 2s4 1.5 5 4c-1 2.5-3 4-5 4S2 8.5 1 6z" stroke="#9b8dc8" strokeWidth="1.2" fill="none" strokeLinejoin="round" />
+              </svg>
+              {childCount}
+            </span>
+          )}
         </div>
 
         {/* Status + badges row */}

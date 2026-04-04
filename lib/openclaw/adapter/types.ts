@@ -28,6 +28,7 @@ export interface OpenClawSession {
   status: SessionStatus;
   tags: string[];
   preview: string;               // first 120 chars of last message content
+  childSessionIds?: string[];    // exact child session keys from sessions_list
   linkedThreadId?: string;       // maps to Signal Loom thread model
 }
 

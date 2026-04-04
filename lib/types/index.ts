@@ -17,6 +17,10 @@ export interface Thread {
   unreadCount: number;
   hasApproval: boolean;
   linkedAgents: string[];
+  /** Sprint 8: child sessions delegated from this thread */
+  linkedChildren?: string[];
+  /** Sprint 8: tracked child sessions the operator has chosen to follow */
+  followed?: boolean;
   pinned?: boolean;
   messages: Message[];
   /** Raw OpenClaw session — attached when thread is created from a real session */
@@ -39,6 +43,7 @@ export type AgentId = 'hephaestus' | 'argus' | 'ariadne' | 'orion' | 'hermes';
 export interface Agent {
   id: AgentId;
   name: string;
+  lane?: string;
   role: string;
   status: AgentStatus;
   taskPreview: string;

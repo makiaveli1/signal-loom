@@ -93,7 +93,7 @@ function normalizeSession(raw: RawSession): OpenClawSession {
     status: normalizeSessionStatus(raw.status),
     tags: deriveTags(raw),
     preview: raw.displayName ?? raw.key,
-    // childSessions is useful metadata — surface via tags if present
+    childSessionIds: raw.childSessions ?? [],
   };
 }
 

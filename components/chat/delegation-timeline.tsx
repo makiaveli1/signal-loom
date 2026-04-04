@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import type { DelegationEvent, AgentId } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { getAgentLaneMeta } from '@/lib/agents';
 
 const AGENT_COLORS: Record<string, string> = {
   hephaestus: '#e8733a',
@@ -120,6 +121,21 @@ function TimelineEvent({
           >
             {event.actor}
           </span>
+          {/* Sprint 8: Delegation reason chip — why Nero delegated to this agent */}
+          {event.type === 'delegated' && event.targetAgentId && (
+            <span
+              className="text-xs font-mono px-1.5 py-0.5 rounded-full"
+              style={{
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.10)',
+                color: 'var(--mb-ash)',
+                fontSize: '9px',
+              }}
+              title={`Delegated for: ${getAgentLaneMeta(event.targetAgentId as AgentId)?.delegationReason ?? event.targetAgentId}`}
+            >
+              {getAgentLaneMeta(event.targetAgentId as AgentId)?.delegationReason ?? event.targetAgentId}
+            </span>
+          )}
           {/* Event phrase */}
           <span className="text-xs text-ivory-dim">{event.title}</span>
 
