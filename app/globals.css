@@ -263,6 +263,117 @@
   animation: signal-pulse 2s ease-in-out infinite;
 }
 
+/* ========================================================================
+   SPRINT 10 — Motion Design System
+   Selective, meaningful motion only. No decoration. No noise.
+   ======================================================================== */
+
+/* --- Entrance: message card slide-up + fade on first arrival -- */
+@keyframes msg-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.msg-enter {
+  animation: msg-enter 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* --- Entrance: delegation timeline event fade-in -- */
+@keyframes event-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.event-enter {
+  animation: event-enter 220ms ease-out both;
+}
+
+/* --- Expand/collapse: grid-row technique (no max-height hack) -- */
+/* Parent container: CSS grid with 1 row that animates 0fr → 1fr */
+.expand-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.expand-grid.is-open {
+  grid-template-rows: 1fr;
+}
+.expand-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* --- Composer send button: press micro-interaction -- */
+@keyframes btn-press {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(0.93); }
+  70%  { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+
+.composer-send-ready {
+  animation: btn-press 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* --- Streaming mode border: smooth transition on active send -- */
+.composer-streaming {
+  transition: border-color 200ms ease, box-shadow 200ms ease !important;
+}
+
+/* --- Jump-to-latest pill: fade in / fade out -- */
+@keyframes pill-enter {
+  from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.jump-pill-enter {
+  animation: pill-enter 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* --- Session info panel collapse: height slide -- */
+.info-panel-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.info-panel-collapse.is-open {
+  grid-template-rows: 1fr;
+}
+.info-panel-collapse-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* --- Thread header collapse: slide -- */
+.thread-header-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.thread-header-collapse.is-open {
+  grid-template-rows: 1fr;
+}
+.thread-header-collapse-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* --- Status badge: breathe on active state -- */
+@keyframes badge-breathe {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(0,200,150,0.3); }
+  50%       { opacity: 0.85; box-shadow: 0 0 0 4px rgba(0,200,150,0); }
+}
+
+.badge-live {
+  animation: badge-breathe 3s ease-in-out infinite;
+}
+
 /* Glow effects */
 .glow-teal {
   box-shadow: 0 0 12px var(--mb-teal-glow), 0 0 4px var(--mb-teal-dim);

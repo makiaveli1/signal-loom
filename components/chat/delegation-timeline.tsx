@@ -56,6 +56,7 @@ function TimelineEvent({
   inlineMode,
   isActive,
   delegationEventId,
+  mounted,
 }: {
   event: DelegationEvent;
   onClick?: () => void;
@@ -65,6 +66,8 @@ function TimelineEvent({
   isActive?: boolean;
   /** Sprint 8: Pass to onOpenChildSession when user clicks the open action */
   delegationEventId?: string;
+  /** Sprint 10: True after initial mount — used to fire one-shot entrance animations */
+  mounted?: boolean;
 }) {
   const [time, setTime] = useState(event.createdAt);
 
@@ -92,7 +95,7 @@ function TimelineEvent({
 
   return (
     <div
-      className={`flex items-start gap-3 py-1.5 group relative${isActive ? ' rounded-md' : ''}`}
+      className={`flex items-start gap-3 py-1.5 group relative${isActive ? ' rounded-md' : ''}${mounted ? ' event-enter' : ''}`}
       style={isActive ? { background: 'rgba(155,141,200,0.06)', border: '1px solid rgba(155,141,200,0.20)' } : undefined}
     >
       {/* Vertical line connector */}
@@ -206,6 +209,9 @@ export function DelegationTimeline({
 }: DelegationTimelineProps) {
   const [filter, setFilter] = useState<AgentId | 'all'>('all');
   const [expanded, setExpanded] = useState(false);
+  // Sprint 10: Track initial mount for entrance animation — animation fires once on load
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   const MAX_VISIBLE = 5;
 
@@ -324,7 +330,7 @@ export function DelegationTimeline({
                 return (
                   <div key={`collapsed-${rep.id}-${idx}`}>
                     <div
-                      className="flex items-start gap-3 py-1.5"
+                      className={`flex items-start gap-3 py-1.5${mounted ? ' event-enter' : ''}`}
                       style={{ opacity: 0.6 }}
                     >
                       <div className="flex flex-col items-center flex-shrink-0 w-4">
@@ -381,6 +387,7 @@ export function DelegationTimeline({
                     onOpenChildSession={onOpenChildSession}
                     inlineMode={inlineMode}
                     isActive={isActive}
+                    mounted={mounted}
                   />
                   {idx < visible.length - 1 && (
                     <div

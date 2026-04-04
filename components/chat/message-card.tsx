@@ -29,6 +29,8 @@ interface MessageCardProps {
   isHighlighted?: boolean;
   /** Sprint 9: true when this message is actively receiving streaming content */
   isStreaming?: boolean;
+  /** Sprint 10: true when this is the most recent message — triggers entrance animation */
+  isNew?: boolean;
 }
 
 // Sprint 9.5: Parse message content into an ordered interleaved stream.
@@ -137,14 +139,23 @@ function parseContentStream(content: string): {
   };
 }
 
-export function MessageCard({ message, isHighlighted, isStreaming }: MessageCardProps) {
+export function MessageCard({ message, isHighlighted, isStreaming, isNew }: MessageCardProps) {
   if (message.role === 'action-summary') {
-    return <ActionSummaryCard message={message} isHighlighted={isHighlighted} />;
+    return <ActionSummaryCard message={message} isHighlighted={isHighlighted} isNew={isNew} />;
   }
 
   // Sprint 9.5: Parse into ordered content stream
   const { chunks, hasReasoning, answerOnly } = parseContentStream(message.content);
   const [reasoningExpanded, setReasoningExpanded] = useState(false);
+  // Sprint 9.5/10: Derive reasoning chunks at outer scope for use in both
+  // the expand/collapse section and the InterleavedContent
+  const reasoningChunks = chunks.filter((c) => c.kind === 'reasoning');
+
+  // Sprint 10: Entrance animation — runs once on mount when isNew=true
+  useEffect(() => {
+    if (!isNew) return;
+    // Animation plays once via CSS; no state update needed
+  }, [isNew]);
 
   // Determine if this message has only answer chunks (no reasoning at all)
   const pureAnswer = !hasReasoning;
@@ -163,7 +174,8 @@ export function MessageCard({ message, isHighlighted, isStreaming }: MessageCard
           ? "bg-elevated/70 ml-8"
           : message.role === 'nero'
           ? "bg-reading/80 mr-8 border"
-          : "bg-graphite/50 mr-8"
+          : "bg-graphite/50 mr-8",
+        isNew && "msg-enter"
       )}
       style={
         message.role === 'nero'
@@ -260,7 +272,7 @@ export function MessageCard({ message, isHighlighted, isStreaming }: MessageCard
           )}
         </div>
 
-        {/* Sprint 9.5: Reasoning toggle — only shown when reasoning exists */}
+        {/* Sprint 9.5/10: Reasoning toggle + animated expand/collapse — only shown when reasoning exists */}
         {hasReasoning && (
           <div className="mt-1.5">
             {/* Collapse/expand toggle */}
@@ -289,6 +301,58 @@ export function MessageCard({ message, isHighlighted, isStreaming }: MessageCard
                 <span>reasoning ({countReasoningWords(chunks)})</span>
               )}
             </button>
+
+            {/* Sprint 10: Animated expand/collapse using grid-row technique */}
+            <div className={cn('expand-grid', reasoningExpanded && 'is-open')}>
+              <div className="expand-inner">
+                <div
+                  className="mt-1.5 rounded border px-3 py-2"
+                  style={{
+                    background: 'rgba(201,160,58,0.04)',
+                    borderColor: 'rgba(201,160,58,0.12)',
+                  }}
+                >
+                  {/* Reasoning label */}
+                  <span
+                    className="block text-[9px] uppercase tracking-widest mb-1 opacity-50"
+                    style={{
+                      color: 'rgba(201,160,58,0.4)',
+                      letterSpacing: '0.1em',
+                      fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+                    }}
+                  >
+                    reasoning
+                  </span>
+                  {/* Reasoning content — rendered inline in the interleaved stream */}
+                  <span
+                    className="block"
+                    style={{
+                      color: 'rgba(201,160,58,0.65)',
+                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                      fontSize: '11px',
+                      lineHeight: '1.6',
+                    }}
+                  >
+                    {reasoningChunks.map((c, i) => (
+                      <span key={`r-${i}`} className="block mb-1 last:mb-0">
+                        {c.text}
+                      </span>
+                    ))}
+                    {isStreaming && (
+                      <span
+                        className="inline-block w-1 h-2 ml-1 rounded-sm"
+                        style={{
+                          background: 'rgba(201,160,58,0.6)',
+                          animation: 'signal-pulse 1.2s ease-in-out infinite',
+                          verticalAlign: 'text-bottom',
+                        }}
+                        aria-hidden="true"
+                      />
+                    )}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -308,9 +372,9 @@ export function MessageCard({ message, isHighlighted, isStreaming }: MessageCard
   );
 }
 
-// Sprint 9.5: Render an ordered list of answer + reasoning chunks as a continuous stream.
-// Answer chunks render in normal text; reasoning chunks render in a visually distinct
-// inline style with a left accent bar, creating the feel of one continuous thought.
+// Sprint 9.5/10: Render answer chunks as a continuous text stream.
+// Reasoning lives in the animated expand/collapse section below.
+// This function only handles the answer portion of the interleaved content.
 function InterleavedContent({
   chunks,
   isStreaming,
@@ -319,95 +383,23 @@ function InterleavedContent({
   isStreaming?: boolean;
 }) {
   const answerChunks = chunks.filter((c) => c.kind === 'answer');
-  const reasoningChunks = chunks.filter((c) => c.kind === 'reasoning');
-  const hasReasoning = reasoningChunks.length > 0;
-
-  if (!hasReasoning) {
-    // No reasoning — render answer normally with streaming cursor
-    return (
-      <>
-        {chunks.map((c, i) => (
-          <span key={i}>{c.text}</span>
-        ))}
-        {isStreaming && (
-          <span
-            className="inline-block w-1.5 h-3 ml-0.5 rounded-sm"
-            style={{
-              background: 'var(--mb-teal)',
-              animation: 'signal-pulse 1s ease-in-out infinite',
-              verticalAlign: 'text-bottom',
-            }}
-            aria-hidden="true"
-          />
-        )}
-      </>
-    );
-  }
-
-  // Sprint 9.5: Continuous stream layout:
-  // 1. Answer text (primary, prominent)
-  // 2. A subtle divider
-  // 3. Reasoning stream (visually distinct, subdued, left accent bar)
 
   return (
     <>
-      {/* Primary answer text */}
       {answerChunks.map((c, i) => (
         <span key={`a-${i}`}>{c.text}</span>
       ))}
-
-      {/* Divider — subtle horizontal rule between answer and reasoning */}
-      {answerChunks.length > 0 && reasoningChunks.length > 0 && (
+      {isStreaming && (
         <span
-          className="block my-2 opacity-20"
+          className="inline-block w-1.5 h-3 ml-0.5 rounded-sm"
           style={{
-            borderTop: '1px solid rgba(201,160,58,0.5)',
-            width: '60%',
+            background: 'var(--mb-teal)',
+            animation: 'signal-pulse 1s ease-in-out infinite',
+            verticalAlign: 'text-bottom',
           }}
+          aria-hidden="true"
         />
       )}
-
-      {/* Reasoning stream — subdued, left accent, continuous */}
-      <span
-        className="block"
-        style={{
-          color: 'rgba(201,160,58,0.65)',
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-          fontSize: '11px',
-          lineHeight: '1.6',
-          paddingLeft: '10px',
-          borderLeft: '2px solid rgba(201,160,58,0.35)',
-          marginLeft: '2px',
-        }}
-      >
-        {/* Sprint 9.5: Show reasoning label */}
-        <span
-          className="block text-[9px] uppercase tracking-widest mb-1 opacity-50 font-sans"
-          style={{ color: 'rgba(201,160,58,0.4)', letterSpacing: '0.1em' }}
-        >
-          reasoning
-        </span>
-
-        {/* All reasoning sections as one continuous block */}
-        {reasoningChunks.map((c, i) => (
-          <span key={`r-${i}`} className="block mb-1 last:mb-0">
-            {c.text}
-          </span>
-        ))}
-
-        {/* Streaming cursor at end of reasoning stream */}
-        {isStreaming && (
-          <span
-            className="inline-block w-1 h-2 ml-1 rounded-sm"
-            style={{
-              background: 'rgba(201,160,58,0.6)',
-              animation: 'signal-pulse 1.2s ease-in-out infinite',
-              verticalAlign: 'text-bottom',
-            }}
-            aria-hidden="true"
-          />
-        )}
-      </span>
     </>
   );
 }
@@ -422,10 +414,13 @@ function countReasoningWords(chunks: ContentChunk[]): string {
   return `${Math.round(words / 100) * 100}w+`;
 }
 
-function ActionSummaryCard({ message, isHighlighted }: MessageCardProps) {
+function ActionSummaryCard({ message, isHighlighted, isNew }: MessageCardProps) {
   return (
     <div
-      className="flex gap-3 px-4 py-3 rounded-lg mx-8 my-2 border transition-all duration-300"
+      className={cn(
+        "flex gap-3 px-4 py-3 rounded-lg mx-8 my-2 border transition-all duration-300",
+        isNew && "msg-enter"
+      )}
       style={{
         background: 'rgba(139,126,200,0.06)',
         borderColor: isHighlighted

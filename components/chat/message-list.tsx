@@ -21,6 +21,8 @@ export function MessageList({ thread }: MessageListProps) {
   // Sprint 9: Count new messages that arrived while user scrolled away
   const [newMessageCount, setNewMessageCount] = useState(0);
   const prevMessageCountRef = useRef(thread.messages.length);
+  // Sprint 10: Track the newest message ID for entrance animation
+  const newestMessageIdRef = useRef<string | null>(null);
   const { highlightedMessageId, composerState } = useSignalLoomStore();
 
   const isStreaming = composerState.isStreaming;
@@ -67,6 +69,9 @@ export function MessageList({ thread }: MessageListProps) {
         // Scrolled away — count new messages, don't interrupt
         setNewMessageCount((n) => n + (thread.messages.length - prev));
       }
+      // Sprint 10: Mark the newest message for entrance animation
+      const lastMsg = thread.messages[thread.messages.length - 1];
+      if (lastMsg) newestMessageIdRef.current = lastMsg.id;
     }
   }, [thread.messages.length, isAtBottom]);
 
@@ -118,6 +123,8 @@ export function MessageList({ thread }: MessageListProps) {
                   isHighlighted={message.id === highlightedMessageId}
                   // Sprint 9: Mark the last assistant message if it's actively streaming
                   isStreaming={isLast && isLastMsgStreaming}
+                  // Sprint 10: Trigger entrance animation on the newest message
+                  isNew={isLast && newestMessageIdRef.current === message.id}
                 />
               </div>
             );
@@ -126,14 +133,14 @@ export function MessageList({ thread }: MessageListProps) {
         </div>
       </ScrollArea>
 
-      {/* Sprint 9: Jump-to-latest pill — appears when scrolled away and new messages arrived */}
+      {/* Sprint 9/10: Jump-to-latest pill — appears when scrolled away and new messages arrived */}
       {newMessageCount > 0 && (
         <button
           onClick={() => {
             scrollToBottom(true);
             setNewMessageCount(0);
           }}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full text-xs font-mono cursor-pointer transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg"
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full text-xs font-mono cursor-pointer hover:scale-105 active:scale-95 shadow-lg jump-pill-enter"
           style={{
             background: 'var(--mb-teal)',
             color: 'var(--mb-carbon)',
@@ -143,8 +150,8 @@ export function MessageList({ thread }: MessageListProps) {
           aria-label={`Jump to ${newMessageCount} new message${newMessageCount !== 1 ? 's' : ''}`}
         >
           <span
-            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-            style={{ background: 'var(--mb-carbon)', animation: 'signal-pulse 1.5s ease-in-out infinite' }}
+            className="w-1.5 h-1.5 rounded-full flex-shrink-0 badge-live"
+            style={{ background: 'var(--mb-carbon)' }}
           />
           ↓ {newMessageCount} new message{newMessageCount !== 1 ? 's' : ''} — jump to latest
         </button>

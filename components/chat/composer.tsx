@@ -52,6 +52,7 @@ export function Composer({ threadId }: ComposerProps) {
   const { composerState, sendMessage, sendStreamingMessage } = useSignalLoomStore();
   const [value, setValue] = useState('');
   const [streamingMode, setStreamingMode] = useState(false);
+  const [sendPulse, setSendPulse] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { isSending, isStreaming, streamingResponse, error, lastSentAt } = composerState;
@@ -59,6 +60,11 @@ export function Composer({ threadId }: ComposerProps) {
   // Auto-resize textarea
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setValue(e.target.value);
+    // Sprint 10: Fire micro-interaction on send button when text becomes available
+    if (!value.trim() && e.target.value.trim()) {
+      setSendPulse(true);
+      setTimeout(() => setSendPulse(false), 350);
+    }
     const el = e.currentTarget;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
@@ -173,7 +179,7 @@ export function Composer({ threadId }: ComposerProps) {
 
         {/* Input area */}
         <div
-          className="flex-1 flex items-end gap-2 px-3 py-2.5 rounded-lg border transition-all duration-150"
+          className="flex-1 flex items-end gap-2 px-3 py-2.5 rounded-lg border transition-all"
           style={{
             background: 'var(--mb-panel)',
             borderColor: canSend
@@ -190,6 +196,9 @@ export function Composer({ threadId }: ComposerProps) {
               : error
               ? '0 0 0 1px rgba(232,96,58,0.15)'
               : 'none',
+            transitionProperty: 'border-color, box-shadow',
+            transitionDuration: '200ms',
+            transitionTimingFunction: 'ease',
           }}
         >
           <textarea
@@ -210,7 +219,8 @@ export function Composer({ threadId }: ComposerProps) {
             onClick={handleSend}
             className={cn(
               'flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center transition-all duration-150',
-              canSend ? 'cursor-pointer' : 'cursor-not-allowed'
+              canSend ? 'cursor-pointer' : 'cursor-not-allowed',
+              sendPulse && 'composer-send-ready'
             )}
             style={{
               background: canSend
