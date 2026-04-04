@@ -243,6 +243,9 @@ export function ThreadPane({
     childToParentMap,
   } = useSignalLoomStore();
 
+  // Sprint 9: Collapse state for the session info panel (Delegated Work + Timeline + Session Details)
+  const [infoPanelCollapsed, setInfoPanelCollapsed] = useState(false);
+
   // Sprint 7: Load transcript when a real session is selected and not yet loaded
   useEffect(() => {
     if (!thread.session) return; // no real session — nothing to load
@@ -396,36 +399,21 @@ export function ThreadPane({
         }
       />
 
-      {/* Sprint 8: Delegation strip — child session shortcuts shown below header */}
-      {(thread.linkedChildren?.length ?? 0) > 0 && (
-        <DelegationStrip
-          thread={thread}
-          onOpenChildSession={(childId) =>
-            openChildSession(childId, threadEvents.find((e) => e.childSessionIds?.includes(childId))?.id)
-          }
-        />
-      )}
-
-      {/* Delegation timeline — above messages */}
-      {showDelegationTimeline && (
-        <DelegationTimeline
-          events={threadEvents}
-          fetchedAt={sessionsFetchedAt}
-          onEventClick={(event) => {
-            if (event.linkedMessageId) {
-              highlightMessage(event.linkedMessageId);
-            }
-          }}
-          onOpenChildSession={(childSessionId) =>
-            openChildSession(childSessionId, threadEvents.find((e) => e.childSessionIds?.includes(childSessionId))?.id)
-          }
-          inlineMode={true}
-          activeEventId={activeDelegationEventId}
-        />
-      )}
-
-      {/* Real session transcript block — shows history availability state */}
-      {thread.session && <TranscriptBlock thread={thread} />}
+      {/* Sprint 9: Session info panel — wraps Delegated Work + Timeline + Session Details */}
+      <SessionInfoPanel
+        thread={thread}
+        threadEvents={threadEvents}
+        sessionsFetchedAt={sessionsFetchedAt}
+        childSessionIds={childSessionIds}
+        showDelegationTimeline={showDelegationTimeline}
+        activeDelegationEventId={activeDelegationEventId}
+        onOpenChildSession={(childId) =>
+          openChildSession(childId, threadEvents.find((e) => e.childSessionIds?.includes(childId))?.id)
+        }
+        onHighlightMessage={highlightMessage}
+        collapsed={infoPanelCollapsed}
+        onToggleCollapse={() => setInfoPanelCollapsed((v) => !v)}
+      />
 
       {/* Context enrichment block — sparse threads ≤2 messages */}
       {thread.messages.length <= 2 && !isSplit && (
@@ -455,6 +443,169 @@ export function ThreadPane({
 
       {/* Split view toggle — only in single-pane mode */}
       {!isSplit && <SplitViewToggle />}
+    </div>
+  );
+}
+
+// Sprint 9: SessionInfoPanel — wraps Delegated Work + Timeline + Session Details with one collapse toggle
+function SessionInfoPanel({
+  thread,
+  threadEvents,
+  sessionsFetchedAt,
+  childSessionIds,
+  showDelegationTimeline,
+  activeDelegationEventId,
+  onOpenChildSession,
+  onHighlightMessage,
+  collapsed,
+  onToggleCollapse,
+}: {
+  thread: Thread;
+  threadEvents: import('@/lib/types').DelegationEvent[];
+  sessionsFetchedAt: string | null;
+  childSessionIds: Record<string, string[]>;
+  showDelegationTimeline: boolean;
+  activeDelegationEventId: string | null;
+  onOpenChildSession: (childId: string) => void;
+  onHighlightMessage: (messageId: string | null) => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+}) {
+  const hasDelegatedChildren = (thread.linkedChildren?.length ?? 0) > 0;
+  const hasSession = !!thread.session;
+
+  // Collapsed: show a slim single-line summary strip
+  if (collapsed) {
+    return (
+      <button
+        onClick={onToggleCollapse}
+        className="w-full flex items-center gap-3 px-4 py-1.5 border-b cursor-pointer transition-all duration-150 hover:bg-white/[0.02]"
+        style={{
+          background: 'var(--mb-shell)',
+          borderColor: 'rgba(255,255,255,0.04)',
+          minHeight: '32px',
+        }}
+        title="Expand session info panel"
+      >
+        {/* Collapse chevron */}
+        <svg
+          width="8"
+          height="8"
+          viewBox="0 0 8 8"
+          fill="none"
+          className="flex-shrink-0"
+          style={{ color: 'var(--mb-ash)' }}
+        >
+          <path d="M2 1L6 4L2 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+
+        {/* Section labels as pills */}
+        <span className="text-[10px] font-mono text-ivory-dim flex-shrink-0">
+          Session Info
+        </span>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {hasDelegatedChildren && (
+            <span
+              className="text-[10px] font-mono px-1.5 py-0.5 rounded-full"
+              style={{
+                background: 'rgba(155,141,200,0.10)',
+                border: '1px solid rgba(155,141,200,0.20)',
+                color: '#9b8dc8',
+              }}
+            >
+              {(thread.linkedChildren ?? []).length} delegated
+            </span>
+          )}
+          {showDelegationTimeline && threadEvents.length > 0 && (
+            <span
+              className="text-[10px] font-mono px-1.5 py-0.5 rounded-full"
+              style={{
+                background: 'rgba(201,160,58,0.08)',
+                border: '1px solid rgba(201,160,58,0.18)',
+                color: 'rgba(201,160,58,0.8)',
+              }}
+            >
+              {threadEvents.length} events
+            </span>
+          )}
+          {hasSession && (
+            <span
+              className="text-[10px] font-mono px-1.5 py-0.5 rounded-full"
+              style={{
+                background: 'rgba(0,0,0,0.15)',
+                border: '1px solid rgba(255,255,255,0.07)',
+                color: 'var(--mb-ash)',
+              }}
+            >
+              Session Details
+            </span>
+          )}
+        </div>
+
+        <span className="ml-auto text-[10px] text-ash-muted flex-shrink-0">
+          expand ↗
+        </span>
+      </button>
+    );
+  }
+
+  // Expanded: show all sections with a collapse toggle at the top
+  return (
+    <div className="border-b" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+      {/* Section header with collapse toggle */}
+      <button
+        onClick={onToggleCollapse}
+        className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-all duration-150 hover:bg-white/[0.02]"
+        style={{ background: 'rgba(255,255,255,0.01)' }}
+        title="Collapse session info — give more room to chat"
+      >
+        <svg
+          width="8"
+          height="8"
+          viewBox="0 0 8 8"
+          fill="none"
+          className="flex-shrink-0"
+          style={{ color: 'var(--mb-ash)' }}
+        >
+          <path d="M2 7L6 4L2 1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-ash-muted">
+          Session Info
+        </span>
+        <span className="ml-auto text-[10px] text-ash-muted">
+          collapse ‹
+        </span>
+      </button>
+
+      {/* Sprint 8: Delegation strip — child session shortcuts */}
+      {hasDelegatedChildren && (
+        <DelegationStrip
+          thread={thread}
+          onOpenChildSession={onOpenChildSession}
+        />
+      )}
+
+      {/* Delegation timeline */}
+      {showDelegationTimeline && (
+        <DelegationTimeline
+          events={threadEvents}
+          fetchedAt={sessionsFetchedAt}
+          onEventClick={(event) => {
+            if (event.linkedMessageId) {
+              onHighlightMessage(event.linkedMessageId);
+            }
+          }}
+          onOpenChildSession={(childSessionId) =>
+            onOpenChildSession(childSessionId)
+          }
+          inlineMode={true}
+          activeEventId={activeDelegationEventId}
+        />
+      )}
+
+      {/* Real session transcript block */}
+      {hasSession && <TranscriptBlock thread={thread} />}
     </div>
   );
 }
