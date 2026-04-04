@@ -254,17 +254,9 @@ export function ThreadPane({
     loadMessagesForThread(thread.id);
   }, [thread.id, thread.session, sessionMessages, sessionMessagesLoading, loadMessagesForThread]);
 
-  // Sprint 9: Poll active sessions for new messages every 5 seconds
-  useEffect(() => {
-    if (!thread.session) return;
-    if (thread.status !== 'active') return;
-
-    const interval = setInterval(() => {
-      loadMessagesForThread(thread.id);
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [thread.id, thread.session, thread.status, loadMessagesForThread]);
+  // Sprint 10.6: No more 5-second polling — SSE live events handle new messages.
+  // Keeping the SSE connection alive is the only refresh mechanism needed.
+  // Polling caused visible list refreshes and killed streaming state mid-stream.
 
   const threadEvents = delegationEvents.filter((e) => e.threadId === thread.id);
   const pendingApproval = approvals.find((a) => a.linkedThreadId === thread.id);

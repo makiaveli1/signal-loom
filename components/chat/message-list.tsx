@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageCard } from './message-card';
@@ -11,8 +11,6 @@ interface MessageListProps {
   thread: Thread;
 }
 
-// Sprint 10.5: Threshold increased to 150px — forgiving enough to feel natural,
-// small enough to not auto-scroll when user is mid-read
 const BOTTOM_THRESHOLD = 150;
 
 export function MessageList({ thread }: MessageListProps) {
@@ -21,74 +19,77 @@ export function MessageList({ thread }: MessageListProps) {
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const isAutoScrolling = useRef(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
-  // Sprint 9: Count new messages that arrived while user scrolled away
   const [newMessageCount, setNewMessageCount] = useState(0);
-  const prevMessageCountRef = useRef(thread.messages.length);
-  // Sprint 10: Track the newest message ID for entrance animation
-  const newestMessageIdRef = useRef<string | null>(null);
-  const { highlightedMessageId, composerState, childToParentMap } = useSignalLoomStore();
 
+  // Sprint 10.6: Track seen message IDs — only animate genuinely new arrivals,
+  // never replay on full-array replacements (e.g. from SSE background reloads).
+  const seenMessageIdsRef = useRef<Set<string>>(new Set(thread.messages.map((m) => m.id)));
+  const prevMessageIdsRef = useRef<Set<string>>(new Set(thread.messages.map((m) => m.id)));
+
+  // Compute genuinely new IDs on every render (before updating seenMessageIdsRef)
+  const newMessageIds = useMemo(() => {
+    const prev = prevMessageIdsRef.current;
+    return new Set(thread.messages.map((m) => m.id).filter((id) => !prev.has(id)));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thread.messages]);
+
+  // After render: update seen IDs so animations don't replay on next render
+  useEffect(() => {
+    const added = new Set(thread.messages.map((m) => m.id));
+    // Add new IDs to the seen set
+    newMessageIds.forEach((id) => seenMessageIdsRef.current.add(id));
+    // Sync prev IDs for next render
+    prevMessageIdsRef.current = added;
+  }, [thread.messages, newMessageIds]);
+
+  const { highlightedMessageId, composerState, childToParentMap } = useSignalLoomStore();
   const isStreaming = composerState.isStreaming;
   const streamingContent = composerState.streamingResponse;
 
-  // Smart scroll to bottom:
-  // - Only auto-scroll if user is already near the bottom
-  // - If user scrolled away from bottom, don't interrupt them
   const scrollToBottom = useCallback((force = false) => {
-    if (!bottomRef.current) return;
-    const el = scrollRef.current;
-    if (!el) return;
-
-    if (force || isAtAtBottom(el)) {
+    if (!bottomRef.current || !scrollRef.current) return;
+    if (force || isAtBottom) {
       isAutoScrolling.current = true;
       bottomRef.current.scrollIntoView({ behavior: 'smooth' });
       setTimeout(() => { isAutoScrolling.current = false; }, 300);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isAtBottom]);
 
-  function isAtAtBottom(el: HTMLDivElement): boolean {
+  function checkNearBottom(el: HTMLDivElement): boolean {
     const { scrollTop, scrollHeight, clientHeight } = el;
     return scrollHeight - scrollTop - clientHeight < BOTTOM_THRESHOLD;
   }
 
-  // Detect when user scrolls away from bottom
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el || isAutoScrolling.current) return;
-    const atBottom = isAtAtBottom(el);
+    const atBottom = checkNearBottom(el);
     setIsAtBottom(atBottom);
-    if (atBottom) setNewMessageCount(0); // reset when back at bottom
+    if (atBottom) setNewMessageCount(0);
   }, []);
 
-  // Sprint 10.5: Return-to-live — when user scrolls back within threshold, rejoin live follow
   const wasAwayRef = useRef(false);
   useEffect(() => {
     if (isAtBottom && wasAwayRef.current) {
-      // User just scrolled back into live zone — gentle nudge to bottom
       scrollToBottom(true);
       wasAwayRef.current = false;
     } else if (!isAtBottom) {
       wasAwayRef.current = true;
     }
-  }, [isAtBottom]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isAtBottom, scrollToBottom]);
 
-  // Track new messages: if user scrolled away, count new arrivals instead of auto-scrolling
+  // Count new messages when user is scrolled away
   useEffect(() => {
-    const prev = prevMessageCountRef.current;
-    prevMessageCountRef.current = thread.messages.length;
-
-    if (thread.messages.length > prev) {
-      if (isAtBottom) {
-        // Already at bottom — let the auto-scroll handle it
-      } else {
-        // Scrolled away — count new messages, don't interrupt
-        setNewMessageCount((n) => n + (thread.messages.length - prev));
+    const prevLen = seenMessageIdsRef.current.size - newMessageIds.size + thread.messages.length;
+    // seenMessageIdsRef.size includes messages we've seen in ALL renders
+    // We need the previous render's count — use prevMessageIdsRef.size
+    const prevCount = prevMessageIdsRef.current.size;
+    if (thread.messages.length > prevCount) {
+      if (!isAtBottom) {
+        setNewMessageCount((n) => n + (thread.messages.length - prevCount));
       }
-      // Sprint 10: Mark the newest message for entrance animation
-      const lastMsg = thread.messages[thread.messages.length - 1];
-      if (lastMsg) newestMessageIdRef.current = lastMsg.id;
     }
-  }, [thread.messages.length, isAtBottom]);
+  }, [thread.messages.length, isAtBottom, newMessageIds]);
 
   // Scroll to highlighted message
   useEffect(() => {
@@ -107,8 +108,6 @@ export function MessageList({ thread }: MessageListProps) {
   }, [highlightedMessageId]);
 
   const lastMsg = thread.messages[thread.messages.length - 1];
-  // Sprint 9: Detect if the last message is the one currently being streamed in.
-  // Uses 'nero' role (agent response) and content match against the live streaming accumulator.
   const isLastMsgStreaming =
     isStreaming &&
     lastMsg?.role === 'nero' &&
@@ -125,6 +124,10 @@ export function MessageList({ thread }: MessageListProps) {
         <div className="space-y-1">
           {thread.messages.map((message, idx) => {
             const isLast = idx === thread.messages.length - 1;
+            // Sprint 10.6: Only animate messages that are genuinely new arrivals.
+            // seenMessageIdsRef prevents replaying animations on full-array replacements.
+            const isNew = newMessageIds.has(message.id) && !seenMessageIdsRef.current.has(message.id);
+
             return (
               <div
                 key={message.id}
@@ -136,11 +139,8 @@ export function MessageList({ thread }: MessageListProps) {
                 <MessageCard
                   message={message}
                   isHighlighted={message.id === highlightedMessageId}
-                  // Sprint 9: Mark the last assistant message if it's actively streaming
                   isStreaming={isLast && isLastMsgStreaming}
-                  // Sprint 10: Trigger entrance animation on the newest message
-                  isNew={isLast && newestMessageIdRef.current === message.id}
-                  // Sprint 10.5: Teal accent for child/specialist session messages
+                  isNew={isNew}
                   isChildSession={!!childToParentMap[thread.id]}
                 />
               </div>
@@ -150,7 +150,6 @@ export function MessageList({ thread }: MessageListProps) {
         </div>
       </ScrollArea>
 
-      {/* Sprint 9/10/10.5: Jump-to-latest pill — slides in from below when scrolled away */}
       <AnimatePresence>
         {newMessageCount > 0 && (
           <motion.button
@@ -159,10 +158,7 @@ export function MessageList({ thread }: MessageListProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.95 }}
             transition={{ type: 'spring', stiffness: 400, damping: 30, mass: 0.6 }}
-            onClick={() => {
-              scrollToBottom(true);
-              setNewMessageCount(0);
-            }}
+            onClick={() => { scrollToBottom(true); setNewMessageCount(0); }}
             className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full text-xs font-mono cursor-pointer hover:scale-105 active:scale-95 shadow-lg"
             style={{
               background: 'var(--mb-teal)',
