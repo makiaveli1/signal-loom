@@ -264,7 +264,7 @@ async function invokeTool<T>(tool: string, args: Record<string, unknown> = {}): 
  */
 export async function loadSessionsReal(): Promise<AdapterResult<OpenClawSession[]>> {
   try {
-    const result = await invokeTool<SessionsListResult>('sessions_list', { limit: 50 });
+    const result = await invokeTool<SessionsListResult>('sessions_list', { limit: 200 });
 
     const rawSessions: RawSession[] = result?.sessions ?? [];
     const normalized = rawSessions
