@@ -98,13 +98,19 @@ function normalizeSession(raw: RawSession): OpenClawSession {
 }
 
 function deriveAgentId(key: string, displayName?: string): string {
-  // Pattern: agent:main:main → nero
-  // Pattern: agent:main:subagent:uuid → determine from displayName or default to nero
-  // Pattern: agent:main:telegram:* → telegram
-  if (key === 'agent:main:main') return 'nero';
-  if (key.includes(':telegram:')) return 'nero'; // Telegram sessions handled by Nero
-  if (key.includes(':subagent:')) {
-    // Subagents — derive from displayName if available
+  // Sprint 10.6: Detect forge/scout/mercury by key pattern (not just subagent).
+  // Pattern: agent:main:forge → hephaestus, agent:main:scout → orion,
+  // agent:main:mercury → hermes. This ensures sessions from specialist agents are
+  // grouped under their correct agent rather than 'nero'.
+  const lowerKey = key.toLowerCase();
+  if (lowerKey === 'agent:main:main') return 'nero';
+  if (lowerKey.includes(':telegram:')) return 'nero';
+  if (lowerKey.includes(':forge')) return 'hephaestus';
+  if (lowerKey.includes(':scout')) return 'orion';
+  if (lowerKey.includes(':mercury')) return 'hermes';
+  if (lowerKey.includes(':sentinel')) return 'argus';
+  if (lowerKey.includes(':studio')) return 'ariadne';
+  if (lowerKey.includes(':subagent:')) {
     if (displayName) {
       const lower = displayName.toLowerCase();
       if (lower.includes('hephaestus') || lower.includes('forge')) return 'hephaestus';
@@ -257,11 +263,19 @@ async function invokeTool<T>(tool: string, args: Record<string, unknown> = {}): 
 // Public adapter functions
 // ---------------------------------------------------------------------------
 
-// Sprint 10.6: Sessions list timeout — use a shorter timeout for sessions_list since it
-// can hang when the gateway has many sessions. Fall back to mock sessions on failure.
-const SESSIONS_LIST_TIMEOUT_MS = 10_000;
+// Sprint 10.6: Sessions cache with coalescing — sessions_list takes ~2.6s per call.
+// Multiple SSE connections + components call loadSessions simultaneously.
+// Solution: (1) 30s TTL cache for repeated calls, (2) in-flight coalescing — concurrent
+// callers share one gateway call rather than each making their own (eliminates initial burst).
+interface SessionsCache {
+  data: OpenClawSession[];
+  fetchedAt: number; // Date.now()
+}
+let _sessionsCache: SessionsCache | null = null;
+let _sessionsInFlight: Promise<OpenClawSession[]> | null = null;
+const SESSIONS_CACHE_TTL_MS = 30_000;
 
-// Mock sessions returned when the gateway is slow or unreachable
+// Mock sessions returned when the gateway is completely unreachable
 const MOCK_FALLBACK_SESSIONS: OpenClawSession[] = [
   {
     id: 'agent:main:main',
@@ -280,26 +294,49 @@ const MOCK_FALLBACK_SESSIONS: OpenClawSession[] = [
 
 /**
  * Load all sessions from the gateway.
- * Uses a 10s timeout — if the gateway is slow, returns mock sessions as fallback
- * so the app always shows something useful rather than hanging indefinitely.
+ *
+ * Coalescing: if a call is already in-flight, return that same promise.
+ * All concurrent callers wait for ONE gateway call rather than each making their own.
+ *
+ * Cache: after the first successful call, results are cached for 30s.
+ * Subsequent calls within 30s return instantly from cache.
+ *
+ * Graceful degradation: if gateway fails but stale cache exists, return stale data.
+ * If no cache at all, return mock sessions so the app always shows something.
  */
 export async function loadSessionsReal(): Promise<AdapterResult<OpenClawSession[]>> {
-  try {
-    // Race between gateway response and timeout
-    const result = await Promise.race([
-      invokeTool<SessionsListResult>('sessions_list', { limit: 200 }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('sessions_list timeout')), SESSIONS_LIST_TIMEOUT_MS)
-      ),
-    ]);
+  const now = Date.now();
+
+  // 1. Fast path — return from cache immediately
+  if (_sessionsCache && now - _sessionsCache.fetchedAt < SESSIONS_CACHE_TTL_MS) {
+    return {
+      ok: true,
+      data: _sessionsCache.data,
+      fetchedAt: new Date(_sessionsCache.fetchedAt).toISOString(),
+    };
+  }
+
+  // 2. Coalescing — if a call is already in-flight, wait for it instead of making another
+  if (_sessionsInFlight) {
+    const data = await _sessionsInFlight;
+    return {
+      ok: true,
+      data,
+      fetchedAt: new Date(_sessionsCache!.fetchedAt).toISOString(),
+    };
+  }
+
+  // 3. Actually call the gateway — all concurrent callers share this promise
+  _sessionsInFlight = (async () => {
+    const result = await invokeTool<SessionsListResult>('sessions_list', { limit: 200 });
 
     const rawSessions: RawSession[] = result?.sessions ?? [];
     const normalized = rawSessions
       .map(normalizeSession)
       .filter((s) => {
-        // Exclude the main orchestrator session (it's Nero's own session)
-        if (s.id === 'agent:main:main') return false;
-        // Exclude timed-out sessions that are very old (>24h)
+        // Always include the main orchestrator session — it's the primary chat
+        if (s.id === 'agent:main:main') return true;
+        // Exclude very old completed sessions
         if (s.status === 'done' && s.lastMessageAt) {
           const ageMs = Date.now() - new Date(s.lastMessageAt).getTime();
           if (ageMs > 24 * 60 * 60 * 1000) return false;
@@ -307,26 +344,39 @@ export async function loadSessionsReal(): Promise<AdapterResult<OpenClawSession[
         return true;
       })
       .sort((a, b) => {
-        // Most recently updated first
         const aMs = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
         const bMs = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
         return bMs - aMs;
       });
 
+    _sessionsCache = { data: normalized, fetchedAt: Date.now() };
+    return normalized;
+  })();
+
+  try {
+    const data = await _sessionsInFlight;
     return {
       ok: true,
-      data: normalized,
-      fetchedAt: new Date().toISOString(),
+      data,
+      fetchedAt: new Date(_sessionsCache!.fetchedAt).toISOString(),
     };
   } catch (e) {
-    // Gateway timed out or unreachable — return mock sessions as fallback so the
-    // app always shows something useful rather than hanging on an empty screen.
+    if (_sessionsCache) {
+      console.warn('[OpenClaw adapter] loadSessionsReal: gateway failed, returning stale cache:', e instanceof Error ? e.message : e);
+      return {
+        ok: true,
+        data: _sessionsCache.data,
+        fetchedAt: new Date(_sessionsCache.fetchedAt).toISOString(),
+      };
+    }
     console.warn('[OpenClaw adapter] loadSessionsReal fallback to mock sessions:', e instanceof Error ? e.message : e);
     return {
       ok: true,
       data: MOCK_FALLBACK_SESSIONS,
       fetchedAt: new Date().toISOString(),
     };
+  } finally {
+    _sessionsInFlight = null;
   }
 }
 

@@ -309,13 +309,15 @@
   }
 }
 
+/* Sprint 10.6: Single rule for .word-animated — avoids cascade conflicts where
+   the animation shorthand (setting delay:0) overrides the explicit animation-delay property.
+   Uses longhand properties to ensure inline animation-delay always wins. */
 .word-animated {
   display: inline;
-}
-
-/* Stagger delay applied inline via CSS custom property */
-.word-animated {
-  animation: word-reveal 0.15s ease-out both;
+  animation-name: word-reveal;
+  animation-duration: 0.15s;
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
   animation-delay: var(--word-delay, 0ms);
 }
 

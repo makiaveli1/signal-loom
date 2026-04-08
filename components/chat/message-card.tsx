@@ -77,7 +77,7 @@ function MotionText({
         <span
           key={i}
           className="word-animated"
-          style={{ animationDelay: `${i * 30}ms`, display: 'inline' }}
+          style={{ '--word-delay': `${i * 30}ms`, display: 'inline' } as React.CSSProperties}
         >
           {word}
         </span>
