@@ -179,8 +179,18 @@ export function MessageCard({ message, isHighlighted, isStreaming, isNew, isChil
   // Sprint 10.5 defensive: strip any [Reasoning] that slipped through parseContentStream.
   // Handles edge cases where streaming arrives in chunks that confuse the regex,
   // or where flattenContent produces formats the parser didn't account for.
+  // safeAnswerText: the text to show as the main answer bubble.
+  // Priority: first answer chunk > answerOnly (fully stripped) > raw message.content.
+  // The raw content fallback is the critical safety net — if parseContentStream produced
+  // no answer chunks AND answerOnly is also empty (e.g. reasoning-only content parsed
+  // from a thinking block that was already condensed by flattenContent), we still have
+  // the original string to show rather than a blank bubble.
   const safeAnswerText = (() => {
-    const raw = chunks.find((c) => c.kind === 'answer')?.text ?? answerOnly;
+    const answerChunk = chunks.find((c) => c.kind === 'answer')?.text;
+    const fromStripped = answerChunk ?? answerOnly;
+    // If both the parsed answer chunk and answerOnly are empty/whitespace, fall back
+    // to raw content rather than rendering a blank bubble.
+    const raw = fromStripped.trim() ? fromStripped : (message.content || '');
     // Final safety net — remove any remaining [Reasoning] sections before render
     return raw.replace(/\s*\[Reasoning\][\s\S]*?(?=\[Reasoning\]|\[Tool:|\[Result\]|$)/g, '').trim();
   })();

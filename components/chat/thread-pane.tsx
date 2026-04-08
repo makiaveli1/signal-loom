@@ -246,12 +246,21 @@ export function ThreadPane({
   // Sprint 9: Collapse state for the session info panel (Delegated Work + Timeline + Session Details)
   const [infoPanelCollapsed, setInfoPanelCollapsed] = useState(false);
 
-  // Sprint 7: Load transcript when a real session is selected and not yet loaded
+  // Sprint 7: Load transcript when a real session is selected and not yet loaded.
+  // Use the session's own id as the key to ensure consistency with how loadMessagesForThread
+  // keys the sessionMessages store. thread.session may be undefined for threads that
+  // haven't been matched to a session yet (selectThread fix addresses this).
   useEffect(() => {
-    if (!thread.session) return; // no real session — nothing to load
-    if (sessionMessages[thread.id]) return; // already loaded
-    if (sessionMessagesLoading[thread.id]) return; // already loading
-    loadMessagesForThread(thread.id);
+    const sessionKey = thread.session?.id ?? thread.id;
+    if (!thread.session && !sessionMessages[thread.id] && !sessionMessagesLoading[thread.id]) {
+      // No session attached yet — try loading by thread.id as a fallback.
+      // This handles edge cases where the thread was created before session attachment.
+      loadMessagesForThread(thread.id);
+      return;
+    }
+    if (sessionMessages[sessionKey]) return; // already loaded
+    if (sessionMessagesLoading[sessionKey]) return; // already loading
+    loadMessagesForThread(sessionKey);
   }, [thread.id, thread.session, sessionMessages, sessionMessagesLoading, loadMessagesForThread]);
 
   // Sprint 10.6: No more 5-second polling — SSE live events handle new messages.

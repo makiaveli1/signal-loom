@@ -575,8 +575,12 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
             ...state.threads,
             // Create a Thread from session metadata — will be populated with messages async
             ((): Thread => {
-              // Look up session from stored sessions
-              const sess = session ?? state.sessions.find((s) => s.title === id);
+              // Look up session from stored sessions — try by id (session key) first,
+              // then by title as a fallback. id match is more reliable since title
+              // is derived from displayName and may not equal the thread id.
+              const sess = session
+                ?? state.sessions.find((s) => s.id === id)
+                ?? state.sessions.find((s) => s.title === id);
               return {
                 id,
                 title: sess?.title ?? id,

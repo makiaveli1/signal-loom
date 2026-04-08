@@ -364,16 +364,25 @@ function flattenContent(content: SessionsHistoryMessage['content']): string {
     if (!block || typeof block !== 'object') continue;
 
     if (block.type === 'thinking' && typeof block.thinking === 'string') {
-      const thinking = block.thinking;
-      const preview = thinking.slice(0, 500).replace(/\n/g, ' ').trim();
-      parts.push(`[Reasoning] ${preview}${thinking.length > 500 ? '…' : ''}`);
+      // Preserve full thinking content — truncation was causing parseContentStream
+      // regex to mis-identify reasoning vs answer boundaries, resulting in blank bubbles.
+      // The 500-char limit also meant real thinking was being lost.
+      parts.push(`[Reasoning] ${block.thinking}`);
     } else if (block.type === 'text' && typeof block.text === 'string') {
       parts.push(block.text as string);
     } else if (block.type === 'tool_use' && typeof block.name === 'string') {
       parts.push(`[Tool: ${block.name}]`);
     } else if (block.type === 'tool_result' && typeof block.content === 'string') {
-      const preview = block.content.slice(0, 120).replace(/\n/g, ' ');
-      parts.push(`[Result] ${preview}${block.content.length > 120 ? '…' : ''}`);
+      // Always preserve full tool result content — truncation to 120 chars was
+      // losing answer text that lived in tool results, causing blank bubbles.
+      parts.push(`[Result] ${block.content}`);
+    } else if (block.type && typeof block === 'object') {
+      // Preserve unknown block types as-is rather than silently dropping content.
+      const unknownBlock = block as Record<string, unknown>;
+      const text = typeof unknownBlock.text === 'string' ? unknownBlock.text :
+                   typeof unknownBlock.content === 'string' ? unknownBlock.content :
+                   JSON.stringify(block);
+      if (text) parts.push(text);
     }
   }
   return parts.join('\n');
