@@ -36,8 +36,9 @@ interface MessageCardProps {
   isChildSession?: boolean;
 }
 
-// Sprint 10.5: MotionText — word-by-word streaming reveal with spring physics.
-// Each word fades in with a subtle spring, creating the feel of a thought unfolding.
+// Sprint 10.6: MotionText — word-by-word streaming reveal using CSS animation.
+// CSS animation fires reliably on DOM insertion (unlike Framer Motion initial/animate
+// which silently fails to re-trigger when visibleCount jumps to full word count).
 function MotionText({
   text,
   className,
@@ -47,12 +48,9 @@ function MotionText({
   className?: string;
   isStreaming?: boolean;
 }) {
-  // Split into words, preserving whitespace and line breaks
   const words = useMemo(() => text.split(/(\s+)/), [text]);
   const [visibleCount, setVisibleCount] = useState(words.length);
 
-  // When streaming stops (isStreaming goes false→true→false cycle), content is final
-  // We animate in waves: if text is already fully arrived, show all immediately
   const contentFinal = !isStreaming;
 
   useEffect(() => {
@@ -60,36 +58,29 @@ function MotionText({
       setVisibleCount(words.length);
       return;
     }
-    // Streaming: reveal words progressively in batches
     if (words.length === 0) return;
 
-    const batchSize = isStreaming ? Math.min(8, Math.max(3, words.length / 20)) : words.length;
+    // Streaming: reveal words in batches for a natural unfolding feel
+    const batchSize = Math.min(8, Math.max(3, Math.floor(words.length / 20)));
     let current = 0;
     const interval = setInterval(() => {
       current += batchSize;
       setVisibleCount(Math.min(current, words.length));
       if (current >= words.length) clearInterval(interval);
-    }, isStreaming ? 40 : 0);
+    }, 40);
     return () => clearInterval(interval);
   }, [text, contentFinal, words.length, isStreaming]);
 
   return (
     <span className={className}>
       {words.slice(0, visibleCount).map((word, i) => (
-        <motion.span
+        <span
           key={i}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{
-            type: 'spring',
-            stiffness: 400,
-            damping: 28,
-            mass: 0.4,
-          }}
-          style={{ display: 'inline' }}
+          className="word-animated"
+          style={{ animationDelay: `${i * 30}ms`, display: 'inline' }}
         >
           {word}
-        </motion.span>
+        </span>
       ))}
     </span>
   );
@@ -280,20 +271,41 @@ export function MessageCard({ message, isHighlighted, isStreaming, isNew, isChil
               />
               <InterleavedContent chunks={chunks} isStreaming={isStreaming} skipFirst={true} />
             </>
-          ) : (
-            // Collapsed: truncated answer + reasoning toggle
+          ) : reasoningExpanded ? (
+            // Expanded: full answer + interleaved content
             <>
               <MotionText
-                text={safeAnswerText.length > 400 ? safeAnswerText.slice(0, 400).trimEnd() + '…' : safeAnswerText}
+                text={safeAnswerText}
                 className="whitespace-pre-wrap"
                 isStreaming={isStreaming}
               />
+              <InterleavedContent chunks={chunks} isStreaming={isStreaming} skipFirst={true} />
+            </>
+          ) : (
+            // Collapsed: pre-reasoning answer + post-reasoning answer + reasoning toggle
+            // Sprint 10.6: Show post-reasoning answer text — this is the actual response
+            // the user is waiting to read. safeAnswerText alone can be empty or short
+            // when the real content lives after the [Reasoning] block.
+            <>
+              {/* Pre-reasoning answer (can be empty) */}
+              {safeAnswerText.trim() ? (
+                <MotionText
+                  text={safeAnswerText.length > 400 ? safeAnswerText.slice(0, 400).trimEnd() + '…' : safeAnswerText}
+                  className="whitespace-pre-wrap"
+                  isStreaming={isStreaming}
+                />
+              ) : null}
+              {/* Post-reasoning answer chunks — the real response */}
+              <InterleavedContent chunks={chunks} isStreaming={isStreaming} skipFirst={true} />
               {streamingCursor}
             </>
           )}
         </p>
 
-        {/* Sprint 10.5: Thought Capsule — animated expand/collapse with AnimatePresence */}
+        {/* Sprint 10.6: Collapsed mode: show answer text even when reasoning is present.
+            The pre-reasoning answer chunk (safeAnswerText) may be short or empty — what the user
+            actually wants to see is the response that comes AFTER the thinking block.
+            InterleavedContent gives us post-reasoning answer chunks. */}
         <AnimatePresence initial={false}>
           {hasReasoning && (
             <motion.div

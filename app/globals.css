@@ -294,6 +294,31 @@
   animation: event-enter 220ms ease-out both;
 }
 
+/* Sprint 10.6: Word-by-word reveal — CSS animation drives opacity + y transform.
+   Unlike Framer Motion initial/animate on re-mounting spans (which fails when
+   visibleCount jumps to full word count in one step), CSS animation fires
+   reliably when the span is inserted into the DOM. */
+@keyframes word-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.word-animated {
+  display: inline;
+}
+
+/* Stagger delay applied inline via CSS custom property */
+.word-animated {
+  animation: word-reveal 0.15s ease-out both;
+  animation-delay: var(--word-delay, 0ms);
+}
+
 /* --- Expand/collapse: grid-row technique (no max-height hack) -- */
 /* Parent container: CSS grid with 1 row that animates 0fr → 1fr */
 .expand-grid {
