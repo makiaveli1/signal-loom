@@ -3,6 +3,7 @@
 import { cn } from '@/lib/utils';
 import type { Thread } from '@/lib/types';
 import { RelativeTime } from '@/components/ui/relative-time';
+import { motion } from 'motion/react';
 
 const STATUS_LABELS: Record<Thread['status'], string> = {
   active:               'active',
@@ -48,16 +49,18 @@ export function ThreadListItem({ thread, isSelected, onSelect, conceptBadge, chi
   const statusBg    = STATUS_BG[thread.status];
   const isActive    = thread.status === 'active';
 
+  // Sprint 10.5: layoutId enables smooth shared-element transition when selection
+  // changes — Framer Motion animates the shared border indicator between items.
   return (
-    <button
+    <motion.button
+      layoutId={isSelected ? `thread-selected-border` : undefined}
       onClick={onSelect}
       className={cn(
         "w-full text-left px-3 py-3 rounded-lg transition-all duration-150 group relative",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset",
-        isSelected
-          ? "bg-elevated/80 shadow-[0_0_0_1px_rgba(61,201,196,0.15)]"
-          : "bg-transparent",
+        isSelected ? "bg-elevated/80" : "bg-transparent",
       )}
+      transition={{ type: 'spring', stiffness: 400, damping: 30, mass: 0.8 }}
       style={isSelected ? {
         boxShadow: `inset 3px 0 0 ${statusColor}50, 0 0 0 1px rgba(61,201,196,0.12)`,
       } : undefined}
@@ -178,6 +181,6 @@ export function ThreadListItem({ thread, isSelected, onSelect, conceptBadge, chi
           </div>
         </div>
       </div>
-    </button>
+    </motion.button>
   );
 }

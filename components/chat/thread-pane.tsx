@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useSignalLoomStore } from '@/lib/store';
 import type { Thread, PaneRole, Agent } from '@/lib/types';
 import { MessageList } from './message-list';
@@ -173,9 +174,27 @@ function TranscriptBlock({ thread }: { thread: Thread }) {
         style={{ borderColor: 'rgba(255,255,255,0.06)' }}
       >
         {isLoading ? (
-          <div className="flex items-center gap-2 text-ivory/40">
-            <span className="animate-spin" style={{ fontSize: '10px' }}>◷</span>
-            <span>Loading transcript…</span>
+          <div className="flex flex-col gap-2 pt-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+            {/* Sprint 10.5: Shimmer skeleton — transcript is loading */}
+            <div className="flex items-center gap-2 text-ivory/30 text-[11px]">
+              <motion.span
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
+                style={{ fontSize: '10px' }}
+              >◷</motion.span>
+              <span>Loading transcript…</span>
+            </div>
+            <div className="flex flex-col gap-1.5 py-1">
+              {([100, 65, 80] as const).map((w, i) => (
+                <motion.div
+                  key={i}
+                  animate={{ opacity: [0.25, 0.55, 0.25] }}
+                  transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut', delay: i * 0.15 }}
+                  className="h-2 rounded"
+                  style={{ width: `${w}%`, background: 'rgba(255,255,255,0.07)' }}
+                />
+              ))}
+            </div>
           </div>
         ) : transcript && transcript.messages.length > 0 ? (
           <div className="flex flex-col gap-1">
@@ -348,15 +367,22 @@ export function ThreadPane({
                 </span>
               ) : null
             )}
-            {/* Pending approval badge */}
-            {pendingApproval && (
-              <span
-                className="flex items-center gap-0.5 text-xs font-semibold flex-shrink-0"
-                style={{ color: 'var(--mb-brass)', fontSize: '10px' }}
-              >
-                ▲ {approvals.filter((a) => a.linkedThreadId === thread.id).length}
-              </span>
-            )}
+            {/* Sprint 10.5: Spring pop-in for approval badge */}
+            <AnimatePresence>
+              {pendingApproval && (
+                <motion.span
+                  key="approval-badge"
+                  initial={{ opacity: 0, scale: 0.6, y: -4 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.8, y: -2 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 22, mass: 0.4 }}
+                  className="flex items-center gap-0.5 text-xs font-semibold flex-shrink-0"
+                  style={{ color: 'var(--mb-brass)', fontSize: '10px' }}
+                >
+                  ▲ {approvals.filter((a) => a.linkedThreadId === thread.id).length}
+                </motion.span>
+              )}
+            </AnimatePresence>
             {/* Sprint 8: Parent context link — shown on child sessions in secondary pane */}
             {paneRole === 'secondary' && childToParentMap[thread.id] && (
               <button
@@ -421,20 +447,27 @@ export function ThreadPane({
         <ContextEnrichmentBlock thread={thread} />
       )}
 
-      {/* Pending approval indicator */}
-      {pendingApproval && (
-        <div
-          className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
-          style={{
-            background: 'rgba(201,160,58,0.06)',
-            borderColor: 'rgba(201,160,58,0.20)',
-            color: 'var(--mb-brass)',
-          }}
-        >
-          <span className="font-semibold">▲ 1 approval pending</span>
-          <span className="text-ivory-dim truncate">{pendingApproval.title}</span>
-        </div>
-      )}
+      {/* Sprint 10.5: Spring pop-in for approval indicator */}
+      <AnimatePresence>
+        {pendingApproval && (
+          <motion.div
+            key="approval-indicator"
+            initial={{ opacity: 0, y: 6, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.97 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 26, mass: 0.7 }}
+            className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
+            style={{
+              background: 'rgba(201,160,58,0.06)',
+              borderColor: 'rgba(201,160,58,0.20)',
+              color: 'var(--mb-brass)',
+            }}
+          >
+            <span className="font-semibold">▲ 1 approval pending</span>
+            <span className="text-ivory-dim truncate">{pendingApproval.title}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Messages */}
       <MessageList thread={thread} />

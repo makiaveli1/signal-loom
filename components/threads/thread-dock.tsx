@@ -345,13 +345,25 @@ function DockGroupSection({
               className={cn('space-y-0.5', group.kind === 'conversation' ? 'ml-2 pl-2 border-l' : '')}
               style={group.kind === 'conversation' ? { borderColor: 'rgba(255,255,255,0.06)' } : {}}
             >
-              {group.threads.map((thread) => (
-                <ThreadListItemWrapper
+              {group.threads.map((thread, i) => (
+                <motion.div
                   key={thread.id}
-                  thread={thread}
-                  isSelected={thread.id === selectedThreadId}
-                  onSelect={() => onSelect(thread.id)}
-                />
+                  initial={{ opacity: 0, y: 8, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{
+                    type: 'spring',
+                    stiffness: 380,
+                    damping: 28,
+                    mass: 0.7,
+                    delay: i * 0.04,
+                  }}
+                >
+                  <ThreadListItemWrapper
+                    thread={thread}
+                    isSelected={thread.id === selectedThreadId}
+                    onSelect={() => onSelect(thread.id)}
+                  />
+                </motion.div>
               ))}
             </div>
           </motion.div>
