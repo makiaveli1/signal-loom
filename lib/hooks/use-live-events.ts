@@ -42,9 +42,14 @@ export function useLiveEvents() {
           if (msg.type === 'session.message') {
             const data = msg.data as { sessionKey?: string };
             if (data?.sessionKey) {
+              // Sprint 10.6: Only load by session key if the session is attached to a thread.
+              // t.id === data.sessionKey would match bare thread IDs (thread-1) before
+              // sessions are attached, causing a 500 with thread-1 as the session key.
               const { threads } = useSignalLoomStore.getState();
-              const thread = threads.find((t) => t.id === data.sessionKey);
-              if (thread) loadMessagesForThread(data.sessionKey);
+              const thread = threads.find((t) => t.session?.id === data.sessionKey);
+              if (thread) {
+                loadMessagesForThread(data.sessionKey); // pass SESSION KEY to API
+              }
             }
             silentReloadSessions();
 
