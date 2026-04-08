@@ -11,8 +11,22 @@
 import { useEffect, useRef } from 'react';
 import { useSignalLoomStore } from '@/lib/store';
 
+// Sprint 10.6: Module-level cooldown for silentReloadSessions debouncing.
+// sessions_list takes ~2.6s per call at the gateway. SSE events fire many times per second.
+// Without debouncing, each event triggers a new sessions_list call, stacking up and
+// saturating the gateway. Minimum 3s gap between sessions_list calls.
+let _lastSessionsReload = 0;
+const SESSIONS_RELOAD_COOLDOWN_MS = 3000;
+
+function safeReload() {
+  const now = Date.now();
+  if (now - _lastSessionsReload < SESSIONS_RELOAD_COOLDOWN_MS) return;
+  _lastSessionsReload = now;
+  safeReload();
+}
+
 export function useLiveEvents() {
-  const { loadMessagesForThread, silentReloadSessions, setLiveConnected } = useSignalLoomStore();
+  const { loadMessagesForThread, setLiveConnected } = useSignalLoomStore();
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -30,7 +44,7 @@ export function useLiveEvents() {
         if (!mounted) return;
         setLiveConnected(true);
         // Silent refresh — threads stay visible, only data updates
-        silentReloadSessions();
+        safeReload();
       }, { once: true });
 
       // Handle all gateway event types — all trigger silent background refresh
@@ -51,17 +65,17 @@ export function useLiveEvents() {
                 loadMessagesForThread(data.sessionKey); // pass SESSION KEY to API
               }
             }
-            silentReloadSessions();
+            safeReload();
 
           } else if (msg.type === 'sessions.changed') {
-            silentReloadSessions();
+            safeReload();
 
           } else if (msg.type === 'session.tool') {
-            silentReloadSessions();
+            safeReload();
 
           } else {
             // Catch-all for any unhandled gateway event
-            silentReloadSessions();
+            safeReload();
           }
         } catch {
           // Ignore parse errors
