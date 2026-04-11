@@ -273,7 +273,7 @@ interface SessionsCache {
 }
 let _sessionsCache: SessionsCache | null = null;
 let _sessionsInFlight: Promise<OpenClawSession[]> | null = null;
-const SESSIONS_CACHE_TTL_MS = 30_000;
+const SESSIONS_CACHE_TTL_MS = 60_000;
 
 // Mock sessions returned when the gateway is completely unreachable
 const MOCK_FALLBACK_SESSIONS: OpenClawSession[] = [

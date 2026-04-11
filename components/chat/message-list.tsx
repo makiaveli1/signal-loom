@@ -7,13 +7,19 @@ import { MessageCard } from './message-card';
 import type { Thread } from '@/lib/types';
 import { useSignalLoomStore } from '@/lib/store';
 
+// Sprint 10.7: messages prop lets ThreadPane pass loaded transcript directly
+// (thread.messages is empty for session-derived threads — messages live in sessionMessages store)
 interface MessageListProps {
   thread: Thread;
+  messages?: Thread['messages'];
 }
 
 const BOTTOM_THRESHOLD = 150;
 
-export function MessageList({ thread }: MessageListProps) {
+export function MessageList({ thread, messages: messagesOverride }: MessageListProps) {
+  // Sprint 10.7: Use loaded transcript messages if provided (from sessionMessages store),
+  // otherwise fall back to thread.messages (which is empty for session-derived threads).
+  const messages = messagesOverride ?? thread.messages;
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -23,19 +29,20 @@ export function MessageList({ thread }: MessageListProps) {
 
   // Sprint 10.6: Track seen message IDs — only animate genuinely new arrivals,
   // never replay on full-array replacements (e.g. from SSE background reloads).
-  const seenMessageIdsRef = useRef<Set<string>>(new Set(thread.messages.map((m) => m.id)));
-  const prevMessageIdsRef = useRef<Set<string>>(new Set(thread.messages.map((m) => m.id)));
+  // Track seen IDs — use messages (loaded transcript or thread.messages)
+  const seenMessageIdsRef = useRef<Set<string>>(new Set(messages.map((m) => m.id)));
+  const prevMessageIdsRef = useRef<Set<string>>(new Set(messages.map((m) => m.id)));
 
   // Compute genuinely new IDs on every render (before updating seenMessageIdsRef)
   const newMessageIds = useMemo(() => {
     const prev = prevMessageIdsRef.current;
-    return new Set(thread.messages.map((m) => m.id).filter((id) => !prev.has(id)));
+    return new Set(messages.map((m) => m.id).filter((id) => !prev.has(id)));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thread.messages]);
 
   // After render: update seen IDs so animations don't replay on next render
   useEffect(() => {
-    const added = new Set(thread.messages.map((m) => m.id));
+    const added = new Set(messages.map((m) => m.id));
     // Add new IDs to the seen set
     newMessageIds.forEach((id) => seenMessageIdsRef.current.add(id));
     // Sync prev IDs for next render

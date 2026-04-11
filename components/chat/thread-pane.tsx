@@ -262,6 +262,11 @@ export function ThreadPane({
     childToParentMap,
   } = useSignalLoomStore();
 
+  // Sprint 10.7: Load transcript from sessionMessages store — messages loaded by
+  // loadMessagesForThread are stored here, NOT in thread.messages (which is empty
+  // for session-derived threads). Pass to MessageList via messages prop.
+  const transcript = sessionMessages[thread.id];
+
   // Sprint 9: Collapse state for the session info panel (Delegated Work + Timeline + Session Details)
   const [infoPanelCollapsed, setInfoPanelCollapsed] = useState(false);
 
@@ -470,7 +475,7 @@ export function ThreadPane({
       </AnimatePresence>
 
       {/* Messages */}
-      <MessageList thread={thread} />
+      <MessageList thread={thread} messages={transcript?.messages} />
 
       {/* Composer */}
       <Composer threadId={thread.id} />
