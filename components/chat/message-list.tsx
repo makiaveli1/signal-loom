@@ -37,8 +37,7 @@ export function MessageList({ thread, messages: messagesOverride }: MessageListP
   const newMessageIds = useMemo(() => {
     const prev = prevMessageIdsRef.current;
     return new Set(messages.map((m) => m.id).filter((id) => !prev.has(id)));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [thread.messages]);
+  }, [messages]);
 
   // After render: update seen IDs so animations don't replay on next render
   useEffect(() => {
@@ -47,7 +46,7 @@ export function MessageList({ thread, messages: messagesOverride }: MessageListP
     newMessageIds.forEach((id) => seenMessageIdsRef.current.add(id));
     // Sync prev IDs for next render
     prevMessageIdsRef.current = added;
-  }, [thread.messages, newMessageIds]);
+  }, [messages, newMessageIds]);
 
   const { highlightedMessageId, composerState, childToParentMap } = useSignalLoomStore();
   const isStreaming = composerState.isStreaming;
@@ -87,16 +86,13 @@ export function MessageList({ thread, messages: messagesOverride }: MessageListP
 
   // Count new messages when user is scrolled away
   useEffect(() => {
-    const prevLen = seenMessageIdsRef.current.size - newMessageIds.size + thread.messages.length;
     // seenMessageIdsRef.size includes messages we've seen in ALL renders
     // We need the previous render's count — use prevMessageIdsRef.size
     const prevCount = prevMessageIdsRef.current.size;
-    if (thread.messages.length > prevCount) {
-      if (!isAtBottom) {
-        setNewMessageCount((n) => n + (thread.messages.length - prevCount));
-      }
+    if (messages.length > prevCount && !isAtBottom) {
+      setNewMessageCount((n) => n + (messages.length - prevCount));
     }
-  }, [thread.messages.length, isAtBottom, newMessageIds]);
+  }, [messages.length, isAtBottom]);
 
   // Scroll to highlighted message
   useEffect(() => {
@@ -114,7 +110,7 @@ export function MessageList({ thread, messages: messagesOverride }: MessageListP
     }
   }, [highlightedMessageId]);
 
-  const lastMsg = thread.messages[thread.messages.length - 1];
+  const lastMsg = messages[messages.length - 1];
   const isLastMsgStreaming =
     isStreaming &&
     lastMsg?.role === 'nero' &&
@@ -129,8 +125,8 @@ export function MessageList({ thread, messages: messagesOverride }: MessageListP
         onScroll={handleScroll}
       >
         <div className="space-y-1">
-          {thread.messages.map((message, idx) => {
-            const isLast = idx === thread.messages.length - 1;
+          {messages.map((message, idx) => {
+            const isLast = idx === messages.length - 1;
             // Sprint 10.6: Only animate messages that are genuinely new arrivals.
             // seenMessageIdsRef prevents replaying animations on full-array replacements.
             const isNew = newMessageIds.has(message.id) && !seenMessageIdsRef.current.has(message.id);

@@ -266,6 +266,7 @@ export function ThreadPane({
   // loadMessagesForThread are stored here, NOT in thread.messages (which is empty
   // for session-derived threads). Pass to MessageList via messages prop.
   const transcript = sessionMessages[thread.id];
+  const displayedMessages = transcript?.messages ?? thread.messages;
 
   // Sprint 9: Collapse state for the session info panel (Delegated Work + Timeline + Session Details)
   const [infoPanelCollapsed, setInfoPanelCollapsed] = useState(false);
@@ -448,7 +449,7 @@ export function ThreadPane({
       />
 
       {/* Context enrichment block — sparse threads ≤2 messages */}
-      {thread.messages.length <= 2 && !isSplit && (
+      {displayedMessages.length <= 2 && !isSplit && (
         <ContextEnrichmentBlock thread={thread} />
       )}
 
@@ -617,34 +618,39 @@ function SessionInfoPanel({
         </span>
       </button>
 
-      {/* Sprint 8: Delegation strip — child session shortcuts */}
-      {hasDelegatedChildren && (
-        <DelegationStrip
-          thread={thread}
-          onOpenChildSession={onOpenChildSession}
-        />
-      )}
+      <div
+        className="min-h-0 overflow-y-auto"
+        style={{ maxHeight: 'min(42vh, 24rem)' }}
+      >
+        {/* Sprint 8: Delegation strip — child session shortcuts */}
+        {hasDelegatedChildren && (
+          <DelegationStrip
+            thread={thread}
+            onOpenChildSession={onOpenChildSession}
+          />
+        )}
 
-      {/* Delegation timeline */}
-      {showDelegationTimeline && (
-        <DelegationTimeline
-          events={threadEvents}
-          fetchedAt={sessionsFetchedAt}
-          onEventClick={(event) => {
-            if (event.linkedMessageId) {
-              onHighlightMessage(event.linkedMessageId);
+        {/* Delegation timeline */}
+        {showDelegationTimeline && (
+          <DelegationTimeline
+            events={threadEvents}
+            fetchedAt={sessionsFetchedAt}
+            onEventClick={(event) => {
+              if (event.linkedMessageId) {
+                onHighlightMessage(event.linkedMessageId);
+              }
+            }}
+            onOpenChildSession={(childSessionId) =>
+              onOpenChildSession(childSessionId)
             }
-          }}
-          onOpenChildSession={(childSessionId) =>
-            onOpenChildSession(childSessionId)
-          }
-          inlineMode={true}
-          activeEventId={activeDelegationEventId}
-        />
-      )}
+            inlineMode={true}
+            activeEventId={activeDelegationEventId}
+          />
+        )}
 
-      {/* Real session transcript block */}
-      {hasSession && <TranscriptBlock thread={thread} />}
+        {/* Real session transcript block */}
+        {hasSession && <TranscriptBlock thread={thread} />}
+      </div>
     </div>
   );
 }
