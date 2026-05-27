@@ -3,7 +3,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSignalLoomStore } from '@/lib/store';
 import type { Thread } from '@/lib/types';
-import { cn } from '@/lib/utils';
 import { X, ChevronRight } from 'lucide-react';
 
 interface MonitorThreadPaneProps {

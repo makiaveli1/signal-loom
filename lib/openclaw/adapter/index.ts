@@ -1,13 +1,14 @@
 /**
- * OpenClaw adapter — normalized facade over the OpenClaw gateway API.
+ * Hermes adapter — legacy OpenClaw-shaped facade over Nero/Hermes runtime data.
  *
- * Provides a stable interface for Signal Loom regardless of whether
- * we are using mock data or the real gateway.
+ * The UI still imports OpenClaw-shaped types/routes while we migrate the product.
+ * This adapter keeps that surface stable but sources sessions, health, and chat
+ * from Hermes instead of the old OpenClaw gateway.
  *
  * Architecture:
- * - Browser → Next.js API routes (/api/openclaw/*) → adapter (server-side) → gateway
- * - All adapter functions are server-side when called from Next.js API routes
- * - The gateway URL is 127.0.0.1:18789 (WSL localhost)
+ * - Browser → Next.js API routes (/api/openclaw/* during migration) → adapter
+ * - Server-side session/history reads use ~/.hermes/state.db
+ * - Chat calls use Hermes' OpenAI-compatible API server at 127.0.0.1:8642
  */
 
 export type { OpenClawSession, OpenClawAgent, OpenClawRuntimeHealth } from './types';
@@ -28,9 +29,14 @@ async function withMock<T>(mock: T, real: () => Promise<T>): Promise<T> {
 // Sessions
 // ---------------------------------------------------------------------------
 
-export { loadSessionsReal } from './sessions';
+// Server implementation lives in ./sessions. Do not statically import it here:
+// this facade is imported by client components, and ./sessions pulls server-only
+// Hermes state-db code when invoked from API routes.
 
-import { loadSessionsReal } from './sessions';
+export async function loadSessionsReal(): Promise<AdapterResult<OpenClawSession[]>> {
+  const sessions = await import('./sessions');
+  return sessions.loadSessionsReal();
+}
 
 export async function loadSessions(): Promise<AdapterResult<OpenClawSession[]>> {
   // On the client (browser), call the Next.js API route to avoid CORS.
@@ -72,7 +78,7 @@ export { loadRuntimeHealth } from './health';
 // Agents — live agent status from the gateway session store
 // ---------------------------------------------------------------------------
 
-import type { OpenClawAgent, OpenClawApproval, OpenClawMessage, AdapterResult } from './types';
+import type { OpenClawAgent, OpenClawMessage, AdapterResult } from './types';
 
 const MOCK_AGENTS: OpenClawAgent[] = [
   {
@@ -254,14 +260,13 @@ export async function loadApprovals(): Promise<AdapterResult<Approval[]>> {
   }
 }
 
-import { gatewayPost } from './client';
-
 /**
- * Resolve an approval decision via the gateway.
+ * Resolve an approval decision.
  *
- * Calls exec.approval.resolve on the gateway to record the decision.
- * If the gateway tool is unavailable, records the decision locally and
- * marks it as pending gateway sync.
+ * Hermes does not expose OpenClaw's legacy /tools/invoke approval endpoint.
+ * Browser callers go through a Next.js route; server callers lazily import the
+ * Node-only audit logger. Either way, the UI is honest: resolved locally,
+ * not synced to a nonexistent OpenClaw gateway tool.
  */
 export async function resolveApproval(args: {
   approvalId: string;
@@ -271,32 +276,33 @@ export async function resolveApproval(args: {
   const { approvalId, decision, note } = args;
 
   try {
-    // Try to call the gateway exec.approval.resolve tool
-    const res = await gatewayPost<{ ok: boolean; result?: unknown }>('/tools/invoke', {
-      tool: 'exec.approval.resolve',
-      args: { approvalId, decision, note },
-    });
+    if (typeof window !== 'undefined') {
+      const res = await fetch('/api/openclaw/approvals/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvalId, decision, note }),
+      });
 
-    if (res.ok) {
-      return {
-        ok: true,
-        data: { resolved: true, synced: true },
-        fetchedAt: new Date().toISOString(),
-      };
+      if (!res.ok) {
+        return { ok: false, error: `Approval API error ${res.status}`, retryable: true };
+      }
+
+      const data = await res.json() as { resolved: boolean; synced: boolean };
+      return { ok: true, data, fetchedAt: new Date().toISOString() };
     }
 
-    // Gateway returned error — record locally, mark as un-synced
+    const { recordApprovalDecision } = await import('./approval-log');
+    await recordApprovalDecision({ approvalId, decision, note });
     return {
       ok: true,
       data: { resolved: true, synced: false },
       fetchedAt: new Date().toISOString(),
     };
-  } catch {
-    // Gateway unreachable — record decision locally
+  } catch (e) {
     return {
-      ok: true,
-      data: { resolved: true, synced: false },
-      fetchedAt: new Date().toISOString(),
+      ok: false,
+      error: e instanceof Error ? e.message : 'Approval resolution failed',
+      retryable: true,
     };
   }
 }
@@ -305,13 +311,25 @@ export async function resolveApproval(args: {
 // Session messages — load messages for a specific session
 // ---------------------------------------------------------------------------
 
-export { loadSessionMessages } from './sessions';
-import { loadSessionMessages } from './sessions';
+export async function loadSessionMessages(
+  sessionKey: string,
+  limit = 80,
+): Promise<AdapterResult<{
+  messages: OpenClawMessage[];
+  truncated: boolean;
+  contentTruncated: boolean;
+  droppedMessages: boolean;
+  totalBytes: number;
+}>> {
+  const sessions = await import('./sessions');
+  return sessions.loadSessionMessages(sessionKey, limit);
+}
 
 // ---------------------------------------------------------------------------
 // Streaming message — server-side streaming via /api/openclaw/chat/stream
 // ---------------------------------------------------------------------------
 export { streamMessage } from './chat';
+export type { StreamMessageEvent } from './chat';
 
 // ---------------------------------------------------------------------------
 // Send message — post a message to a session
@@ -323,18 +341,13 @@ export async function sendMessage(args: {
   model?: string;
   history?: unknown[];
 }): Promise<AdapterResult<OpenClawMessage>> {
-  // TODO: implement via gateway /tools/invoke with sessions_send tool
-  // For now, return a mock response so the composer doesn't break
-  return {
-    ok: true,
-    data: {
-      id: `msg-${Date.now()}`,
-      role: 'assistant',
-      content: `Message queued for session: ${args.sessionKey}`,
-      timestamp: new Date().toISOString(),
-    },
-    fetchedAt: new Date().toISOString(),
-  };
+  const chat = await import('./chat');
+  return chat.sendMessage({
+    sessionKey: args.sessionKey,
+    content: args.content,
+    model: args.model ?? 'hermes-agent',
+    history: (args.history ?? []) as OpenClawMessage[],
+  });
 }
 
 // ---------------------------------------------------------------------------

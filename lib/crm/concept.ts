@@ -11,7 +11,6 @@ import type {
   SendGate,
 } from './types';
 import {
-  isConceptRequiredStage,
   CONCEPT_STATUS_LABELS,
   TIER_LABELS,
   LEAD_STAGE_LABELS,

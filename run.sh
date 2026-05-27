@@ -1,33 +1,50 @@
-#!/bin/bash
-# Signal Loom — Start script
-# Usage: ./run.sh [port]
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Signal Loom — production-ish local launcher
 #
-# Defaults: port 3098
+# Usage:
+#   HERMES_API_KEY=... ./run.sh [port]
+#   API_SERVER_KEY=... ./run.sh [port]
+#   OPENCLAW_GATEWAY_TOKEN=... ./run.sh [port]
 #
-# Requires:
-#   - OpenClaw gateway running at http://127.0.0.1:18789
-#   - Token: ccca40c6fd27f7f8be0d2bf638012200e38f48491f82d715
+# Defaults:
+#   port: 3098
+#   Hermes API URL: http://127.0.0.1:8642
+#
+# No secrets are stored in this script. Put local credentials in your shell,
+# ~/.hermes/.env, systemd environment, or another private secret store.
 
 PORT="${1:-3098}"
+HERMES_API_URL="${HERMES_API_URL:-${NEXT_PUBLIC_HERMES_API_URL:-http://127.0.0.1:8642}}"
+AUTH_TOKEN="${HERMES_API_KEY:-${API_SERVER_KEY:-${OPENCLAW_GATEWAY_TOKEN:-}}}"
 
-GATEWAY_URL="http://127.0.0.1:18789"
-GATEWAY_TOKEN="ccca40c6fd27f7f8be0d2bf638012200e38f48491f82d715"
+if [[ -z "$AUTH_TOKEN" ]]; then
+  cat >&2 <<'EOF'
+Signal Loom needs a server-side Hermes/OpenClaw token.
+Set one of these before launching:
+  HERMES_API_KEY
+  API_SERVER_KEY
+  OPENCLAW_GATEWAY_TOKEN
+EOF
+  exit 1
+fi
 
-echo "Starting Signal Loom on port $PORT..."
-echo "Gateway: $GATEWAY_URL"
-
-# Kill any existing instance on this port
-fuser -k ${PORT}/tcp 2>/dev/null || true
-
-# Start Signal Loom with gateway credentials
 cd "$(dirname "$0")"
-NEXT_PUBLIC_OPENCLAW_GATEWAY_URL="$GATEWAY_URL" \
-NEXT_PUBLIC_OPENCLAW_GATEWAY_TOKEN="$GATEWAY_TOKEN" \
-OPENCLAW_GATEWAY_TOKEN="$GATEWAY_TOKEN" \
+
+echo "Starting Signal Loom on http://localhost:${PORT}"
+echo "Hermes API: ${HERMES_API_URL}"
+
+# Kill any existing instance on this port.
+fuser -k "${PORT}/tcp" 2>/dev/null || true
+
+NEXT_PUBLIC_HERMES_API_URL="$HERMES_API_URL" \
+HERMES_API_KEY="$AUTH_TOKEN" \
+API_SERVER_KEY="${API_SERVER_KEY:-}" \
+OPENCLAW_GATEWAY_TOKEN="${OPENCLAW_GATEWAY_TOKEN:-}" \
 npm run start -- --port "$PORT" &>/tmp/signal-loom.log &
 
 PID=$!
-echo "Signal Loom: http://localhost:$PORT (PID $PID)"
-echo ""
+echo "Signal Loom PID: ${PID}"
 echo "Logs: tail -f /tmp/signal-loom.log"
-echo "To stop: kill $PID"
+echo "Stop: kill ${PID}"

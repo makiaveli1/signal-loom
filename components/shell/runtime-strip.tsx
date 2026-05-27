@@ -14,7 +14,7 @@ export function RuntimeStrip() {
     <footer
       role="contentinfo"
       aria-label="Runtime health status"
-      className="flex items-center justify-between px-4 py-2 border-t text-xs font-mono gap-6"
+      className="runtime-strip flex min-w-0 items-center justify-between gap-3 border-t px-4 py-2 text-xs font-mono"
       style={{
         background: 'var(--mb-shell)',
         borderColor: 'rgba(255,255,255,0.05)',
@@ -22,7 +22,7 @@ export function RuntimeStrip() {
       }}
     >
       {/* Left — system health */}
-      <div className="flex items-center gap-5">
+      <div className="runtime-health flex min-w-0 flex-shrink-0 items-center gap-4">
         <div className="flex items-center gap-1.5">
           <span style={{ color: 'var(--mb-ash-muted)' }}>Gateway</span>
           <span
@@ -51,10 +51,10 @@ export function RuntimeStrip() {
         </div>
       </div>
 
-      {/* Center — browser lanes */}
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <span style={{ color: 'var(--mb-ash-muted)' }}>Browser</span>
-        <div className="flex items-center gap-1.5" title={`${runtime.browserLanes} of 4 browser lanes active`}>
+      {/* Center — active agents/tools */}
+      <div className="runtime-lanes hidden flex-shrink-0 items-center gap-2 xl:flex">
+        <span style={{ color: 'var(--mb-ash-muted)' }}>Active agents</span>
+        <div className="flex items-center gap-1.5" title={`${runtime.browserLanes} of 4 agent/tool lanes active`}>
           {browserLaneDots.map((active, i) => (
             <span
               key={i}
@@ -67,18 +67,18 @@ export function RuntimeStrip() {
           ))}
         </div>
         <span style={{ color: 'var(--mb-ash-muted)' }}>
-          {runtime.browserLanes}/4 lanes
+          {runtime.browserLanes}/4 active
         </span>
         {!runtime.canvasEnabled && (
-          <span style={{ color: 'var(--mb-ash-muted)', fontSize: '10px' }}>· canvas off</span>
+          <span style={{ color: 'var(--mb-ash-muted)', fontSize: '10px' }}>· visual workspace off</span>
         )}
       </div>
 
-      {/* Sprint 8: Left — active session indicator */}
-      <div className="flex items-center gap-3 flex-shrink-0">
+      {/* Sprint 8: active session indicator */}
+      <div className="runtime-session flex min-w-0 flex-1 items-center justify-center gap-3">
         {activeSessionTitle ? (
           <div
-            className="flex items-center gap-1.5 px-2 py-0.5 rounded text-xs"
+            className="runtime-session-chip flex min-w-0 items-center gap-1.5 rounded px-2 py-0.5 text-xs"
             style={{
               background: 'rgba(155,141,200,0.08)',
               border: '1px solid rgba(155,141,200,0.20)',
@@ -97,7 +97,7 @@ export function RuntimeStrip() {
                 strokeLinejoin="round"
               />
             </svg>
-            <span className="max-w-[140px] truncate" style={{ color: '#9b8dc8' }}>
+            <span className="runtime-session-title truncate" style={{ color: '#9b8dc8' }}>
               {activeSessionTitle}
             </span>
           </div>
@@ -109,7 +109,7 @@ export function RuntimeStrip() {
       </div>
 
       {/* Right — issues */}
-      <div className="flex items-center gap-3 flex-shrink-0">
+      <div className="runtime-issues flex min-w-0 flex-shrink-0 items-center justify-end gap-3">
         {runtime.issueCount > 0 ? (
           <div className="flex items-center gap-2">
             <span
@@ -133,7 +133,7 @@ export function RuntimeStrip() {
             )}
           </div>
         ) : (
-          <span style={{ color: 'var(--mb-jade)' }}>All systems nominal</span>
+          <span style={{ color: 'var(--mb-jade)' }}>Healthy</span>
         )}
       </div>
     </footer>

@@ -1,8 +1,6 @@
 'use client';
 
-import { useState } from 'react';
 import type { EmailGateStoreItem } from '@/lib/store';
-import { cn } from '@/lib/utils';
 
 /** Denied-state next-step cue — harmonized across approval-card and email-gate-card */
 const DENIAL_NEXT_STEP = 'Revise and resubmit — return to the linked thread to address feedback.';

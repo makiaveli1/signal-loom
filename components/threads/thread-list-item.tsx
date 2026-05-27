@@ -3,12 +3,13 @@
 import { cn } from '@/lib/utils';
 import type { Thread } from '@/lib/types';
 import { RelativeTime } from '@/components/ui/relative-time';
+import { PretextSmartTitle } from '@/components/ui/pretext-smart-title';
 import { motion } from 'motion/react';
 
 const STATUS_LABELS: Record<Thread['status'], string> = {
   active:               'active',
   waiting_on_nero:      'waiting on Nero',
-  waiting_on_specialist:'waiting on specialist',
+  waiting_on_specialist:'waiting on helper',
   waiting_on_user:      'waiting on you',
   blocked:              'blocked',
   done:                 'done',
@@ -42,9 +43,12 @@ interface ThreadListItemProps {
   conceptBadge?: { label: string; color: string } | null;
   /** Sprint 8: Number of child sessions delegated from this thread (for indicator) */
   childCount?: number;
+  isHidden?: boolean;
+  onHide?: () => void;
+  onUnhide?: () => void;
 }
 
-export function ThreadListItem({ thread, isSelected, onSelect, conceptBadge, childCount }: ThreadListItemProps) {
+export function ThreadListItem({ thread, isSelected, onSelect, conceptBadge, childCount, isHidden = false, onHide, onUnhide }: ThreadListItemProps) {
   const statusColor = STATUS_COLORS[thread.status];
   const statusBg    = STATUS_BG[thread.status];
   const isActive    = thread.status === 'active';
@@ -52,19 +56,24 @@ export function ThreadListItem({ thread, isSelected, onSelect, conceptBadge, chi
   // Sprint 10.5: layoutId enables smooth shared-element transition when selection
   // changes — Framer Motion animates the shared border indicator between items.
   return (
-    <motion.button
+    <motion.div
       layoutId={isSelected ? `thread-selected-border` : undefined}
-      onClick={onSelect}
-      className={cn(
-        "w-full text-left px-3 py-3 rounded-lg transition-all duration-150 group relative",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset",
-        isSelected ? "bg-elevated/80" : "bg-transparent",
-      )}
+      className="group relative"
       transition={{ type: 'spring', stiffness: 400, damping: 30, mass: 0.8 }}
-      style={isSelected ? {
-        boxShadow: `inset 3px 0 0 ${statusColor}50, 0 0 0 1px rgba(61,201,196,0.12)`,
-      } : undefined}
     >
+      <button
+        type="button"
+        onClick={onSelect}
+        className={cn(
+          "w-full text-left px-3 py-3 rounded-lg transition-all duration-150 relative",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset",
+          isSelected ? "bg-elevated/80" : "bg-transparent",
+          isHidden && "opacity-70"
+        )}
+        style={isSelected ? {
+          boxShadow: `inset 3px 0 0 ${statusColor}50, 0 0 0 1px rgba(61,201,196,0.12)`,
+        } : undefined}
+      >
       {/* Pinned indicator */}
       {thread.pinned && (
         <span className="absolute top-2 right-2" aria-label="Pinned">
@@ -78,9 +87,9 @@ export function ThreadListItem({ thread, isSelected, onSelect, conceptBadge, chi
       <div className="pl-5 pr-3">
         {/* Title row */}
         <div className="flex items-start justify-between gap-2 mb-2">
-          <p
+          <div
             className={cn(
-              "text-xs leading-snug truncate pr-2 transition-colors duration-150 flex items-center gap-1.5",
+              "min-w-0 flex-1 pr-2 text-xs leading-snug transition-colors duration-150 flex items-start gap-1.5",
               isActive ? "text-ivory font-medium" : "text-ivory-dim group-hover:text-ivory",
               isSelected && "text-ivory font-medium"
             )}
@@ -88,13 +97,20 @@ export function ThreadListItem({ thread, isSelected, onSelect, conceptBadge, chi
             {/* Sprint 9: Live pulse dot for active sessions in dock */}
             {isActive && (
               <span
-                className="w-1.5 h-1.5 rounded-full flex-shrink-0 signal-pulse"
+                className="mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 signal-pulse"
                 style={{ background: 'var(--mb-teal)' }}
                 title="Active session"
               />
             )}
-            {thread.title}
-          </p>
+            <PretextSmartTitle
+              text={thread.title}
+              maxWidth={190}
+              maxLines={2}
+              className="min-w-0"
+              font="500 12px Geist, ui-sans-serif, system-ui, sans-serif"
+              lineHeight={15}
+            />
+          </div>
           {/* Sprint 8: Child sessions indicator */}
           {(childCount ?? 0) > 0 && (
             <span
@@ -181,6 +197,21 @@ export function ThreadListItem({ thread, isSelected, onSelect, conceptBadge, chi
           </div>
         </div>
       </div>
-    </motion.button>
+      </button>
+      {(onHide || onUnhide) && (
+        <button
+          type="button"
+          className="thread-row-action"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (isHidden) onUnhide?.();
+            else onHide?.();
+          }}
+          aria-label={isHidden ? `Restore ${thread.title}` : `Hide ${thread.title}`}
+        >
+          {isHidden ? 'Restore' : 'Tuck'}
+        </button>
+      )}
+    </motion.div>
   );
 }

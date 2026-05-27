@@ -1,36 +1,243 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Signal Loom
 
-## Getting Started
+Signal Loom is a local web cockpit for operating Hermes/Nero sessions, live agent lanes, approvals, settings, and conversation history from one dense but readable interface.
 
-First, run the development server:
+It is built as a Next.js App Router application and is designed for a local Hermes runtime first: the browser talks to Next.js API routes, and those server-side routes proxy into Hermes/OpenClaw-compatible local services so secrets stay out of the client bundle.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Screenshots
+
+### Desktop operator shell
+
+![Signal Loom desktop operator shell](docs/screenshots/signal-loom-desktop.png)
+
+### Mobile lane drawer
+
+![Signal Loom mobile lane drawer](docs/screenshots/signal-loom-mobile-lanes.png)
+
+## What it does
+
+- Shows recent Hermes sessions as a usable thread rail.
+- Groups related sessions into continuous conversations where possible.
+- Loads transcript history from Hermes/OpenClaw-compatible adapters.
+- Provides a central Nero workspace with chair/dual/monitor/operator view presets.
+- Keeps routing traces and tool receipts folded by default so the chat stays readable.
+- Shows live specialist lanes for the Nero council model:
+  - Hephaestus / Forge
+  - Argus / Sentinel
+  - Ariadne / Studio
+  - Orion / Scout
+  - Hermes / Mercury
+- Provides approval surfaces for human-gated actions and email review flows.
+- Provides a Hermes command/settings panel for safe diagnostics, selected config edits, and approval-gated update checks.
+- Supports theme switching with persisted, accessible swatches:
+  - Midnight
+  - Nero Ember
+  - Oracle Teal
+  - Papyrus Dawn
+- Collapses dense side rails into mobile drawers on compact screens.
+
+## Current design direction
+
+Signal Loom is intentionally not a generic SaaS dashboard. The visual language is a dark operator cockpit: calm reading surfaces, expressive rails, restrained glow, and enough personality to make long work sessions tolerable.
+
+The recent polish pass focused on:
+
+- theme infrastructure and pre-hydration theme bootstrapping
+- custom theme swatches instead of a plain select
+- persistent hidden/tucked conversation state
+- denser but clearer session grouping
+- shorter receipts/tool-trace copy
+- mobile rail drawers with backdrop behavior
+- composer spacing and mobile touch targets
+- runtime strip truncation and narrower-status behavior
+- README and repository cleanup
+
+## Tech stack
+
+- Next.js 16 App Router
+- React 19
+- TypeScript
+- Tailwind CSS 4
+- Zustand for client state
+- Framer Motion / Motion for UI animation
+- Base UI and shadcn-style local primitives
+- Hermes/OpenClaw-compatible local API adapters
+
+## Repository structure
+
+```text
+app/
+  api/
+    hermes/                 Hermes settings, send, and update routes
+    openclaw/               Session, health, live, chat, and approval proxy routes
+  layout.tsx                Root layout and theme bootstrap
+  page.tsx                  App entry point
+components/
+  agents/                   Live lane cards and email review composer
+  approvals/                Human approval cards and panels
+  chat/                     Nero workspace, thread panes, messages, composer
+  shell/                    Top bar, mission shell, runtime strip, command/settings panels
+  threads/                  Session rail and thread list items
+  ui/                       Local UI primitives and resize handles
+lib/
+  hermes/                   Local Hermes state database readers
+  openclaw/adapter/         Gateway/session/chat/health adapters
+  crm/                      Legacy concept/email gate support types
+  conversation-groups.ts    Related-session grouping logic
+  store.ts                  Zustand state store
+  theme.ts                  Signal Loom theme definitions
+  types/                    Shared TypeScript types
+docs/
+  screenshots/              README screenshots
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Prerequisites
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Node.js and npm
+- A local Hermes runtime/API server for live data
+- A server-side API token in one of:
+  - `HERMES_API_KEY`
+  - `API_SERVER_KEY`
+  - `OPENCLAW_GATEWAY_TOKEN`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+By default the app expects Hermes at:
 
-## Learn More
+```text
+http://127.0.0.1:8642
+```
 
-To learn more about Next.js, take a look at the following resources:
+Override it with:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+NEXT_PUBLIC_HERMES_API_URL=http://127.0.0.1:8642
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The adapter still accepts older OpenClaw environment names while the migration finishes, but new setups should prefer Hermes names.
 
-## Deploy on Vercel
+## Install
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm install
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Development
+
+Start the dev server:
+
+```bash
+npm run dev -- --hostname 0.0.0.0 --port 3098
+```
+
+Open:
+
+```text
+http://localhost:3098
+```
+
+In WSL/Windows setups, `localhost` is usually more reliable from the Windows browser than raw IPv4 loopback.
+
+## Production-style local launch
+
+Build first:
+
+```bash
+npm run build
+```
+
+Then run with a server-side token:
+
+```bash
+HERMES_API_KEY=your-local-token ./run.sh 3098
+```
+
+`run.sh` deliberately does not store credentials. Do not commit `.env` files or local Hermes state.
+
+## Verification commands
+
+Use these before committing or pushing:
+
+```bash
+npm run typecheck
+npm run lint
+npm run build
+```
+
+The current build may emit a Turbopack/NFT warning traced through `next.config.ts` and `app/api/openclaw/live/route.ts`. It does not currently fail compilation, but it is still worth cleaning in a future pass.
+
+## Browser QA checklist
+
+For layout or shell changes, verify at minimum:
+
+- desktop: `1440x900`
+- mobile: `390x844`
+- no console errors or page errors
+- no hydration mismatch text/overlay
+- `document.documentElement.scrollWidth - document.documentElement.clientWidth === 0`
+- no duplicate IDs
+- no unnamed visible interactive controls
+- theme swatch click updates `document.documentElement.dataset.signalTheme`
+- theme choice persists in `localStorage`
+- composer typing enables the send button
+- mobile `Open Loom` and `Open Lanes` controls open overlay drawers
+- outside/backdrop click closes the active mobile drawer
+
+## API notes
+
+The browser should not call Hermes/OpenClaw directly with secrets. The intended path is:
+
+```text
+Browser -> Next.js API route -> local Hermes/OpenClaw service
+```
+
+Important local routes:
+
+- `GET /api/openclaw/sessions`
+- `GET /api/openclaw/sessions/history?sessionKey=...`
+- `GET /api/openclaw/health`
+- `GET /api/openclaw/live`
+- `POST /api/openclaw/chat`
+- `POST /api/openclaw/chat/stream`
+- `POST /api/openclaw/approvals/resolve`
+- `GET /api/hermes/settings`
+- `POST /api/hermes/settings`
+- `POST /api/hermes/update`
+
+The Hermes settings route is local-operator tooling. Treat it as trusted-local only; do not expose this app publicly without adding authentication and reviewing the settings/update endpoints.
+
+## Safety boundaries
+
+Signal Loom is a local operator cockpit, not a public SaaS app. Before public deployment, add:
+
+- authentication
+- CSRF protection for mutation routes
+- stricter server-side authorization around config writes and update actions
+- audit logging for settings changes
+- redaction around config display
+- deployment-specific environment validation
+
+## Cleanup policy
+
+The repo intentionally excludes local agent/runtime artifacts:
+
+- `.hermes/`
+- `output/`
+- `.verification-screenshots/`
+- `.next/`
+- environment files
+- TypeScript build info
+
+The committed screenshots under `docs/screenshots/` are curated README assets, not transient QA output.
+
+## Useful scripts
+
+```bash
+npm run dev        # start Next.js dev server
+npm run typecheck  # TypeScript verification
+npm run lint       # ESLint
+npm run build      # production build
+./run.sh 3098      # local production-style launch after build
+```
+
+## Status
+
+Signal Loom is actively evolving as Nero's local operator interface. The current version is usable for local Hermes session review and cockpit-style operation, but public deployment still requires the security hardening listed above.

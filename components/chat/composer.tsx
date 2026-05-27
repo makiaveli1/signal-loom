@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useSignalLoomStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 
@@ -8,54 +9,93 @@ interface ComposerProps {
   threadId: string;
 }
 
-/** Streaming mode indicator — shows progressive response as it arrives */
-function StreamingIndicator({ text }: { text: string }) {
-  const PREVIEW_LEN = 300;
+/** Live streaming HUD — connection state, throughput, and progressive preview. */
+function StreamingIndicator({
+  text,
+  status,
+  chunks,
+  charsPerSecond,
+  lastChunkAt,
+}: {
+  text: string;
+  status: string;
+  chunks: number;
+  charsPerSecond: number;
+  lastChunkAt: string | null;
+}) {
+  const PREVIEW_LEN = 420;
   const preview = text.length > PREVIEW_LEN
-    ? text.slice(0, PREVIEW_LEN) + '…'
+    ? text.slice(Math.max(0, text.length - PREVIEW_LEN))
     : text;
+  const statusLabel = status === 'connecting'
+    ? 'Opening stream'
+    : status === 'finalizing'
+      ? 'Finalizing'
+      : status === 'error'
+        ? 'Stream needs attention'
+        : 'Streaming live';
+  const freshness = lastChunkAt ? new Date(lastChunkAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'waiting';
 
   return (
-    <div
-      className="mb-2 px-3 py-2.5 rounded-lg border text-xs"
+    <motion.div
+      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+      transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.7 }}
+      className="streaming-hud mb-2 overflow-hidden rounded-2xl border px-3.5 py-3 text-xs"
       style={{
-        background: 'rgba(0,200,150,0.04)',
-        borderColor: 'rgba(0,200,150,0.15)',
+        background: 'linear-gradient(135deg, rgba(61,201,196,0.10), rgba(201,160,58,0.055), rgba(0,0,0,0.18))',
+        borderColor: status === 'error' ? 'rgba(232,96,58,0.28)' : 'rgba(61,201,196,0.24)',
+        boxShadow: '0 18px 45px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.05)',
         color: 'var(--mb-ivory-dim)',
       }}
     >
-      {/* Header */}
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <span
-          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-          style={{ background: 'var(--mb-teal)', animation: 'pulse-dot 1s ease-in-out infinite' }}
-        />
-        <span
-          className="text-[10px] font-mono uppercase tracking-widest"
-          style={{ color: 'var(--mb-teal)' }}
-        >
-          Streaming
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="relative flex h-2.5 w-2.5" aria-hidden="true">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-signal-teal opacity-40" />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-signal-teal" />
         </span>
-        <span className="text-ivory/20 ml-auto text-[10px]">
-          {text.length} chars
+        <span className="text-[10px] font-semibold uppercase tracking-[0.24em] text-signal-teal">
+          {statusLabel}
         </span>
+        <div className="ml-auto flex flex-wrap items-center gap-1.5 font-mono text-[10px] text-ash">
+          <span className="rounded-full border border-white/10 bg-black/15 px-2 py-0.5">{chunks} frames</span>
+          <span className="rounded-full border border-white/10 bg-black/15 px-2 py-0.5">{text.length} chars</span>
+          <span className="rounded-full border border-white/10 bg-black/15 px-2 py-0.5">{charsPerSecond}/s</span>
+          <span className="rounded-full border border-white/10 bg-black/15 px-2 py-0.5">last {freshness}</span>
+        </div>
       </div>
-      {/* Progressive text preview */}
-      <p className="leading-relaxed whitespace-pre-wrap break-words text-ivory/80">
-        {preview}
-      </p>
-    </div>
+
+      <div className="relative mt-2.5 overflow-hidden rounded-xl border border-white/10 bg-black/20 p-3">
+        <motion.div
+          className="absolute left-0 top-0 h-px bg-signal-teal"
+          initial={{ width: '0%' }}
+          animate={{ width: status === 'connecting' ? ['8%', '38%', '12%'] : ['35%', '100%', '55%'] }}
+          transition={{ duration: status === 'connecting' ? 1.2 : 1.8, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <p className="max-h-28 overflow-hidden whitespace-pre-wrap break-words leading-relaxed text-ivory/82">
+          {preview || 'Waiting for the first token…'}
+          <motion.span
+            className="ml-0.5 inline-block h-3 w-1 rounded-sm bg-signal-teal align-[-2px]"
+            animate={{ opacity: [1, 0.15, 1] }}
+            transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut' }}
+            aria-hidden="true"
+          />
+        </p>
+      </div>
+    </motion.div>
   );
 }
 
 export function Composer({ threadId }: ComposerProps) {
-  const { composerState, sendMessage, sendStreamingMessage } = useSignalLoomStore();
+  const { composerState, sendMessage, sendStreamingMessage, composerDraft, clearComposerDraft } = useSignalLoomStore();
   const [value, setValue] = useState('');
   const [streamingMode, setStreamingMode] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [sendPulse, setSendPulse] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { isSending, isStreaming, streamingResponse, error, lastSentAt } = composerState;
+  const { isSending, isStreaming, streamingResponse, streamingStatus, streamingTokenCount, streamingCharsPerSecond, streamingLastChunkAt, error, lastSentAt } = composerState;
 
   // Auto-resize textarea
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -98,20 +138,56 @@ export function Composer({ threadId }: ComposerProps) {
     }
   }, [isSending]);
 
+  // Global command center can safely pre-fill the composer without auto-sending.
+  useEffect(() => {
+    if (!composerDraft) return;
+    queueMicrotask(() => {
+      setValue(composerDraft);
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+        textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+        textareaRef.current.focus();
+      }
+      clearComposerDraft();
+    });
+  }, [clearComposerDraft, composerDraft]);
+
   const canSend = value.trim().length > 0 && !isSending;
+  const commandChips = [
+    { label: 'Decision', prompt: 'Nero: give me the decision, risks, tradeoffs, and exact next move for this thread.' },
+    { label: 'Split task', prompt: 'Split this into the right Hermes helper tasks and tell me what each helper should do before acting.' },
+    { label: 'Recall', prompt: 'Search prior Hermes sessions for relevant context, then continue from the useful facts only.' },
+    { label: 'Watcher', prompt: 'Design a safe Hermes cron/watch job for this need. Do not create it until I approve schedule and delivery.' },
+    { label: 'Approve', prompt: 'Review this approval gate and tell me approve, revise, or block with the safest next action.' },
+    { label: 'QA', prompt: 'Run an Argus QA pass: regressions, browser behavior, security/privacy risks, and evidence needed before completion.' },
+  ];
+
+  const applyChip = (prompt: string) => {
+    setValue(prompt);
+    queueMicrotask(() => textareaRef.current?.focus());
+  };
 
   return (
     <div
-      className="px-4 py-3 border-t"
+      className="composer-shell border-t px-4 py-3 sm:px-5"
       style={{
-        background: 'var(--mb-shell)',
-        borderColor: 'rgba(255,255,255,0.05)',
+        background: 'linear-gradient(180deg, rgba(19,22,31,0.92), rgba(10,12,17,0.98))',
+        borderColor: 'rgba(255,255,255,0.07)',
+        boxShadow: '0 -18px 42px rgba(0,0,0,0.22)',
       }}
     >
       {/* Streaming indicator — shows progressive response */}
-      {isStreaming && streamingResponse !== null && (
-        <StreamingIndicator text={streamingResponse} />
-      )}
+      <AnimatePresence initial={false}>
+        {isStreaming && streamingResponse !== null && (
+          <StreamingIndicator
+            text={streamingResponse}
+            status={streamingStatus}
+            chunks={streamingTokenCount}
+            charsPerSecond={streamingCharsPerSecond}
+            lastChunkAt={streamingLastChunkAt}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Sending indicator (non-streaming) */}
       {isSending && !isStreaming && (
@@ -144,13 +220,40 @@ export function Composer({ threadId }: ComposerProps) {
         </div>
       )}
 
+      {/* Nero command shortcuts — folded by default to keep the conversation tab quiet */}
+      <div className="composer-shortcuts mb-2 flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-ash">
+        <button
+          type="button"
+          onClick={() => setShortcutsOpen((v) => !v)}
+          className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-ivory-dim transition-all duration-150 hover:border-brass/30 hover:text-brass"
+          aria-expanded={shortcutsOpen}
+        >
+          {shortcutsOpen ? 'Hide prompt shortcuts' : 'Prompt shortcuts'}
+        </button>
+        {shortcutsOpen && commandChips.map((chip) => (
+          <button
+            type="button"
+            key={chip.label}
+            onClick={() => {
+              applyChip(chip.prompt);
+              setShortcutsOpen(false);
+            }}
+            disabled={isSending}
+            className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 transition-all duration-150 hover:-translate-y-0.5 hover:border-brass/30 hover:bg-brass/10 disabled:opacity-40"
+            style={{ color: chip.label === 'Synthesize' ? 'var(--mb-brass)' : 'var(--mb-ivory-dim)' }}
+          >
+            {chip.label}
+          </button>
+        ))}
+      </div>
+
       {/* Composer input row */}
       <div className="flex items-end gap-2">
         {/* Stream mode toggle */}
         <button
           onClick={() => setStreamingMode((v) => !v)}
           title={streamingMode ? 'Disable streaming mode' : 'Enable streaming mode — streams response in real time'}
-          className="flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center transition-all duration-150 mb-0.5"
+          className="composer-icon-button mb-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md transition-all duration-150"
           style={{
             background: streamingMode
               ? 'rgba(0,200,150,0.15)'
@@ -179,9 +282,9 @@ export function Composer({ threadId }: ComposerProps) {
 
         {/* Input area */}
         <div
-          className="flex-1 flex items-end gap-2 px-3 py-2.5 rounded-lg border transition-all"
+          className="composer-input-frame flex-1 flex items-end gap-2 rounded-2xl border px-3.5 py-2.5 transition-all"
           style={{
-            background: 'var(--mb-panel)',
+            background: 'linear-gradient(135deg, rgba(30,36,52,0.96), rgba(18,22,31,0.96))',
             borderColor: canSend
               ? streamingMode
                 ? 'rgba(0,200,150,0.25)'
@@ -206,11 +309,12 @@ export function Composer({ threadId }: ComposerProps) {
             value={value}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder="Message Nero…"
+            placeholder="Ask Nero to synthesize, route, or decide…"
+            aria-label="Message Nero"
             rows={1}
             disabled={isSending}
             className={cn(
-              'flex-1 bg-transparent text-sm text-ivory placeholder:text-ash-muted resize-none outline-none leading-relaxed',
+              'flex-1 bg-transparent text-sm text-ivory placeholder:text-ash resize-none outline-none leading-relaxed',
               isSending && 'opacity-50'
             )}
             style={{ minHeight: '22px', maxHeight: '120px' }}
@@ -218,7 +322,7 @@ export function Composer({ threadId }: ComposerProps) {
           <button
             onClick={handleSend}
             className={cn(
-              'flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center transition-all duration-150',
+              'composer-icon-button flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md transition-all duration-150',
               canSend ? 'cursor-pointer' : 'cursor-not-allowed',
               sendPulse && 'composer-send-ready'
             )}
@@ -266,7 +370,7 @@ export function Composer({ threadId }: ComposerProps) {
                   <path d="M7 1L3 7H6L5 11L9 5H6L7 1Z" fill="currentColor" />
                 </svg>
               )}
-              {streamingMode ? 'Streaming mode · Enter to send' : 'Nero is monitoring · routing is live'}
+              {streamingMode ? 'Streaming Hermes response · Enter to send' : 'Nero is monitoring Hermes state · specialist routing is live'}
             </span>
           </span>
         )}

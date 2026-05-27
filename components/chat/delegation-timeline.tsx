@@ -97,6 +97,16 @@ function TimelineEvent({
     <div
       className={`flex items-start gap-3 py-1.5 group relative${isActive ? ' rounded-md' : ''}${mounted ? ' event-enter' : ''}`}
       style={isActive ? { background: 'rgba(155,141,200,0.06)', border: '1px solid rgba(155,141,200,0.20)' } : undefined}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={(eventKey) => {
+        if (!onClick) return;
+        if (eventKey.key === 'Enter' || eventKey.key === ' ') {
+          eventKey.preventDefault();
+          onClick();
+        }
+      }}
     >
       {/* Vertical line connector */}
       <div className="flex flex-col items-center flex-shrink-0 w-4">
@@ -145,7 +155,10 @@ function TimelineEvent({
           {/* Sprint 8: Open child session action */}
           {canOpenChild && (
             <button
-              onClick={() => primaryChildId && onOpenChildSession(primaryChildId, delegationEventId ?? '')}
+              onClick={(clickEvent) => {
+                clickEvent.stopPropagation();
+                if (primaryChildId) onOpenChildSession(primaryChildId, delegationEventId ?? '');
+              }}
               title={
                 event.childSessionIds!.length === 1
                   ? 'View child session'
@@ -181,7 +194,7 @@ function TimelineEvent({
             {time}
           </span>
           {!inlineMode && canOpenChild && (
-            <span className="text-xs text-ash-dimmed italic">
+            <span className="text-xs text-ash italic">
               · click to open
             </span>
           )}
@@ -209,9 +222,8 @@ export function DelegationTimeline({
 }: DelegationTimelineProps) {
   const [filter, setFilter] = useState<AgentId | 'all'>('all');
   const [expanded, setExpanded] = useState(false);
-  // Sprint 10: Track initial mount for entrance animation — animation fires once on load
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  // Sprint 10: Entrance animation state — default true avoids a synchronous setState-in-effect lint hit.
+  const mounted = true;
 
   const MAX_VISIBLE = 5;
 
@@ -266,10 +278,10 @@ export function DelegationTimeline({
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wider text-ash-muted">
-            Delegation Timeline
+            Routing Trace
           </span>
           {fetchedAt && (
-            <span className="text-xs font-mono text-ash-dimmed" title={`Last refreshed ${new Date(fetchedAt).toLocaleTimeString()}`}>
+            <span className="text-xs font-mono text-ash" title={`Last refreshed ${new Date(fetchedAt).toLocaleTimeString()}`}>
               · {formatRelative(fetchedAt)}
             </span>
           )}
@@ -317,7 +329,7 @@ export function DelegationTimeline({
       <div className="relative">
         {visible.length === 0 ? (
           <p className="text-xs text-ash-muted italic py-1">
-            No delegation events yet — start a conversation with Nero.
+            No routing events yet — ask Nero to synthesize, delegate, or decide.
           </p>
         ) : (
           <div className="space-y-0">

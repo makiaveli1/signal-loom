@@ -1,7 +1,7 @@
 /**
- * useLiveEvents — subscribes to gateway real-time events via SSE.
+ * useLiveEvents — subscribes to Hermes runtime change events via SSE.
  *
- * Bridges /api/openclaw/live (SSE) → gateway WebSocket → store updates.
+ * Bridges /api/openclaw/live (SSE) → Hermes state.db polling → store updates.
  * Uses silentReloadSessions for all live event refreshes so the thread list
  * never flickers or shows a loading spinner during background updates.
  */
@@ -18,15 +18,15 @@ import { useSignalLoomStore } from '@/lib/store';
 let _lastSessionsReload = 0;
 const SESSIONS_RELOAD_COOLDOWN_MS = 3000;
 
-function safeReload() {
+function safeReload(reloadSessions: () => Promise<void>) {
   const now = Date.now();
   if (now - _lastSessionsReload < SESSIONS_RELOAD_COOLDOWN_MS) return;
   _lastSessionsReload = now;
-  safeReload();
+  void reloadSessions();
 }
 
 export function useLiveEvents() {
-  const { loadMessagesForThread, setLiveConnected } = useSignalLoomStore();
+  const { loadMessagesForThread, setLiveConnected, silentReloadSessions } = useSignalLoomStore();
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -44,7 +44,7 @@ export function useLiveEvents() {
         if (!mounted) return;
         setLiveConnected(true);
         // Silent refresh — threads stay visible, only data updates
-        safeReload();
+        safeReload(silentReloadSessions);
       }, { once: true });
 
       // Handle all gateway event types — all trigger silent background refresh
@@ -65,17 +65,17 @@ export function useLiveEvents() {
                 loadMessagesForThread(data.sessionKey); // pass SESSION KEY to API
               }
             }
-            safeReload();
+            safeReload(silentReloadSessions);
 
           } else if (msg.type === 'sessions.changed') {
-            safeReload();
+            safeReload(silentReloadSessions);
 
           } else if (msg.type === 'session.tool') {
-            safeReload();
+            safeReload(silentReloadSessions);
 
           } else {
             // Catch-all for any unhandled gateway event
-            safeReload();
+            safeReload(silentReloadSessions);
           }
         } catch {
           // Ignore parse errors

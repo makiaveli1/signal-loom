@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { cn } from '@/lib/utils';
-import type { Message } from '@/lib/types';
+import type { Message, MessageRole } from '@/lib/types';
 
 function formatLocalTime(isoString: string): string {
   const d = new Date(isoString);
@@ -32,13 +32,10 @@ interface MessageCardProps {
   isStreaming?: boolean;
   /** True when this is the most recent message — triggers entrance animation */
   isNew?: boolean;
-  /** Sprint 10.5: True when this message is in a child/secondary session (specialist work) */
+  /** True when this message is in a child/secondary session (specialist work) */
   isChildSession?: boolean;
 }
 
-// Sprint 10.6: MotionText — word-by-word streaming reveal using CSS animation.
-// CSS animation fires reliably on DOM insertion (unlike Framer Motion initial/animate
-// which silently fails to re-trigger when visibleCount jumps to full word count).
 function MotionText({
   text,
   className,
@@ -49,35 +46,14 @@ function MotionText({
   isStreaming?: boolean;
 }) {
   const words = useMemo(() => text.split(/(\s+)/), [text]);
-  const [visibleCount, setVisibleCount] = useState(words.length);
-
-  const contentFinal = !isStreaming;
-
-  useEffect(() => {
-    if (contentFinal) {
-      setVisibleCount(words.length);
-      return;
-    }
-    if (words.length === 0) return;
-
-    // Streaming: reveal words in batches for a natural unfolding feel
-    const batchSize = Math.min(8, Math.max(3, Math.floor(words.length / 20)));
-    let current = 0;
-    const interval = setInterval(() => {
-      current += batchSize;
-      setVisibleCount(Math.min(current, words.length));
-      if (current >= words.length) clearInterval(interval);
-    }, 40);
-    return () => clearInterval(interval);
-  }, [text, contentFinal, words.length, isStreaming]);
 
   return (
     <span className={className}>
-      {words.slice(0, visibleCount).map((word, i) => (
+      {words.map((word, i) => (
         <span
           key={i}
           className="word-animated"
-          style={{ '--word-delay': `${i * 30}ms`, display: 'inline' } as React.CSSProperties}
+          style={{ '--word-delay': isStreaming ? `${Math.min(i * 18, 420)}ms` : '0ms', display: 'inline' } as React.CSSProperties}
         >
           {word}
         </span>
@@ -86,115 +62,148 @@ function MotionText({
   );
 }
 
-// Sprint 9.5/10: Parse message content into an ordered interleaved stream.
-type ContentChunk =
-  | { kind: 'answer'; text: string }
-  | { kind: 'reasoning'; text: string };
+type TraceSection = {
+  label: string;
+  tone: 'reasoning' | 'tool' | 'system';
+  text: string;
+};
 
-function parseContentStream(content: string): {
-  chunks: ContentChunk[];
-  hasReasoning: boolean;
-  answerOnly: string;
-} {
-  const reasoningSections: string[] = [];
+type MessageDisplay = {
+  answer: string;
+  traceSections: TraceSection[];
+  operationalOnly: boolean;
+};
 
-  // Pattern A: multi-line [Reasoning]\n\n<text>
-  const MULTI = /\[Reasoning\]\n\n([\s\S]+?)(?=\[Reasoning\]\n\n|\[Reasoning\]\s|\[Tool:|\[Result\]|$)/g;
-  let match: RegExpExecArray | null;
-  while ((match = MULTI.exec(content)) !== null) {
-    const block = (match[1] ?? '').trim();
-    if (block) reasoningSections.push(block);
-  }
+type RuntimeRole = MessageRole | 'assistant' | 'tool';
 
-  // Pattern B: inline [Reasoning] <text>
-  const SINGLE = /\[Reasoning\]\s*(.+?)(?=\[Reasoning\]\s|\[Tool:|\[Result\]|$)/g;
-  while ((match = SINGLE.exec(content)) !== null) {
-    const block = (match[1] ?? '').trim();
-    if (block && !reasoningSections.includes(block)) reasoningSections.push(block);
-  }
+const OPERATIONAL_HINTS = [
+  '"success"',
+  '"diff"',
+  '"exit_code"',
+  '"content"',
+  '"matches"',
+  '"files"',
+  '"bytes_written"',
+  '"dirs_created"',
+  '"total_count"',
+  '"lsp_diagnostics"',
+  '<diagnostics',
+  'Tool loop warning',
+  'Background process',
+  'Command:',
+  'Matched output:',
+  'Code generation for chunk item errored',
+];
 
-  // Build ordered chunks
-  const chunks: ContentChunk[] = [];
-  let searchStart = 0;
+function compactText(text: string): string {
+  return text.replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
 
-  // Collect all reasoning positions
-  const allReasoning: Array<{ start: number; end: number; text: string }> = [];
-  const MULTI_POS = /\[Reasoning\]\n\n([\s\S]+?)(?=\[Reasoning\]\n\n|\[Reasoning\]\s|\[Tool:|\[Result\]|$)/g;
-  while ((match = MULTI_POS.exec(content)) !== null) {
-    allReasoning.push({ start: match.index, end: match.index + match[0].length, text: (match[1] ?? '').trim() });
-  }
-  const SINGLE_POS = /\[Reasoning\]\s*(.+?)(?=\[Reasoning\]\s|\[Tool:|\[Result\]|$)/g;
-  while ((match = SINGLE_POS.exec(content)) !== null) {
-    const inside = allReasoning.some((r) => match!.index >= r.start && match!.index < r.end);
-    if (!inside && match[1]) {
-      allReasoning.push({ start: match.index, end: match.index + match[0].length, text: (match[1] ?? '').trim() });
-    }
-  }
-  allReasoning.sort((a, b) => a.start - b.start);
+function splitVisibleTailFromTrace(text: string): { trace: string; visibleTail: string } {
+  const compact = compactText(text);
+  const parts = compact.split(/\n{2,}/);
+  if (parts.length < 2) return { trace: compact, visibleTail: '' };
 
-  for (const r of allReasoning) {
-    if (r.start > searchStart) {
-      const answerText = content.slice(searchStart, r.start)
-        .replace(/\[Tool:[^\]]*\]/g, '').replace(/\[Result\]\s*.+?$/g, '').replace(/\n{3,}/g, '\n\n').trim();
-      if (answerText) chunks.push({ kind: 'answer', text: answerText });
-    }
-    if (r.text) chunks.push({ kind: 'reasoning', text: r.text });
-    searchStart = r.end;
-  }
-
-  if (searchStart < content.length) {
-    const answerText = content.slice(searchStart)
-      .replace(/\[Tool:[^\]]*\]/g, '').replace(/\[Result\]\s*.+?$/g, '').replace(/\n{3,}/g, '\n\n').trim();
-    if (answerText) chunks.push({ kind: 'answer', text: answerText });
-  }
-
-  const answerOnly = content
-    .replace(/\[Reasoning\][\s\S]*?(?=\[Reasoning\]|\[Tool:|\[Result\]|$)/g, '')
-    .replace(/\[Tool:[^\]]*\]/g, '').replace(/\[Result\]\s*.+?$/g, '').replace(/\n{3,}/g, '\n\n').trim();
+  const tail = parts[parts.length - 1]?.trim() ?? '';
+  const looksLikeAnswer = /^(final|answer|done|fixed|verified|summary|here|i\b|the\b|server\b|root cause|##|###)/i.test(tail);
+  if (!looksLikeAnswer || tail.length < 24) return { trace: compact, visibleTail: '' };
 
   return {
-    chunks: chunks.length > 0 ? chunks : [{ kind: 'answer', text: content || '…' }],
-    hasReasoning: allReasoning.length > 0,
-    answerOnly,
+    trace: compactText(parts.slice(0, -1).join('\n\n')),
+    visibleTail: tail,
   };
 }
 
-export function MessageCard({ message, isHighlighted, isStreaming, isNew, isChildSession }: MessageCardProps) {
-  if (message.role === 'action-summary') {
-    return <ActionSummaryCard message={message} isHighlighted={isHighlighted} isNew={isNew} />;
+function pullReasoning(content: string): { stripped: string; sections: TraceSection[] } {
+  const sections: TraceSection[] = [];
+  const pattern = /\[Reasoning\]\s*([\s\S]*?)(?=\[Reasoning\]|\[Tool:|\[Result\]|$)/g;
+  const stripped = content.replace(pattern, (_full, body: string) => {
+    const { trace, visibleTail } = splitVisibleTailFromTrace(body ?? '');
+    if (trace) sections.push({ label: 'Private reasoning', tone: 'reasoning', text: trace });
+    return visibleTail ? `\n${visibleTail}\n` : '\n';
+  });
+  return { stripped, sections };
+}
+
+function pullToolBlocks(content: string): { stripped: string; sections: TraceSection[] } {
+  const sections: TraceSection[] = [];
+  let stripped = content.replace(/\[Tool:([^\]]+)\]\s*([\s\S]*?)(?=\[Tool:|\[Result\]|\[Reasoning\]|$)/g, (_full, name: string, body: string) => {
+    const text = compactText(body ?? '');
+    sections.push({ label: `Tool call · ${name}`, tone: 'tool', text: text || 'Tool call recorded.' });
+    return '\n';
+  });
+
+  stripped = stripped.replace(/\[Result\]\s*([\s\S]*?)(?=\[Tool:|\[Reasoning\]|$)/g, (_full, body: string) => {
+    const text = compactText(body ?? '');
+    if (text) sections.push({ label: 'Tool result', tone: 'tool', text });
+    return '\n';
+  });
+
+  return { stripped, sections };
+}
+
+function looksOperational(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return OPERATIONAL_HINTS.some((hint) => trimmed.includes(hint)) ||
+    (/^\{[\s\S]*\}$/.test(trimmed) && /"(output|status|message|error|path|files_modified|content|matches|files|total_lines)"/.test(trimmed)) ||
+    (/^\s*\d+\|/.test(trimmed) && trimmed.split('\n').length > 4);
+}
+
+function summarizeOperational(role: RuntimeRole, sections: TraceSection[]): string {
+  if (role === 'system') return 'System event recorded. Details are tucked into receipts.';
+  if (role === 'tool') return 'Tool output recorded. I folded the raw details into receipts.';
+  const tools = sections.filter((s) => s.tone === 'tool' || s.tone === 'system').length;
+  if (tools > 1) return `${tools} work artifacts recorded. Open receipts if you want the raw plumbing.`;
+  return 'Work artifact recorded. Open receipts if you need the raw output.';
+}
+
+function buildMessageDisplay(content: string, role: RuntimeRole): MessageDisplay {
+  const reasoning = pullReasoning(content);
+  const tools = pullToolBlocks(reasoning.stripped);
+  let answer = compactText(tools.stripped);
+  const traceSections = [...reasoning.sections, ...tools.sections];
+  const conversationalRole = role === 'user' || role === 'nero' || role === 'assistant';
+
+  if ((!conversationalRole && answer) || (looksOperational(answer) && role !== 'user')) {
+    traceSections.push({ label: 'Raw work output', tone: 'system', text: answer });
+    answer = summarizeOperational(role, traceSections);
+    return { answer, traceSections, operationalOnly: true };
   }
 
-  const { chunks, hasReasoning, answerOnly } = parseContentStream(message.content);
-  const [reasoningExpanded, setReasoningExpanded] = useState(false);
+  if (!answer && traceSections.length > 0) {
+    answer = role === 'nero'
+      ? 'I have hidden the working notes so the conversation stays readable.'
+      : 'Working notes recorded.';
+  }
 
-  // Sprint 10.5 defensive: strip any [Reasoning] that slipped through parseContentStream.
-  // Handles edge cases where streaming arrives in chunks that confuse the regex,
-  // or where flattenContent produces formats the parser didn't account for.
-  // safeAnswerText: the text to show as the main answer bubble.
-  // Priority: first answer chunk > answerOnly (fully stripped) > raw message.content.
-  // The raw content fallback is the critical safety net — if parseContentStream produced
-  // no answer chunks AND answerOnly is also empty (e.g. reasoning-only content parsed
-  // from a thinking block that was already condensed by flattenContent), we still have
-  // the original string to show rather than a blank bubble.
-  const safeAnswerText = (() => {
-    const answerChunk = chunks.find((c) => c.kind === 'answer')?.text;
-    const fromStripped = answerChunk ?? answerOnly;
-    // If both the parsed answer chunk and answerOnly are empty/whitespace, fall back
-    // to raw content rather than rendering a blank bubble.
-    const raw = fromStripped.trim() ? fromStripped : (message.content || '');
-    // Final safety net — remove any remaining [Reasoning] sections before render
-    return raw.replace(/\s*\[Reasoning\][\s\S]*?(?=\[Reasoning\]|\[Tool:|\[Result\]|$)/g, '').trim();
-  })();
-  const reasoningChunks = chunks.filter((c) => c.kind === 'reasoning');
-  const answerText = chunks.find((c) => c.kind === 'answer')?.text ?? answerOnly;
-  const pureAnswer = !hasReasoning;
+  return {
+    answer: answer || '…',
+    traceSections,
+    operationalOnly: false,
+  };
+}
 
-  // Sprint 10: Entrance animation — CSS handles this via .msg-enter
-  useEffect(() => {
-    if (!isNew) return;
-  }, [isNew]);
+export function MessageCard(props: MessageCardProps) {
+  if (props.message.role === 'action-summary') {
+    return <ActionSummaryCard {...props} />;
+  }
 
-  // Sprint 10.5: Streaming cursor — teal blinking cursor at end of content
+  return <StandardMessageCard {...props} />;
+}
+
+function StandardMessageCard({ message, isHighlighted, isStreaming, isNew, isChildSession }: MessageCardProps) {
+  const runtimeRole = message.role as RuntimeRole;
+  const display = useMemo(() => buildMessageDisplay(message.content, runtimeRole), [message.content, runtimeRole]);
+  const [traceExpanded, setTraceExpanded] = useState(false);
+
+  const isUser = runtimeRole === 'user';
+  const isNero = runtimeRole === 'nero' || runtimeRole === 'assistant';
+  const isTool = runtimeRole === 'tool';
+  const isSystem = runtimeRole === 'system' || isTool;
+  const hasTrace = display.traceSections.length > 0;
+  const traceWordCount = display.traceSections.reduce((acc, section) => acc + section.text.split(/\s+/).filter(Boolean).length, 0);
+
   const streamingCursor = isStreaming ? (
     <motion.span
       key="cursor"
@@ -207,300 +216,146 @@ export function MessageCard({ message, isHighlighted, isStreaming, isNew, isChil
   ) : null;
 
   return (
-    <div
+    <article
       className={cn(
-        "flex gap-3 px-4 py-3 rounded-lg transition-all duration-300",
-        message.role === 'user' ? "bg-elevated/70 ml-8" : message.role === 'nero' ? "bg-reading/80 mr-8 border" : "bg-graphite/50 mr-8",
-        isNew && "msg-enter"
+        'group relative flex w-full transition-all duration-300',
+        isUser ? 'justify-end' : 'justify-start',
+        isNew && 'msg-enter'
       )}
-      style={{
-        ...(message.role === 'nero' ? {
-          borderColor: isHighlighted ? 'rgba(232,96,58,0.8)' : 'rgba(232,96,58,0.35)',
-          borderLeftColor: isHighlighted ? 'var(--mb-brass)' : isChildSession ? 'rgba(0,200,150,0.4)' : 'var(--mb-red)',
-          boxShadow: isHighlighted ? '0 0 0 2px rgba(201,160,58,0.25), inset 0 0 0 1px rgba(201,160,58,0.10)' : undefined,
-        } : {
-          // Sprint 10.5: Child session accent — teal left border for specialist/child session work
-          borderLeftColor: isChildSession ? 'rgba(0,200,150,0.4)' : undefined,
-          boxShadow: isHighlighted ? '0 0 0 2px rgba(201,160,58,0.3)' : undefined,
-        }),
-      }}
     >
-      {/* Role icon */}
-      <div className="flex-shrink-0 mt-0.5">
-        {message.role === 'user' && <span className="text-ivory-dim text-sm font-semibold">You</span>}
-        {message.role === 'nero' && (
-          <div className="flex items-center gap-1.5">
-            <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: 'var(--mb-red)', color: 'var(--mb-ivory)' }}>
-              N
-            </div>
-          </div>
-        )}
-        {message.role === 'system' && (
-          <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--mb-fog)', opacity: 0.6 }}>
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <circle cx="5" cy="5" r="4" stroke="var(--mb-ivory)" strokeWidth="1.2" />
-              <circle cx="5" cy="5" r="1.5" fill="var(--mb-ivory)" />
-            </svg>
-          </div>
-        )}
-      </div>
-
-      {/* Content area */}
-      <div className="flex-1 min-w-0">
-
-        {/* Main answer text — Sprint 10.5: MotionText for streaming word reveal */}
-        <p className={cn("text-sm leading-relaxed", message.role === 'nero' ? "text-ivory" : "text-ivory-dim")}>
-          {pureAnswer ? (
-            // Pure answer: full content, MotionText for streaming reveal
-            <>
-              <MotionText
-                text={safeAnswerText}
-                className="whitespace-pre-wrap"
-                isStreaming={isStreaming}
-              />
-              {streamingCursor}
-            </>
-          ) : reasoningExpanded ? (
-            // Expanded: show complete answer once (safeAnswerText = fully stripped, no duplication)
-            // then InterleavedContent renders non-first answer chunks + all reasoning sections
-            <>
-              <MotionText
-                text={safeAnswerText}
-                className="whitespace-pre-wrap"
-                isStreaming={isStreaming}
-              />
-              <InterleavedContent chunks={chunks} isStreaming={isStreaming} skipFirst={true} />
-            </>
-          ) : reasoningExpanded ? (
-            // Expanded: full answer + interleaved content
-            <>
-              <MotionText
-                text={safeAnswerText}
-                className="whitespace-pre-wrap"
-                isStreaming={isStreaming}
-              />
-              <InterleavedContent chunks={chunks} isStreaming={isStreaming} skipFirst={true} />
-            </>
-          ) : (
-            // Collapsed: pre-reasoning answer + post-reasoning answer + reasoning toggle
-            // Sprint 10.6: Show post-reasoning answer text — this is the actual response
-            // the user is waiting to read. safeAnswerText alone can be empty or short
-            // when the real content lives after the [Reasoning] block.
-            <>
-              {/* Pre-reasoning answer (can be empty) */}
-              {safeAnswerText.trim() ? (
-                <MotionText
-                  text={safeAnswerText.length > 400 ? safeAnswerText.slice(0, 400).trimEnd() + '…' : safeAnswerText}
-                  className="whitespace-pre-wrap"
-                  isStreaming={isStreaming}
-                />
-              ) : null}
-              {/* Post-reasoning answer chunks — the real response */}
-              <InterleavedContent chunks={chunks} isStreaming={isStreaming} skipFirst={true} />
-              {streamingCursor}
-            </>
-          )}
-        </p>
-
-        {/* Sprint 10.6: Collapsed mode: show answer text even when reasoning is present.
-            The pre-reasoning answer chunk (safeAnswerText) may be short or empty — what the user
-            actually wants to see is the response that comes AFTER the thinking block.
-            InterleavedContent gives us post-reasoning answer chunks. */}
-        <AnimatePresence initial={false}>
-          {hasReasoning && (
-            <motion.div
-              className="mt-1.5"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-            >
-              {/* Toggle button */}
-              <button
-                onClick={() => setReasoningExpanded((v) => !v)}
-                className="flex items-center gap-1.5 text-[10px] font-mono transition-opacity hover:opacity-80 active:scale-[0.98]"
-                style={{ color: reasoningExpanded ? 'rgba(201,160,58,0.5)' : 'rgba(201,160,58,0.65)' }}
-                aria-expanded={reasoningExpanded}
-              >
-                {/* Animated thinking icon */}
-                <motion.span
-                  animate={isStreaming && !reasoningExpanded ? { rotate: 360 } : { rotate: 0 }}
-                  transition={isStreaming && !reasoningExpanded ? { duration: 2, repeat: Infinity, ease: 'linear' } : {}}
-                  className="flex-shrink-0"
-                >
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                    <circle cx="5" cy="5" r="3.5" stroke="currentColor" strokeWidth="1.2" fill="none" />
-                    <path d="M3.5 5c0-0.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5-1.5-.67-1.5-1.5z" fill="currentColor" opacity="0.6" />
-                  </svg>
-                </motion.span>
-
-                {reasoningExpanded ? (
-                  <motion.span
-                    initial={{ opacity: 0, x: -4 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -4 }}
-                    transition={{ duration: 0.15 }}
-                  >
-                    hide reasoning
-                  </motion.span>
-                ) : (
-                  <span>reasoning ({countReasoningWords(chunks)})</span>
-                )}
-
-                {/* Animated chevron */}
-                <motion.svg
-                  width="7" height="7" viewBox="0 0 8 8" fill="none"
-                  animate={{ rotate: reasoningExpanded ? 90 : 0 }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-                >
-                  <path d="M2 1L6 4L2 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                </motion.svg>
-              </button>
-
-              {/* Sprint 10.5: Thought capsule content — spring-animated reveal */}
-              <motion.div
-                initial={false}
-                animate={reasoningExpanded ? { opacity: 1, height: 'auto' } : { opacity: 0, height: 0 }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                style={{ overflow: 'hidden' }}
-              >
-                <div
-                  className="mt-2 rounded border px-3 py-2.5"
-                  style={{
-                    background: 'rgba(201,160,58,0.04)',
-                    borderColor: 'rgba(201,160,58,0.20)',
-                  }}
-                >
-                  {/* Thought capsule header */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <span
-                      className="flex items-center gap-1 text-[9px] uppercase tracking-widest"
-                      style={{ color: 'rgba(201,160,58,0.45)', letterSpacing: '0.12em', fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}
-                    >
-                      <motion.span
-                        animate={isStreaming ? { scale: [1, 1.3, 1] } : {}}
-                        transition={isStreaming ? { duration: 1.2, repeat: Infinity } : {}}
-                        className="inline-block w-1.5 h-1.5 rounded-full"
-                        style={{ background: 'rgba(201,160,58,0.5)' }}
-                      />
-                      thought process
-                    </span>
-                    {isStreaming && (
-                      <motion.span
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="text-[9px] font-mono"
-                        style={{ color: 'rgba(201,160,58,0.35)' }}
-                      >
-                        streaming…
-                      </motion.span>
-                    )}
-                  </div>
-
-                  {/* Reasoning content — Sprint 10.5: MotionText word reveal */}
-                  <span
-                    className="block"
-                    style={{
-                      color: 'rgba(201,160,58,0.70)',
-                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                      fontSize: '11px',
-                      lineHeight: '1.65',
-                    }}
-                  >
-                    {reasoningChunks.map((c, i) => (
-                      <MotionText
-                        key={`r-${i}`}
-                        text={c.text}
-                        className="block mb-2 last:mb-0"
-                        isStreaming={isStreaming && reasoningExpanded}
-                      />
-                    ))}
-                    {/* Streaming cursor for reasoning */}
-                    {isStreaming && reasoningExpanded && (
-                      <motion.span
-                        key="reasoning-cursor"
-                        className="inline-block w-1 h-2 ml-1 rounded-sm"
-                        animate={{ opacity: [1, 0, 1] }}
-                        transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
-                        style={{ background: 'rgba(201,160,58,0.6)', verticalAlign: 'text-bottom' }}
-                        aria-hidden="true"
-                      />
-                    )}
-                  </span>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <span className="text-xs font-mono text-ash-muted mt-1 block">
-          <MessageTimestamp isoString={message.timestamp} />
-        </span>
-      </div>
-
-      {/* Highlight indicator */}
       {isHighlighted && (
-        <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-1 rounded-full" style={{ background: 'var(--mb-brass)', height: '60%' }} />
+        <div
+          className={cn(
+            'absolute top-3 bottom-3 w-1 rounded-full',
+            isUser ? 'right-0' : 'left-0'
+          )}
+          style={{ background: 'var(--mb-brass)' }}
+        />
       )}
-    </div>
-  );
-}
 
-// Sprint 9.5: Answer chunks only — reasoning lives in the thought capsule
-// InterleavedContent always skips the first answer chunk to avoid duplication
-// when used alongside safeAnswerText (which is answerOnly = complete stripped answer).
-// In expanded mode: safeAnswerText shows the full answer, InterleavedContent shows
-// non-first answer chunks + all reasoning sections.
-function InterleavedContent({ chunks, isStreaming, skipFirst }: { chunks: ContentChunk[]; isStreaming?: boolean; skipFirst?: boolean }) {
-  const answerChunks = chunks.filter((c) => c.kind === 'answer');
-  const startIdx = skipFirst ? 1 : 0;
-  return (
-    <>
-      {answerChunks.slice(startIdx).map((c, i) => (
-        <span key={`a-${i}`}>
-          <MotionText text={c.text} className="whitespace-pre-wrap" isStreaming={isStreaming} />
-        </span>
-      ))}
-      {/* Reasoning sections render in the collapsible Thought Capsule below */}
-    </>
-  );
-}
+      <div
+        className={cn(
+          'message-card-premium flex gap-3 rounded-2xl border px-4 py-3.5',
+          isUser && 'message-card-user ml-auto flex-row-reverse',
+          isNero && 'message-card-nero',
+          isSystem && 'message-card-system',
+          isChildSession && !isUser && 'message-card-child',
+          display.operationalOnly && 'message-card-folded'
+        )}
+      >
+        <div className={cn('message-avatar flex-shrink-0', isUser ? 'message-avatar-user' : isNero ? 'message-avatar-nero' : 'message-avatar-system')} aria-hidden="true">
+          {isUser ? 'G' : isNero ? 'N' : isTool ? 'T' : '•'}
+        </div>
 
-function countReasoningWords(chunks: ContentChunk[]): string {
-  const words = chunks.filter((c) => c.kind === 'reasoning').reduce((acc, c) => acc + c.text.split(/\s+/).length, 0);
-  if (words === 0) return '';
-  if (words < 50) return `${words}w`;
-  return `${Math.round(words / 100) * 100}w+`;
+        <div className={cn('min-w-0 flex-1', isUser && 'text-right')}>
+          <div className={cn('mb-1.5 flex items-center gap-2', isUser ? 'justify-end' : 'justify-start')}>
+            <span className={cn('text-[10px] font-semibold uppercase tracking-[0.22em]', isUser ? 'text-signal-teal' : isNero ? 'text-nero-brass' : 'text-ash')}>
+              {isUser ? 'Gbemi' : isNero ? 'Nero' : isTool ? 'Tool' : 'System'}
+            </span>
+            {display.operationalOnly && (
+              <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[9px] uppercase tracking-[0.16em] text-ash">
+                folded
+              </span>
+            )}
+          </div>
+
+          <div className={cn('message-copy text-sm leading-7', isUser ? 'text-ivory' : 'text-ivory/90')}>
+            <MotionText
+              text={display.answer}
+              className="whitespace-pre-wrap"
+              isStreaming={isStreaming}
+            />
+            {streamingCursor}
+          </div>
+
+          <AnimatePresence initial={false}>
+            {hasTrace && (
+              <motion.div
+                className={cn('mt-3', isUser && 'flex flex-col items-end')}
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.18 }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setTraceExpanded((v) => !v)}
+                  className={cn(
+                    'work-trace-toggle inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.16em] transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0',
+                    traceExpanded && 'is-open'
+                  )}
+                  aria-expanded={traceExpanded}
+                >
+                  <span className="work-trace-dot" aria-hidden="true" />
+                  <span>{traceExpanded ? 'Hide receipts' : 'Receipts'}</span>
+                  <span className="normal-case tracking-normal text-ash">
+                    {display.traceSections.length} item{display.traceSections.length !== 1 ? 's' : ''}
+                    {traceWordCount ? ` · ${traceWordCount < 100 ? `${traceWordCount}w` : `${Math.round(traceWordCount / 100) * 100}w+`}` : ''}
+                  </span>
+                  <motion.span
+                    aria-hidden="true"
+                    animate={{ rotate: traceExpanded ? 90 : 0 }}
+                    transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+                  >
+                    ›
+                  </motion.span>
+                </button>
+
+                <motion.div
+                  initial={false}
+                  animate={traceExpanded ? { opacity: 1, height: 'auto', marginTop: 10 } : { opacity: 0, height: 0, marginTop: 0 }}
+                  transition={{ type: 'spring', stiffness: 360, damping: 34 }}
+                  style={{ overflow: 'hidden' }}
+                  className="w-full"
+                >
+                  <div className="work-trace-panel">
+                    {display.traceSections.map((section, idx) => (
+                      <section key={`${section.label}-${idx}`} className={cn('work-trace-section', `trace-${section.tone}`)}>
+                        <div className="mb-1.5 flex items-center justify-between gap-3">
+                          <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-ash">
+                            {section.label}
+                          </span>
+                          <span className="text-[9px] text-ash-muted">#{idx + 1}</span>
+                        </div>
+                        <pre className="work-trace-pre">{section.text}</pre>
+                      </section>
+                    ))}
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <span className={cn('mt-2 block text-[10px] font-mono text-ash-muted', isUser && 'text-right')}>
+            <MessageTimestamp isoString={message.timestamp} />
+          </span>
+        </div>
+      </div>
+    </article>
+  );
 }
 
 function ActionSummaryCard({ message, isHighlighted, isNew }: MessageCardProps) {
   return (
-    <div
-      className={cn(
-        "flex gap-3 px-4 py-3 rounded-lg mx-8 my-2 border transition-all duration-300",
-        isNew && "msg-enter"
-      )}
-      style={{
-        background: 'rgba(139,126,200,0.06)',
-        borderColor: isHighlighted ? 'rgba(201,160,58,0.6)' : 'rgba(139,126,200,0.2)',
-        boxShadow: isHighlighted ? '0 0 0 2px rgba(201,160,58,0.25)' : undefined,
-      }}
+    <article
+      className={cn('flex justify-center px-6 py-2 transition-all duration-300', isNew && 'msg-enter')}
     >
-      <div className="flex-shrink-0 mt-0.5">
-        <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: 'var(--mb-violet-dim)' }}>
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path d="M1.5 5L4 7.5L8.5 2.5" stroke="var(--mb-violet)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+      <div
+        className="action-summary-premium rounded-2xl border px-4 py-3"
+        style={{
+          boxShadow: isHighlighted ? '0 0 0 2px rgba(201,160,58,0.25)' : undefined,
+        }}
+      >
+        <div className="mb-1 flex items-center gap-2">
+          <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-signal-violet">
+            Action summary
+          </span>
+          <span className="text-[10px] font-mono text-ash-muted">
+            <MessageTimestamp isoString={message.timestamp} />
+          </span>
         </div>
+        <p className="text-sm leading-6 text-ivory-dim">{message.content}</p>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-semibold text-signal-violet mb-1 uppercase tracking-wider">Action Summary</p>
-        <p className="text-sm text-ivory-dim leading-relaxed">{message.content}</p>
-        <span className="text-xs font-mono text-ash-muted mt-1 block">
-          <MessageTimestamp isoString={message.timestamp} />
-        </span>
-      </div>
-    </div>
+    </article>
   );
 }

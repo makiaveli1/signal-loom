@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSignalLoomStore } from '@/lib/store';
-import type { Thread, PaneRole, Agent } from '@/lib/types';
+import type { Thread, PaneRole, Message } from '@/lib/types';
+import { getConversationBundle } from '@/lib/conversation-groups';
 import { MessageList } from './message-list';
 import { ThreadHeader } from '../threads/thread-header';
 import { Composer } from './composer';
 import { DelegationTimeline } from './delegation-timeline';
 import { SplitViewToggle } from './split-view-toggle';
+import { PretextSmartTitle } from '@/components/ui/pretext-smart-title';
 import { PanePresetSwitcher } from './pane-preset-switcher';
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
@@ -67,18 +69,15 @@ function relativeTime(iso: string | null | undefined): string {
  * - unavailable: no transcript available for this session
  */
 function TranscriptBlock({ thread }: { thread: Thread }) {
-  const _session = thread.session;
-  if (!_session) return null;
-  // TypeScript doesn't narrow const-assigned prop fields in JSX; use non-null assertion after guard
-  const session = _session as import('@/lib/openclaw/adapter/types').OpenClawSession;
   const { sessionMessagesLoading, sessionMessages, sessionsFetchedAt } = useSignalLoomStore();
   const [secondsAgo, setSecondsAgo] = useState(0);
+  const session = thread.session as import('@/lib/openclaw/adapter/types').OpenClawSession | undefined;
   const isLoading = sessionMessagesLoading[thread.id] ?? false;
   const transcript = sessionMessages[thread.id];
 
   // Sprint 9: Tick seconds for live sessions
   useEffect(() => {
-    if (thread.status !== 'active') return;
+    if (!session || thread.status !== 'active') return;
     const tick = setInterval(() => {
       if (sessionsFetchedAt) {
         const secs = Math.floor((Date.now() - new Date(sessionsFetchedAt).getTime()) / 1000);
@@ -86,7 +85,9 @@ function TranscriptBlock({ thread }: { thread: Thread }) {
       }
     }, 1000);
     return () => clearInterval(tick);
-  }, [thread.status, sessionsFetchedAt]);
+  }, [session, thread.status, sessionsFetchedAt]);
+
+  if (!session) return null;
 
   return (
     <div
@@ -100,7 +101,7 @@ function TranscriptBlock({ thread }: { thread: Thread }) {
       {/* Header row */}
       <div className="flex items-center justify-between mb-2">
         <span className="text-ivory/60 font-medium uppercase tracking-wider text-[10px]">
-          Session Details
+          Hermes Session
         </span>
         {thread.status === 'done' ? (
           <span className="text-jade text-[10px] font-mono">✓ Done</span>
@@ -122,33 +123,33 @@ function TranscriptBlock({ thread }: { thread: Thread }) {
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-3">
         {session.agentName && (
           <div>
-            <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Agent</span>
+            <span className="text-ash text-[10px] uppercase tracking-wider">Agent</span>
             <div className="text-ivory/80 font-mono mt-0.5">{session.agentName}</div>
           </div>
         )}
         <div>
-          <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Session ID</span>
+          <span className="text-ash text-[10px] uppercase tracking-wider">Session ID</span>
           <div className="text-ivory/60 font-mono mt-0.5 text-[10px] truncate" title={session.id}>
             {session.shortId ?? session.id.split(':').pop()?.slice(0, 8) ?? session.id}
           </div>
         </div>
         <div>
-          <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Last active</span>
+          <span className="text-ash text-[10px] uppercase tracking-wider">Last active</span>
           <div className="text-ivory/80 mt-0.5">{relativeTime(thread.lastActive)}</div>
         </div>
         <div>
-          <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Messages</span>
+          <span className="text-ash text-[10px] uppercase tracking-wider">Messages</span>
           <div className="text-ivory/80 mt-0.5">{session.messageCount ?? 0} stored</div>
         </div>
         {session.preview && (
           <div>
-            <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Preview</span>
+            <span className="text-ash text-[10px] uppercase tracking-wider">Preview</span>
             <div className="text-ivory/80 mt-0.5 capitalize truncate" title={session.preview}>{session.preview}</div>
           </div>
         )}
         {(session.tags ?? []).length > 0 && (
           <div className="col-span-2">
-            <span className="text-ash-dimmed text-[10px] uppercase tracking-wider">Tags</span>
+            <span className="text-ash text-[10px] uppercase tracking-wider">Tags</span>
             <div className="flex flex-wrap gap-1 mt-1">
               {(session.tags ?? []).map((tag) => (
                 <span
@@ -157,7 +158,7 @@ function TranscriptBlock({ thread }: { thread: Thread }) {
                   style={{
                     background: 'rgba(255,255,255,0.06)',
                     border: '1px solid rgba(255,255,255,0.1)',
-                    color: 'var(--mb-ivory-dimmed)',
+                    color: 'var(--mb-ivory-dim)',
                   }}
                 >
                   {tag}
@@ -224,7 +225,7 @@ function TranscriptBlock({ thread }: { thread: Thread }) {
               </span>
             </div>
             <span className="text-ivory/20 italic">
-              Transcript access via OpenClaw session tooling.
+              Transcript access is backed by Hermes session state.
             </span>
           </div>
         )}
@@ -256,7 +257,8 @@ export function ThreadPane({
     childSessionIds,
     openChildSession,
     activeDelegationEventId,
-    sessions,
+    threads,
+    hiddenThreadIds,
     setActivePaneById,
     workspace,
     childToParentMap,
@@ -265,28 +267,69 @@ export function ThreadPane({
   // Sprint 10.7: Load transcript from sessionMessages store — messages loaded by
   // loadMessagesForThread are stored here, NOT in thread.messages (which is empty
   // for session-derived threads). Pass to MessageList via messages prop.
-  const transcript = sessionMessages[thread.id];
-  const displayedMessages = transcript?.messages ?? thread.messages;
+  const visibleBundleThreads = useMemo(
+    () => threads.filter((candidate) => candidate.id === thread.id || !hiddenThreadIds.includes(candidate.id)),
+    [hiddenThreadIds, thread.id, threads]
+  );
+  const conversationBundle = useMemo(() => getConversationBundle(visibleBundleThreads, thread.id), [visibleBundleThreads, thread.id]);
+  const bundleThreads = useMemo(
+    () => conversationBundle?.kind === 'conversation' ? conversationBundle.threads : [thread],
+    [conversationBundle, thread]
+  );
+  const isConversationBundle = bundleThreads.length > 1;
 
-  // Sprint 9: Collapse state for the session info panel (Delegated Work + Timeline + Session Details)
-  const [infoPanelCollapsed, setInfoPanelCollapsed] = useState(false);
+  const transcriptKey = thread.session?.id ?? thread.id;
+  const transcript = sessionMessages[transcriptKey] ?? sessionMessages[thread.id];
 
-  // Sprint 7: Load transcript when a real session is selected and not yet loaded.
-  // Use the session's own id as the key to ensure consistency with how loadMessagesForThread
-  // keys the sessionMessages store. thread.session may be undefined for threads that
-  // haven't been matched to a session yet (selectThread fix addresses this).
+  const displayedMessages = useMemo<(Message & {
+    sourceThreadId?: string;
+    sourceThreadTitle?: string;
+    sourceThreadStatus?: Thread['status'];
+    sourceThreadKind?: 'primary' | 'delegated' | 'related';
+    sourceSessionShortId?: string;
+  })[]>(() => {
+    if (!isConversationBundle) return transcript?.messages ?? thread.messages;
+
+    return bundleThreads
+      .flatMap((bundleThread) => {
+        const key = bundleThread.session?.id ?? bundleThread.id;
+        const bundleTranscript = sessionMessages[key] ?? sessionMessages[bundleThread.id];
+        const sourceMessages = bundleTranscript?.messages ?? bundleThread.messages;
+        const sourceThreadKind = bundleThread.id === thread.id
+          ? 'primary'
+          : childToParentMap[bundleThread.id]
+            ? 'delegated'
+            : 'related';
+        return sourceMessages.map((message) => ({
+          ...message,
+          id: `${bundleThread.id}:${message.id}`,
+          sourceThreadId: bundleThread.id,
+          sourceThreadTitle: bundleThread.title,
+          sourceThreadStatus: bundleThread.status,
+          sourceThreadKind,
+          sourceSessionShortId: bundleThread.session?.shortId,
+        }));
+      })
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  }, [bundleThreads, childToParentMap, isConversationBundle, sessionMessages, thread.id, thread.messages, transcript?.messages]);
+
+  // Sprint 9: Collapse state for the session info panel (Delegated Lane Work + Timeline + Hermes Session)
+  const [infoPanelCollapsed, setInfoPanelCollapsed] = useState(true);
+
+  // Load every transcript in a conversation bundle so related sessions read as one
+  // continuous chat instead of forcing the operator to jump between fragments.
   useEffect(() => {
-    const sessionKey = thread.session?.id ?? thread.id;
-    if (!thread.session && !sessionMessages[thread.id] && !sessionMessagesLoading[thread.id]) {
-      // No session attached yet — try loading by thread.id as a fallback.
-      // This handles edge cases where the thread was created before session attachment.
-      loadMessagesForThread(thread.id);
-      return;
+    for (const bundleThread of bundleThreads) {
+      const sessionKey = bundleThread.session?.id ?? bundleThread.id;
+      if (!bundleThread.session && !sessionMessages[bundleThread.id] && !sessionMessagesLoading[bundleThread.id]) {
+        loadMessagesForThread(bundleThread.id);
+        continue;
+      }
+      if (sessionMessages[sessionKey]) continue;
+      if (sessionMessagesLoading[sessionKey]) continue;
+      loadMessagesForThread(sessionKey);
     }
-    if (sessionMessages[sessionKey]) return; // already loaded
-    if (sessionMessagesLoading[sessionKey]) return; // already loading
-    loadMessagesForThread(sessionKey);
-  }, [thread.id, thread.session, sessionMessages, sessionMessagesLoading, loadMessagesForThread]);
+  }, [bundleThreads, sessionMessages, sessionMessagesLoading, loadMessagesForThread]);
 
   // Sprint 10.6: No more 5-second polling — SSE live events handle new messages.
   // Keeping the SSE connection alive is the only refresh mechanism needed.
@@ -347,15 +390,14 @@ export function ThreadPane({
               </span>
             )}
             {/* Thread title */}
-            <span
-              className="text-xs truncate"
-              style={{
-                color: isActive ? 'var(--mb-ivory)' : 'var(--mb-ivory-dim)',
-                fontWeight: isActive ? 500 : 400,
-              }}
-            >
-              {thread.title}
-            </span>
+            <PretextSmartTitle
+              text={thread.title}
+              maxWidth={260}
+              maxLines={1}
+              className="text-xs"
+              font="500 12px Geist, ui-sans-serif, system-ui, sans-serif"
+              lineHeight={15}
+            />
             {/* Linked agents */}
             {linkedAgents.slice(0, 2).map((agent) =>
               agent ? (
@@ -432,12 +474,11 @@ export function ThreadPane({
         }
       />
 
-      {/* Sprint 9: Session info panel — wraps Delegated Work + Timeline + Session Details */}
+      {/* Sprint 9: Session info panel — wraps Delegated Lane Work + Timeline + Hermes Session */}
       <SessionInfoPanel
         thread={thread}
         threadEvents={threadEvents}
         sessionsFetchedAt={sessionsFetchedAt}
-        childSessionIds={childSessionIds}
         showDelegationTimeline={showDelegationTimeline}
         activeDelegationEventId={activeDelegationEventId}
         onOpenChildSession={(childId) =>
@@ -476,7 +517,11 @@ export function ThreadPane({
       </AnimatePresence>
 
       {/* Messages */}
-      <MessageList thread={thread} messages={transcript?.messages} />
+      <MessageList
+        thread={thread}
+        messages={displayedMessages}
+        conversationBundle={isConversationBundle ? conversationBundle : null}
+      />
 
       {/* Composer */}
       <Composer threadId={thread.id} />
@@ -487,12 +532,11 @@ export function ThreadPane({
   );
 }
 
-// Sprint 9: SessionInfoPanel — wraps Delegated Work + Timeline + Session Details with one collapse toggle
+// Sprint 9: SessionInfoPanel — wraps Delegated Lane Work + Timeline + Hermes Session with one collapse toggle
 function SessionInfoPanel({
   thread,
   threadEvents,
   sessionsFetchedAt,
-  childSessionIds,
   showDelegationTimeline,
   activeDelegationEventId,
   onOpenChildSession,
@@ -503,7 +547,6 @@ function SessionInfoPanel({
   thread: Thread;
   threadEvents: import('@/lib/types').DelegationEvent[];
   sessionsFetchedAt: string | null;
-  childSessionIds: Record<string, string[]>;
   showDelegationTimeline: boolean;
   activeDelegationEventId: string | null;
   onOpenChildSession: (childId: string) => void;
@@ -514,107 +557,90 @@ function SessionInfoPanel({
   const hasDelegatedChildren = (thread.linkedChildren?.length ?? 0) > 0;
   const hasSession = !!thread.session;
 
-  // Collapsed: show a slim single-line summary strip
+  // Collapsed: show a slim premium work-context shelf so technical routing never dominates the chat.
   if (collapsed) {
     return (
       <button
         onClick={onToggleCollapse}
-        className="w-full flex items-center gap-3 px-4 py-1.5 border-b cursor-pointer transition-all duration-150 hover:bg-white/[0.02]"
+        className="w-full group flex items-center gap-3 px-5 py-1.5 border-b cursor-pointer transition-all duration-200 hover:bg-white/[0.035]"
         style={{
-          background: 'var(--mb-shell)',
-          borderColor: 'rgba(255,255,255,0.04)',
-          minHeight: '32px',
+          background: 'linear-gradient(90deg, rgba(201,160,58,0.045), rgba(255,255,255,0.01), rgba(61,201,196,0.025))',
+          borderColor: 'rgba(255,255,255,0.055)',
+          minHeight: '34px',
         }}
-        title="Expand session info panel"
+        title="Open folded routing, delegated work, and session receipts"
       >
-        {/* Collapse chevron */}
-        <svg
-          width="8"
-          height="8"
-          viewBox="0 0 8 8"
-          fill="none"
-          className="flex-shrink-0"
-          style={{ color: 'var(--mb-ash)' }}
+        <span
+          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border transition-transform duration-200 group-hover:translate-x-0.5"
+          style={{
+            borderColor: 'rgba(201,160,58,0.26)',
+            color: 'var(--mb-brass)',
+            background: 'rgba(201,160,58,0.08)',
+          }}
+          aria-hidden="true"
         >
-          <path d="M2 1L6 4L2 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-
-        {/* Section labels as pills */}
-        <span className="text-[10px] font-mono text-ivory-dim flex-shrink-0">
-          Session Info
+          ›
         </span>
+
+        <div className="min-w-0 flex-1 text-left">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.22em]" style={{ color: 'var(--mb-brass)' }}>
+              Receipts
+            </span>
+            <span className="hidden text-[11px] text-ash xl:inline">
+              routing + tools folded
+            </span>
+          </div>
+        </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
           {hasDelegatedChildren && (
-            <span
-              className="text-[10px] font-mono px-1.5 py-0.5 rounded-full"
-              style={{
-                background: 'rgba(155,141,200,0.10)',
-                border: '1px solid rgba(155,141,200,0.20)',
-                color: '#9b8dc8',
-              }}
-            >
+            <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-2 py-1 text-[10px] font-mono text-signal-violet">
               {(thread.linkedChildren ?? []).length} delegated
             </span>
           )}
           {showDelegationTimeline && threadEvents.length > 0 && (
-            <span
-              className="text-[10px] font-mono px-1.5 py-0.5 rounded-full"
-              style={{
-                background: 'rgba(201,160,58,0.08)',
-                border: '1px solid rgba(201,160,58,0.18)',
-                color: 'rgba(201,160,58,0.8)',
-              }}
-            >
-              {threadEvents.length} events
+            <span className="rounded-full border border-brass/20 bg-brass/10 px-2 py-1 text-[10px] font-mono text-brass">
+              {threadEvents.length} event{threadEvents.length !== 1 ? 's' : ''}
             </span>
           )}
           {hasSession && (
-            <span
-              className="text-[10px] font-mono px-1.5 py-0.5 rounded-full"
-              style={{
-                background: 'rgba(0,0,0,0.15)',
-                border: '1px solid rgba(255,255,255,0.07)',
-                color: 'var(--mb-ash)',
-              }}
-            >
-              Session Details
+            <span className="rounded-full border border-white/10 bg-black/15 px-2 py-1 text-[10px] font-mono text-ash">
+              session
             </span>
           )}
         </div>
-
-        <span className="ml-auto text-[10px] text-ash-muted flex-shrink-0">
-          expand ↗
-        </span>
       </button>
     );
   }
 
   // Expanded: show all sections with a collapse toggle at the top
   return (
-    <div className="border-b" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+    <div className="border-b" style={{ borderColor: 'rgba(255,255,255,0.055)' }}>
       {/* Section header with collapse toggle */}
       <button
         onClick={onToggleCollapse}
-        className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-all duration-150 hover:bg-white/[0.02]"
-        style={{ background: 'rgba(255,255,255,0.01)' }}
-        title="Collapse session info — give more room to chat"
+        className="w-full flex items-center gap-3 px-5 py-2 cursor-pointer transition-all duration-200 hover:bg-white/[0.025]"
+        style={{ background: 'linear-gradient(90deg, rgba(201,160,58,0.05), rgba(255,255,255,0.012))' }}
+        title="Fold receipts — give more room to Nero chat"
       >
-        <svg
-          width="8"
-          height="8"
-          viewBox="0 0 8 8"
-          fill="none"
-          className="flex-shrink-0"
-          style={{ color: 'var(--mb-ash)' }}
+        <span
+          className="flex h-5 w-5 items-center justify-center rounded-full border"
+          style={{ borderColor: 'rgba(201,160,58,0.24)', color: 'var(--mb-brass)', background: 'rgba(201,160,58,0.08)' }}
+          aria-hidden="true"
         >
-          <path d="M2 7L6 4L2 1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-ash-muted">
-          Session Info
+          ‹
         </span>
-        <span className="ml-auto text-[10px] text-ash-muted">
-          collapse ‹
+        <div className="min-w-0 flex-1 text-left">
+          <span className="block text-[10px] font-semibold uppercase tracking-[0.22em]" style={{ color: 'var(--mb-brass)' }}>
+            Receipts open
+          </span>
+          <span className="block truncate text-[11px] text-ash">
+            delegated helper work, routing events, and Hermes session receipts
+          </span>
+        </div>
+        <span className="text-[10px] text-ash-muted">
+          fold context
         </span>
       </button>
 
@@ -683,7 +709,7 @@ function DelegationStrip({
           <path d="M1 6C2 3.5 4 2 6 2s4 1.5 5 4c-1 2.5-3 4-5 4S2 8.5 1 6z" stroke="#9b8dc8" strokeWidth="1.2" fill="none" strokeLinejoin="round" />
         </svg>
         <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'rgba(155,141,200,0.6)', fontSize: '9px' }}>
-          Delegated Work
+          Delegated Lane Work
         </span>
       </div>
 

@@ -1,18 +1,18 @@
 /**
  * POST /api/openclaw/chat/stream
  *
- * Server-side streaming chat route.
+ * Server-side streaming chat route for Hermes.
  *
  * Architecture:
  * - Browser calls this route (no gateway token needed — it's server-side)
- * - This route attaches the gateway token server-side and proxies to /v1/chat/completions
+ * - This route attaches the Hermes API key server-side and proxies to /v1/chat/completions
  * - Streams SSE back to the browser
  *
  * Body: { sessionKey: string; content: string; model?: string; history?: OpenClawMessage[] }
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { gatewayPost } from '@/lib/openclaw/adapter/client';
+
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -61,10 +61,10 @@ export async function POST(request: NextRequest) {
     { role: 'user' as const, content },
   ];
 
-  // Server-side streaming to gateway — token is attached by gatewayPost/gatewayFetch
-  // NEXT: wire sessionKey for proper session routing when gateway supports it
+  // Server-side streaming to Hermes.
+  // sessionKey becomes X-Hermes-Session-Id so the API server can continue the same UI thread.
   const gatewayBody = {
-    model: typeof model === 'string' && model ? model : 'openclaw/default',
+    model: typeof model === 'string' && model ? model : 'hermes-agent',
     messages,
     stream: true,
     temperature: 0.7,
@@ -73,15 +73,21 @@ export async function POST(request: NextRequest) {
 
   let gatewayResponse: Response;
   try {
-    // We need to use fetch directly here to handle the streaming response
-    // gatewayPost doesn't support streaming responses
-    const GATEWAY_URL = process.env.NEXT_PUBLIC_OPENCLAW_GATEWAY_URL ?? 'http://127.0.0.1:18789';
-    const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN ?? '';
+    // We need to use fetch directly here to handle the streaming response.
+    const GATEWAY_URL = process.env.NEXT_PUBLIC_HERMES_API_URL
+      ?? process.env.NEXT_PUBLIC_OPENCLAW_GATEWAY_URL
+      ?? 'http://127.0.0.1:8642';
+    const GATEWAY_TOKEN = process.env.HERMES_API_KEY
+      ?? process.env.API_SERVER_KEY
+      ?? process.env.OPENCLAW_GATEWAY_TOKEN
+      ?? '';
 
     gatewayResponse = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+        ...(GATEWAY_TOKEN ? { 'Authorization': `Bearer ${GATEWAY_TOKEN}` } : {}),
+        'X-Hermes-Session-Id': sessionKey,
+        ...(GATEWAY_TOKEN ? { 'X-Hermes-Session-Key': `signal-loom:${sessionKey}` } : {}),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(gatewayBody),
@@ -106,7 +112,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Gateway returned empty response' }, { status: 502 });
   }
 
-  // Stream SSE from gateway to browser
+  // Stream SSE from gateway to browser with normalized frames and heartbeats.
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -114,6 +120,50 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const reader = gatewayResponse.body!.getReader();
+      let closed = false;
+      const send = (payload: Record<string, unknown>) => {
+        if (!closed) controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+      };
+      const close = () => {
+        if (!closed) {
+          closed = true;
+          controller.close();
+        }
+      };
+      const heartbeat = setInterval(() => send({ type: 'heartbeat', at: new Date().toISOString() }), 12_000);
+
+      send({ type: 'open', at: new Date().toISOString() });
+
+      const processPacket = (packet: string) => {
+        const dataLines = packet
+          .split('\n')
+          .map((line) => line.trimEnd())
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trimStart());
+
+        if (dataLines.length === 0) return;
+        const data = dataLines.join('\n').trim();
+        if (!data || data === '[DONE]') {
+          send({ done: true, at: new Date().toISOString() });
+          close();
+          return;
+        }
+
+        try {
+          const parsed: ChatCompletionDelta = JSON.parse(data);
+          const chunk = parsed.choices?.[0]?.delta?.content ?? '';
+          if (chunk) {
+            send({ chunk, at: new Date().toISOString() });
+          }
+          const finishReason = parsed.choices?.[0]?.finish_reason;
+          if (finishReason) {
+            send({ done: true, finishReason, at: new Date().toISOString() });
+            close();
+          }
+        } catch {
+          // skip individual parse errors; the next packet may still be valid
+        }
+      };
 
       try {
         for (;;) {
@@ -121,37 +171,22 @@ export async function POST(request: NextRequest) {
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-
-          for (const rawLine of lines) {
-            const trimmed = rawLine.trim();
-            if (!trimmed || trimmed === 'data: [DONE]') continue;
-            if (trimmed.startsWith('data: ')) {
-              const data = trimmed.slice(6).trim();
-              if (!data || data === '[DONE]') continue;
-              try {
-                const parsed: ChatCompletionDelta = JSON.parse(data);
-                const chunk = parsed.choices?.[0]?.delta?.content ?? '';
-                if (chunk) {
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`));
-                }
-                const finishReason = parsed.choices?.[0]?.finish_reason;
-                if (finishReason) {
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, finishReason })}\n\n`));
-                }
-              } catch {
-                // skip individual parse errors
-              }
-            }
+          let boundary = buffer.indexOf('\n\n');
+          while (boundary !== -1) {
+            const packet = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 2);
+            processPacket(packet);
+            if (closed) return;
+            boundary = buffer.indexOf('\n\n');
           }
         }
-        // Send final done
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
+        if (buffer.trim()) processPacket(buffer);
+        if (!closed) send({ done: true, at: new Date().toISOString() });
       } catch (e) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: e instanceof Error ? e.message : 'Stream interrupted' })}\n\n`));
+        send({ error: e instanceof Error ? e.message : 'Stream interrupted', at: new Date().toISOString() });
       } finally {
-        controller.close();
+        clearInterval(heartbeat);
+        close();
       }
     },
   });

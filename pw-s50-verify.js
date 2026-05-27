@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { chromium } = require('playwright');
 
 (async () => {
@@ -88,7 +89,7 @@ const { chromium } = require('playwright');
   await browser.close();
   console.log('Results:', JSON.stringify(results, null, 2));
   const failures = results.filter(r => {
-    const vals = Object.values(r).filter((v, i) => typeof v === 'boolean');
+    const vals = Object.values(r).filter((v) => typeof v === 'boolean');
     return vals.some(v => v === false);
   });
   console.log(failures.length === 0 ? 'ALL PASSED' : `FAILURES: ${JSON.stringify(failures)}`);

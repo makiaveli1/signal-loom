@@ -10,7 +10,6 @@ import type { Lead, LeadStage, ConceptStatus, ConceptPackage, SendGate } from '.
 import {
   computeSendGate,
   createEmptyConcept,
-  createLead,
   getConceptBadgeLabel,
   getConceptBadgeColor,
   conceptIsApproved,

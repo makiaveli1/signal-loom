@@ -1,3 +1,5 @@
+'use client';
+
 import { MissionShell } from '@/components/shell/mission-shell';
 import { LiveEventsProvider } from '../components/providers/live-events-provider';
 

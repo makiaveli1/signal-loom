@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -15,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Signal Loom — Nero Mission Control",
-  description: "Operator cockpit for Nero and the OpenClaw agent roster",
+  title: "Signal Loom — Nero Chair for Hermes",
+  description: "Workspace for Hermes chats, tools, settings, and approval review",
 };
 
 export default function RootLayout({
@@ -29,6 +30,22 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       >
+        <Script
+          id="signal-loom-theme-bootstrap"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `(() => {
+              try {
+                const key = 'signal-loom-theme-v1';
+                const theme = localStorage.getItem(key);
+                const allowed = ['midnight-broadcast', 'nero-ember', 'oracle-teal', 'papyrus-dawn'];
+                document.documentElement.dataset.signalTheme = allowed.includes(theme) ? theme : 'midnight-broadcast';
+              } catch (_) {
+                document.documentElement.dataset.signalTheme = 'midnight-broadcast';
+              }
+            })();`,
+          }}
+        />
         {children}
       </body>
     </html>

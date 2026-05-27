@@ -106,7 +106,7 @@ export function ConceptApprovalCard({ lead, onApproved, onRework }: ConceptAppro
           )}
         </div>
         <p className="text-xs text-ivory-dim">
-          Brian's homepage concept is approved. Outreach can proceed once durable preview URL is live
+          Brian&apos;s homepage concept is approved. Outreach can proceed once durable preview URL is live
           and Likwid human-approves the outreach email.
         </p>
       </div>

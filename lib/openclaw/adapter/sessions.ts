@@ -1,160 +1,106 @@
 /**
- * Sessions adapter — loads real sessions from the OpenClaw gateway.
+ * Hermes sessions adapter.
  *
- * Uses POST /tools/invoke with the "sessions_list" tool.
- *
- * Real gateway session shape (from gateway /tools/invoke):
- * {
- *   count: number,
- *   sessions: [{
- *     key, status, updatedAt, startedAt, endedAt,
- *     runtimeMs, childSessions, sessionId, model,
- *     totalTokens, contextTokens, displayName, channel, kind,
- *     origin, deliveryContext, estimatedCostUsd, lastChannel,
- *     transcriptPath, systemSent, abortedLastRun
- *   }]
- * }
- *
- * NOT the same as the OpenClaw MCP types — normalize at this boundary.
+ * This file intentionally keeps the legacy OpenClaw-facing type names so the
+ * UI can be ported incrementally. Under the hood it now reads Hermes' canonical
+ * ~/.hermes/state.db session store directly instead of calling OpenClaw
+ * /tools/invoke endpoints.
  */
 
-import type {
-  OpenClawSession,
-  OpenClawMessage,
-  SessionStatus,
-  AdapterResult,
-} from './types';
-import { gatewayPost } from './client';
+import type { AdapterResult, OpenClawMessage, OpenClawSession, SessionStatus } from './types';
 
-// ---------------------------------------------------------------------------
-// Raw gateway types
-// ---------------------------------------------------------------------------
-
-interface ToolInvokeResult {
-  ok: boolean;
-  result?: unknown;
-  error?: { type: string; message: string };
+interface HermesStateSession {
+  id: string;
+  source: string;
+  model?: string | null;
+  title?: string | null;
+  started_at: number;
+  ended_at?: number | null;
+  end_reason?: string | null;
+  message_count: number;
+  tool_call_count: number;
+  parent_session_id?: string | null;
+  preview: string;
+  last_active: number;
 }
 
-// Raw session shape from the gateway's sessions_list tool result
-interface RawSession {
-  key: string;
-  status?: string;
-  updatedAt?: number;     // Unix ms timestamp
-  startedAt?: number;    // Unix ms timestamp
-  endedAt?: number;      // Unix ms timestamp
-  runtimeMs?: number;
-  childSessions?: string[];
-  sessionId?: string;
-  model?: string;
-  totalTokens?: number;
-  contextTokens?: number;
-  displayName?: string;
-  label?: string;  // human-set session label, used as clean title
-  channel?: string;
-  kind?: string;
-  origin?: Record<string, unknown>;
-  deliveryContext?: Record<string, unknown>;
-  estimatedCostUsd?: number;
-  lastChannel?: string;
-  transcriptPath?: string;
-  systemSent?: number;
-  abortedLastRun?: boolean;
+interface HermesStateMessage {
+  id: number;
+  session_id: string;
+  role: string;
+  content: string;
+  tool_name?: string | null;
+  timestamp: number;
+  finish_reason?: string | null;
 }
 
-// ---------------------------------------------------------------------------
-// Gateway result wrapper (sessions_list wraps sessions in { count, sessions })
-// ---------------------------------------------------------------------------
-
-interface SessionsListResult {
-  count?: number;
-  sessions?: RawSession[];
+interface HermesStateDbModule {
+  listHermesSessions(limit?: number): Promise<HermesStateSession[]>;
+  loadHermesMessages(sessionId: string, limit?: number): Promise<HermesStateMessage[]>;
 }
 
-// ---------------------------------------------------------------------------
-// Normalization
-// ---------------------------------------------------------------------------
+const STATE_DB_MODULE = '@/lib/hermes/' + 'state-db';
 
-function normalizeSession(raw: RawSession): OpenClawSession {
-  const rawId = raw.key ?? 'unknown';
-  // Derive agent from session key pattern: agent:main:main, agent:main:subagent:uuid
-  const keyParts = rawId.split(':');
-  const agentId = deriveAgentId(rawId, raw.displayName);
-  const lastMessageAtMs = raw.updatedAt ?? null;
-
-  return {
-    id: rawId,
-    shortId: raw.sessionId?.slice(0, 8) ?? keyParts[keyParts.length - 1],
-    title: deriveSessionTitle(raw),
-    agentId,
-    agentName: agentNameFromId(agentId),
-    messageCount: raw.totalTokens ?? 0,
-    lastMessageAt: lastMessageAtMs ? new Date(lastMessageAtMs).toISOString() : null,
-    status: normalizeSessionStatus(raw.status),
-    tags: deriveTags(raw),
-    preview: raw.displayName ?? raw.key,
-    childSessionIds: raw.childSessions ?? [],
-  };
+async function loadStateDbModule(): Promise<HermesStateDbModule> {
+  // Hide the server-only module from the client bundle. This adapter facade is
+  // imported by client components, but these functions only execute inside
+  // Next.js API routes / Node runtime paths.
+  return (new Function('specifier', 'return import(specifier)'))(STATE_DB_MODULE) as Promise<HermesStateDbModule>;
 }
 
-function deriveAgentId(key: string, displayName?: string): string {
-  // Sprint 10.6: Detect forge/scout/mercury by key pattern (not just subagent).
-  // Pattern: agent:main:forge → hephaestus, agent:main:scout → orion,
-  // agent:main:mercury → hermes. This ensures sessions from specialist agents are
-  // grouped under their correct agent rather than 'nero'.
-  const lowerKey = key.toLowerCase();
-  if (lowerKey === 'agent:main:main') return 'nero';
-  if (lowerKey.includes(':telegram:')) return 'nero';
-  if (lowerKey.includes(':forge')) return 'hephaestus';
-  if (lowerKey.includes(':scout')) return 'orion';
-  if (lowerKey.includes(':mercury')) return 'hermes';
-  if (lowerKey.includes(':sentinel')) return 'argus';
-  if (lowerKey.includes(':studio')) return 'ariadne';
-  if (lowerKey.includes(':subagent:')) {
-    if (displayName) {
-      const lower = displayName.toLowerCase();
-      if (lower.includes('hephaestus') || lower.includes('forge')) return 'hephaestus';
-      if (lower.includes('argus')) return 'argus';
-      if (lower.includes('ariadne')) return 'ariadne';
-      if (lower.includes('orion')) return 'orion';
-      if (lower.includes('hermes') || lower.includes('mercury')) return 'hermes';
-    }
-    return 'nero';
-  }
+interface SessionsCache {
+  data: OpenClawSession[];
+  fetchedAt: number;
+}
+
+let _sessionsCache: SessionsCache | null = null;
+let _sessionsInFlight: Promise<OpenClawSession[]> | null = null;
+const SESSIONS_CACHE_TTL_MS = 15_000;
+
+function unixToIso(ts?: number | null): string | null {
+  if (!ts) return null;
+  const millis = ts > 10_000_000_000 ? ts : ts * 1000;
+  return new Date(millis).toISOString();
+}
+
+const MOCK_FALLBACK_SESSIONS: OpenClawSession[] = [
+  {
+    id: 'hermes:main',
+    shortId: 'main',
+    title: 'Nero — Hermes main session',
+    agentId: 'nero',
+    agentName: 'Nero',
+    messageCount: 0,
+    lastMessageAt: new Date().toISOString(),
+    status: 'active',
+    tags: ['hermes', 'fallback'],
+    childSessionIds: [],
+    preview: 'Hermes state database unavailable — showing fallback shell.',
+  },
+];
+
+function shortId(id: string): string {
+  const tail = id.split(/[:/_-]/).filter(Boolean).pop() ?? id;
+  return tail.length > 12 ? tail.slice(0, 8) : tail;
+}
+
+function normalizeStatus(raw: HermesStateSession): SessionStatus {
+  if (!raw.ended_at) return 'active';
+  const last = raw.last_active ? (raw.last_active > 10_000_000_000 ? raw.last_active : raw.last_active * 1000) : 0;
+  const ageMs = last ? Date.now() - last : Number.POSITIVE_INFINITY;
+  if (ageMs < 30 * 60 * 1000) return 'idle';
+  return 'done';
+}
+
+function deriveAgentId(raw: HermesStateSession): string {
+  const haystack = `${raw.id} ${raw.source} ${raw.title ?? ''} ${raw.preview ?? ''} ${raw.model ?? ''}`.toLowerCase();
+  if (haystack.includes('hephaestus') || haystack.includes('forge')) return 'hephaestus';
+  if (haystack.includes('argus') || haystack.includes('sentinel')) return 'argus';
+  if (haystack.includes('ariadne') || haystack.includes('studio')) return 'ariadne';
+  if (haystack.includes('orion') || haystack.includes('scout')) return 'orion';
+  if (haystack.includes('mercury')) return 'hermes';
+  // In Nero's Hermes setup, API/TUI/CLI/Telegram roots are chaired by Nero.
   return 'nero';
-}
-
-function deriveSessionTitle(raw: RawSession): string {
-  // Priority: label (human-set) > displayName (structured) > key (raw)
-  if (raw.label) {
-    return raw.label.replace(/^(cron:\s*)/i, '').trim();
-  }
-
-  if (raw.displayName) {
-    // displayName is like "webchat:g-agent-main-main" — clean it up
-    const name = raw.displayName
-      .replace(/^webchat:/i, '')
-      .replace(/^telegram:/i, 'Telegram ')
-      .replace(/^cron:/i, '')
-      .replace(/g-agent-/g, '')
-      .replace(/main-/g, '')
-      .replace(/-/g, ' ')
-      .replace(/:/g, ' · ');
-    return name.charAt(0).toUpperCase() + name.slice(1).trim();
-  }
-
-  // Fall back to channel + last key segment
-  const channel = raw.channel && raw.channel !== 'unknown' ? raw.channel : null;
-  const keyParts = raw.key.split(':');
-  const keyType = keyParts[keyParts.length - 2] ?? null;
-  const shortKey = keyParts[keyParts.length - 1] ?? raw.key;
-  // If the last key segment is a UUID, don't show it — use type + "session"
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}/i.test(shortKey);
-  if (isUuid) {
-    const label = keyType ? `${keyType} session` : 'Subagent session';
-    return channel ? `${channel} ${label}` : label;
-  }
-  return channel ? `${channel} ${shortKey}` : shortKey;
 }
 
 function agentNameFromId(id: string): string {
@@ -165,324 +111,91 @@ function agentNameFromId(id: string): string {
     ariadne: 'Ariadne',
     orion: 'Orion',
     hermes: 'Hermes',
-    forge: 'Hephaestus',
-    sentinel: 'Argus',
-    studio: 'Ariadne',
-    scout: 'Orion',
-    mercury: 'Hermes',
-    main: 'Nero',
   };
   return map[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
 }
 
-function normalizeSessionStatus(s?: string): SessionStatus {
-  if (!s) return 'unknown';
-  const status = s.toLowerCase();
-  if (status === 'running' || status === 'active') return 'active';
-  if (status === 'done' || status === 'completed' || status === 'closed') return 'done';
-  if (status === 'idle') return 'idle';
-  if (status === 'timeout') return 'done'; // timed-out sessions are concluded
-  return 'unknown';
+function deriveTitle(raw: HermesStateSession): string {
+  const title = raw.title?.trim();
+  if (title) return title;
+  const preview = raw.preview?.trim();
+  if (preview) return preview.length > 80 ? `${preview.slice(0, 77)}…` : preview;
+  const source = raw.source ? raw.source.toUpperCase() : 'Hermes';
+  return `${source} session ${shortId(raw.id)}`;
 }
 
-function deriveTags(raw: RawSession): string[] {
-  const tags: string[] = [];
-  if (raw.childSessions && raw.childSessions.length > 0) {
-    tags.push(`delegated:${raw.childSessions.length}`);
-  }
-  if (raw.totalTokens && raw.totalTokens > 50000) {
-    tags.push('high-usage');
-  }
-  if (raw.status === 'running') {
-    tags.push('live');
-  }
-  if (raw.channel) {
-    tags.push(raw.channel);
-  }
-  return tags;
-}
+function normalizeSession(raw: HermesStateSession): OpenClawSession {
+  const agentId = deriveAgentId(raw);
+  const tags = ['hermes'];
+  if (raw.source) tags.push(raw.source);
+  if (raw.parent_session_id) tags.push('child');
+  if (raw.tool_call_count > 0) tags.push(`tools:${raw.tool_call_count}`);
+  if (raw.end_reason) tags.push(raw.end_reason);
 
-// ---------------------------------------------------------------------------
-// Gateway tool invoker
-// ---------------------------------------------------------------------------
-
-// sessions_list can be slow — use a 60s timeout for this specific call
-const GATEWAY_TIMEOUT_MS = 60_000;
-
-async function invokeTool<T>(tool: string, args: Record<string, unknown> = {}): Promise<T> {
-  const GATEWAY_URL = process.env.NEXT_PUBLIC_OPENCLAW_GATEWAY_URL ?? 'http://127.0.0.1:18789';
-  const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN ?? '';
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
-
-  let res: Response;
-  try {
-    res = await fetch(`${GATEWAY_URL}/tools/invoke`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${GATEWAY_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ tool, args }),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    const clean = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-    throw new Error(`Gateway error ${res.status}: ${clean}`.slice(0, 300));
-  }
-
-  // Parse gateway tool invoke response: { ok, result: { content: [{ type: 'text', text: '...' }] } }
-  const invokeResult = await res.json() as ToolInvokeResult;
-  if (!invokeResult.ok) {
-    throw new Error(invokeResult.error?.message ?? `Tool ${tool} returned error`);
-  }
-
-  // Unwrap: result.content[0].text is a JSON string of the actual result
-  const result = invokeResult.result as Record<string, unknown>;
-  if (result && typeof result === 'object') {
-    const content = result.content as unknown[];
-    if (Array.isArray(content) && content.length > 0) {
-      const first = content[0] as Record<string, unknown>;
-      if (first && typeof first.text === 'string') {
-        const inner = JSON.parse(first.text);
-        return inner as T;
-      }
-    }
-  }
-  // Fallback
-  return result as T;
-}
-
-// ---------------------------------------------------------------------------
-// Public adapter functions
-// ---------------------------------------------------------------------------
-
-// Sprint 10.6: Sessions cache with coalescing — sessions_list takes ~2.6s per call.
-// Multiple SSE connections + components call loadSessions simultaneously.
-// Solution: (1) 30s TTL cache for repeated calls, (2) in-flight coalescing — concurrent
-// callers share one gateway call rather than each making their own (eliminates initial burst).
-interface SessionsCache {
-  data: OpenClawSession[];
-  fetchedAt: number; // Date.now()
-}
-let _sessionsCache: SessionsCache | null = null;
-let _sessionsInFlight: Promise<OpenClawSession[]> | null = null;
-const SESSIONS_CACHE_TTL_MS = 60_000;
-
-// Mock sessions returned when the gateway is completely unreachable
-const MOCK_FALLBACK_SESSIONS: OpenClawSession[] = [
-  {
-    id: 'agent:main:main',
-    shortId: 'main',
-    title: 'Nero — main session',
-    agentId: 'nero',
-    agentName: 'Nero',
-    messageCount: 0,
-    lastMessageAt: new Date().toISOString(),
-    status: 'active',
-    tags: ['main'],
+  return {
+    id: raw.id,
+    shortId: shortId(raw.id),
+    title: deriveTitle(raw),
+    agentId,
+    agentName: agentNameFromId(agentId),
+    messageCount: raw.message_count ?? 0,
+    lastMessageAt: unixToIso(raw.last_active),
+    status: normalizeStatus(raw),
+    tags,
+    preview: raw.preview ?? '',
     childSessionIds: [],
-    preview: 'main session',
-  },
-];
+  };
+}
 
-/**
- * Load all sessions from the gateway.
- *
- * Coalescing: if a call is already in-flight, return that same promise.
- * All concurrent callers wait for ONE gateway call rather than each making their own.
- *
- * Cache: after the first successful call, results are cached for 30s.
- * Subsequent calls within 30s return instantly from cache.
- *
- * Graceful degradation: if gateway fails but stale cache exists, return stale data.
- * If no cache at all, return mock sessions so the app always shows something.
- */
 export async function loadSessionsReal(): Promise<AdapterResult<OpenClawSession[]>> {
   const now = Date.now();
 
-  // 1. Fast path — return from cache immediately
   if (_sessionsCache && now - _sessionsCache.fetchedAt < SESSIONS_CACHE_TTL_MS) {
-    return {
-      ok: true,
-      data: _sessionsCache.data,
-      fetchedAt: new Date(_sessionsCache.fetchedAt).toISOString(),
-    };
+    return { ok: true, data: _sessionsCache.data, fetchedAt: new Date(_sessionsCache.fetchedAt).toISOString() };
   }
 
-  // 2. Coalescing — if a call is already in-flight, wait for it instead of making another
   if (_sessionsInFlight) {
     const data = await _sessionsInFlight;
-    return {
-      ok: true,
-      data,
-      fetchedAt: new Date(_sessionsCache!.fetchedAt).toISOString(),
-    };
+    return { ok: true, data, fetchedAt: new Date(_sessionsCache?.fetchedAt ?? Date.now()).toISOString() };
   }
 
-  // 3. Actually call the gateway — all concurrent callers share this promise
   _sessionsInFlight = (async () => {
-    const result = await invokeTool<SessionsListResult>('sessions_list', { limit: 200 });
-
-    const rawSessions: RawSession[] = result?.sessions ?? [];
-    const normalized = rawSessions
+    const { listHermesSessions } = await loadStateDbModule();
+    const raw = await listHermesSessions(200);
+    const normalized = raw
       .map(normalizeSession)
       .filter((s) => {
-        // Always include the main orchestrator session — it's the primary chat
-        if (s.id === 'agent:main:main') return true;
-        // Exclude very old completed sessions
-        if (s.status === 'done' && s.lastMessageAt) {
-          const ageMs = Date.now() - new Date(s.lastMessageAt).getTime();
-          if (ageMs > 24 * 60 * 60 * 1000) return false;
-        }
-        return true;
-      })
-      .sort((a, b) => {
-        const aMs = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
-        const bMs = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
-        return bMs - aMs;
+        if (!s.lastMessageAt) return true;
+        if (s.status !== 'done') return true;
+        const ageMs = Date.now() - new Date(s.lastMessageAt).getTime();
+        return ageMs < 7 * 24 * 60 * 60 * 1000;
       });
-
     _sessionsCache = { data: normalized, fetchedAt: Date.now() };
     return normalized;
   })();
 
   try {
     const data = await _sessionsInFlight;
-    return {
-      ok: true,
-      data,
-      fetchedAt: new Date(_sessionsCache!.fetchedAt).toISOString(),
-    };
+    return { ok: true, data, fetchedAt: new Date(_sessionsCache!.fetchedAt).toISOString() };
   } catch (e) {
     if (_sessionsCache) {
-      console.warn('[OpenClaw adapter] loadSessionsReal: gateway failed, returning stale cache:', e instanceof Error ? e.message : e);
-      return {
-        ok: true,
-        data: _sessionsCache.data,
-        fetchedAt: new Date(_sessionsCache.fetchedAt).toISOString(),
-      };
+      return { ok: true, data: _sessionsCache.data, fetchedAt: new Date(_sessionsCache.fetchedAt).toISOString() };
     }
-    console.warn('[OpenClaw adapter] loadSessionsReal fallback to mock sessions:', e instanceof Error ? e.message : e);
-    return {
-      ok: true,
-      data: MOCK_FALLBACK_SESSIONS,
-      fetchedAt: new Date().toISOString(),
-    };
+    console.warn('[Hermes adapter] loadSessionsReal fallback:', e instanceof Error ? e.message : e);
+    return { ok: true, data: MOCK_FALLBACK_SESSIONS, fetchedAt: new Date().toISOString() };
   } finally {
     _sessionsInFlight = null;
   }
 }
 
-// ---------------------------------------------------------------------------
-// Session messages — transcript/history via sessions_history tool
-// ---------------------------------------------------------------------------
-
-type ContentBlock =
-  | { type: 'thinking'; thinking?: string }
-  | { type: 'text'; text?: string }
-  | { type: 'tool_use'; name?: string; id?: string; input?: unknown }
-  | { type: 'tool_result'; content?: string }
-  | { type: 'image' }
-  | { type: string; [key: string]: unknown }; //兜底
-
-interface SessionsHistoryMessage {
-  role: string;
-  // Gateway returns content as either:
-  // - A plain string (direct text, e.g. "Hello world" or "[Reasoning] ...")
-  // - An array of typed blocks (thinking/text/tool blocks)
-  // We accept both shapes.
-  content: string | ContentBlock[];
-  timestamp: number; // Unix ms
-  responseId?: string;
-  model?: string;
-  provider?: string;
-  stopReason?: string;
-  __openclaw?: { id: string; seq: number };
+function normalizeMessageRole(role: string): OpenClawMessage['role'] {
+  if (role === 'user' || role === 'system' || role === 'tool') return role;
+  return 'assistant';
 }
 
-interface SessionsHistoryResult {
-  sessionKey: string;
-  messages: SessionsHistoryMessage[];
-  truncated: boolean;
-  droppedMessages: boolean;
-  contentTruncated: boolean;
-  contentRedacted: boolean;
-  bytes: number;
-}
-
-/**
- * Flatten sessions_history content to a single display string.
- *
- * The gateway returns content in two possible shapes:
- * 1. Plain string — direct text (e.g. "Hello", "[Reasoning] ...", "[Subagent Context] ...")
- *    These are used verbatim.
- * 2. Typed block array — structured content with thinking/text/tool blocks.
- *
- * Condensation strategy:
- * - String content → used verbatim (preserve full text including thinking and context)
- * - Thinking blocks → "[Reasoning] <first 500 chars>" label (expanded from 120 for visibility)
- * - Text blocks → full text
- * - Tool blocks → single-line summary
- */
-function flattenContent(content: SessionsHistoryMessage['content']): string {
-  // Shape 1: plain string — use verbatim
-  if (typeof content === 'string') {
-    return content;
-  }
-
-  // Shape 2: typed block array
-  const parts: string[] = [];
-  for (const block of content) {
-    if (!block || typeof block !== 'object') continue;
-
-    if (block.type === 'thinking' && typeof block.thinking === 'string') {
-      // Preserve full thinking content — truncation was causing parseContentStream
-      // regex to mis-identify reasoning vs answer boundaries, resulting in blank bubbles.
-      // The 500-char limit also meant real thinking was being lost.
-      parts.push(`[Reasoning] ${block.thinking}`);
-    } else if (block.type === 'text' && typeof block.text === 'string') {
-      parts.push(block.text as string);
-    } else if (block.type === 'tool_use' && typeof block.name === 'string') {
-      parts.push(`[Tool: ${block.name}]`);
-    } else if (block.type === 'tool_result' && typeof block.content === 'string') {
-      // Always preserve full tool result content — truncation to 120 chars was
-      // losing answer text that lived in tool results, causing blank bubbles.
-      parts.push(`[Result] ${block.content}`);
-    } else if (block.type && typeof block === 'object') {
-      // Preserve unknown block types as-is rather than silently dropping content.
-      const unknownBlock = block as Record<string, unknown>;
-      const text = typeof unknownBlock.text === 'string' ? unknownBlock.text :
-                   typeof unknownBlock.content === 'string' ? unknownBlock.content :
-                   JSON.stringify(block);
-      if (text) parts.push(text);
-    }
-  }
-  return parts.join('\n');
-}
-
-/**
- * Load transcript messages for a specific session.
- *
- * Calls the sessions_history tool. Returns the most recent messages (limit=50 by default).
- * Results are truncated by the gateway if the session is very long.
- *
- * Honest limitations:
- * - contentTruncated: the full session is longer than what was returned
- * - contentRedacted: some content was redacted by the gateway (e.g. tool results)
- * - droppedMessages: some messages were dropped by the gateway
- *
- * These limitations are surfaced in the returned metadata so the UI can be honest.
- */
 export async function loadSessionMessages(
   sessionKey: string,
-  limit = 50,
+  limit = 80,
 ): Promise<AdapterResult<{
   messages: OpenClawMessage[];
   truncated: boolean;
@@ -491,77 +204,56 @@ export async function loadSessionMessages(
   totalBytes: number;
 }>> {
   try {
-    // Use the API route when called from the browser (CORS-safe).
-    // The /api/openclaw/sessions/history route proxies to the gateway server-side.
-    // Next.js server-side code (including API routes) has process.env.NEXT_RUNTIME === 'nodejs'.
-    // We detect browser by checking that NEXT_RUNTIME is NOT 'nodejs'.
-    const isNodeServer = process.env.NEXT_RUNTIME === 'nodejs';
-    let raw: SessionsHistoryResult;
-    if (!isNodeServer) {
-      // Browser — use the Next.js API route to avoid CORS issues with direct gateway calls.
+    if (typeof window !== 'undefined') {
       const url = `/api/openclaw/sessions/history?sessionKey=${encodeURIComponent(sessionKey)}&limit=${limit}`;
       const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error(`sessions/history API returned ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`sessions/history API returned ${res.status}`);
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error ?? 'sessions_history failed');
-      raw = json.data;
-    } else {
-      // Server-side — call the gateway directly via invokeTool.
-      raw = await invokeTool<SessionsHistoryResult>('sessions_history', { sessionKey, limit });
+      if (!json.ok) throw new Error(json.error ?? 'session history failed');
+      return { ok: true, data: json.data, fetchedAt: new Date().toISOString() };
     }
-    const result = raw;
 
-    const messages: OpenClawMessage[] = result.messages.map((m) => {
-      // Normalize role: 'assistant' | 'user' | 'system'
-      const role = m.role === 'user'
-        ? ('user' as const)
-        : m.role === 'system'
-          ? ('system' as const)
-          : ('assistant' as const);
+    const { loadHermesMessages } = await loadStateDbModule();
+    const raw = await loadHermesMessages(sessionKey, limit);
+    const messages: OpenClawMessage[] = raw.map((m) => ({
+      id: String(m.id),
+      role: normalizeMessageRole(m.role),
+      content: m.content,
+      timestamp: unixToIso(m.timestamp) ?? new Date().toISOString(),
+      agentId: m.role === 'assistant' ? 'nero' : undefined,
+    }));
 
-      return {
-        id: m.__openclaw?.id ?? m.responseId ?? `msg-${m.timestamp}`,
-        role,
-        content: flattenContent(m.content),
-        timestamp: new Date(m.timestamp).toISOString(),
-        agentId: m.provider ?? m.model ?? undefined,
-      } satisfies OpenClawMessage;
-    });
-
+    const totalBytes = messages.reduce((sum, m) => sum + m.content.length, 0);
     return {
       ok: true,
       data: {
         messages,
-        truncated: result.truncated,
-        contentTruncated: result.contentTruncated,
-        droppedMessages: result.droppedMessages,
-        totalBytes: result.bytes,
+        truncated: raw.length >= limit,
+        contentTruncated: false,
+        droppedMessages: false,
+        totalBytes,
       },
       fetchedAt: new Date().toISOString(),
     };
   } catch (e) {
-    console.error('[OpenClaw adapter] loadSessionMessages failed:', e);
+    console.error('[Hermes adapter] loadSessionMessages failed:', e);
     return {
       ok: false,
-      error: e instanceof Error ? e.message : 'Failed to load session history',
+      error: e instanceof Error ? e.message : 'Failed to load Hermes session history',
       retryable: true,
     };
   }
 }
 
-/**
- * Probe gateway reachability — lightweight check.
- */
 export async function probeGateway(): Promise<AdapterResult<{ ok: boolean }>> {
   try {
-    await invokeTool<unknown>('sessions_list', { limit: 1 });
+    const { listHermesSessions } = await loadStateDbModule();
+    await listHermesSessions(1);
     return { ok: true, data: { ok: true }, fetchedAt: new Date().toISOString() };
-  } catch {
+  } catch (e) {
     return {
       ok: false,
-      error: 'Gateway unreachable',
+      error: e instanceof Error ? e.message : 'Hermes state unavailable',
       retryable: true,
     };
   }

@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import type { EmailGate } from '@/lib/openclaw/adapter/types';
 import type { EmailGateStoreItem } from '@/lib/store';
-import { approveEmailGate, denyEmailGate, reviseEmailGate } from '@/lib/openclaw/adapter/email-gate';
 import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
@@ -128,9 +127,6 @@ function EmailGateCard({ gate, onApproved, onDenied, onRevised, onSend }: EmailG
   const [revisedBody, setRevisedBody] = useState(gate.proposedEmail.body);
   const [note, setNote] = useState('');
   const isSending = gate.gateStatus === 'sending';
-  const isSent = gate.gateStatus === 'sent';
-  const isFailed = gate.gateStatus === 'send_failed';
-  const isSendable = config.canSend && !isSending && !isSent;
 
   // If approved email was revised, show invalidation notice
   const invalidated = gate.approvalInvalidated;
@@ -440,12 +436,12 @@ function EmailGateCard({ gate, onApproved, onDenied, onRevised, onSend }: EmailG
             </span>
             {gate.humanNote && (
               <span className="text-xs italic" style={{ color: 'var(--mb-ash)', opacity: 0.7 }}>
-                "{gate.humanNote}"
+                “{gate.humanNote}”
               </span>
             )}
           </div>
           <p className="text-xs" style={{ color: 'var(--mb-ash)', opacity: 0.6 }}>
-            Tap "Revise draft" to rework and resubmit. Hermès will be notified.
+            Tap “Revise draft” to rework and resubmit. Hermès will be notified.
           </p>
         </div>
       )}
@@ -466,9 +462,6 @@ export function HermesEmailComposer({
 }: HermesEmailComposerProps) {
   const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'sent' | 'denied'>('pending');
 
-  const pending = gates.filter(
-    (g) => g.gateStatus === 'needs_review' || g.gateStatus === 'ready_for_approval'
-  );
   const needsAttention = gates.filter(
     (g) =>
       (g.gateStatus === 'needs_review' || g.gateStatus === 'ready_for_approval') ||

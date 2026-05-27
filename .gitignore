@@ -13,6 +13,11 @@
 # testing
 /coverage
 
+# local agent/runtime artifacts
+/.hermes/
+/output/
+/.verification-screenshots/
+
 # next.js
 /.next/
 /out/

@@ -17,9 +17,6 @@ export function RelativeTime({ isoString, className }: RelativeTimeProps) {
   const [label, setLabel] = useState<string>(() => formatRelativeTime(isoString));
 
   useEffect(() => {
-    // Update once after mount so the relative time is current
-    setLabel(formatRelativeTime(isoString));
-
     // Tick every 30s to keep "just now" → "2m" → ... fresh
     const id = setInterval(() => {
       setLabel(formatRelativeTime(isoString));

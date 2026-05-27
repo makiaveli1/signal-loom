@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useSignalLoomStore } from '@/lib/store';
 import { ThreadPane } from './thread-pane';
 import { MonitorThreadPane } from './monitor-thread-pane';
 import { ResizeHandle } from '@/components/ui/resize-handle';
+import type { Pane } from '@/lib/types';
 
 function EmptyState({ loading }: { loading?: boolean }) {
   return (
@@ -30,15 +31,24 @@ function EmptyState({ loading }: { loading?: boolean }) {
         ) : (
           <>
             <div
-              className="w-16 h-16 rounded-full flex items-center justify-center mb-4 mx-auto"
-              style={{ background: 'var(--mb-elevated)' }}
+              className="w-20 h-20 rounded-[1.75rem] flex items-center justify-center mb-5 mx-auto border"
+              style={{
+                background: 'radial-gradient(circle at 50% 35%, var(--mb-teal-glow), transparent 62%), var(--mb-elevated)',
+                borderColor: 'var(--sl-border-soft)',
+                boxShadow: 'var(--sl-shadow-panel)',
+              }}
             >
-              <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                <circle cx="16" cy="16" r="4" fill="var(--mb-teal)" opacity="0.8" />
-                <circle cx="16" cy="16" r="9" stroke="var(--mb-teal)" strokeWidth="1.5" opacity="0.3" />
+              <svg width="42" height="42" viewBox="0 0 42 42" fill="none" aria-hidden="true">
+                <circle cx="21" cy="21" r="4" fill="var(--mb-teal)" opacity="0.9" />
+                <circle cx="21" cy="21" r="11" stroke="var(--mb-teal)" strokeWidth="1.2" opacity="0.38" />
+                <path d="M7 22C14 14 28 14 35 22" stroke="var(--mb-brass)" strokeWidth="1.2" opacity="0.55" strokeLinecap="round" />
+                <path d="M7 28C14 20 28 20 35 28" stroke="var(--mb-red)" strokeWidth="1.2" opacity="0.45" strokeLinecap="round" />
               </svg>
             </div>
-            <p className="text-ivory-dim text-sm">Select a thread to begin</p>
+            <p className="text-ivory text-base font-semibold tracking-tight">Choose a signal to resume</p>
+            <p className="mt-2 max-w-sm text-sm leading-relaxed text-ash">
+              Open the Loom, review queued decisions, or use Command to start a fresh Hermes run.
+            </p>
           </>
         )}
       </div>
@@ -77,7 +87,6 @@ export function NeroWorkspace() {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (workspace.panes.some((p) => p.role === 'monitor')) {
-          // Find the monitor pane and close it with animation
           const monitor = workspace.panes.find((p) => p.role === 'monitor');
           if (monitor) setPendingCloseId(monitor.id);
         }
@@ -88,7 +97,7 @@ export function NeroWorkspace() {
         const panes = workspace.panes;
         const idx = panes.findIndex((p) => p.id === workspace.activePaneId);
         const next = panes[(idx + 1) % panes.length];
-        setActivePaneById(next.id);
+        if (next) setActivePaneById(next.id);
       }
     };
     window.addEventListener('keydown', handler);
@@ -108,106 +117,77 @@ export function NeroWorkspace() {
   }
 
   const nonMonitorPanes = workspace.panes.filter((p) => p.role !== 'monitor');
-  const monitorPane = workspace.panes.find((p) => p.role === 'monitor');
+
+  const renderPane = (pane: Pane) => {
+    const thread = threads.find((t) => t.id === pane.threadId);
+    if (!thread) return null;
+
+    const isMonitor = pane.role === 'monitor';
+    const widthStyle = isMonitor ? {} : { width: `${pane.widthRatio * 100}%` };
+    const canClose = pane.role === 'secondary' || pane.role === 'monitor';
+    const nonMonitorIndex = nonMonitorPanes.findIndex((p) => p.id === pane.id);
+    const nextNonMonitor = !isMonitor && nonMonitorIndex >= 0 ? nonMonitorPanes[nonMonitorIndex + 1] : null;
+
+    return (
+      <Fragment key={pane.id}>
+        <motion.div
+          animate={
+            pendingCloseId === pane.id
+              ? { opacity: 0, scale: 0.97 }
+              : { opacity: 1, scale: 1 }
+          }
+          transition={{ duration: 0.18, ease: 'easeIn' }}
+          className="flex h-full min-h-0 flex-shrink-0 overflow-hidden"
+          style={widthStyle}
+        >
+          {isMonitor ? (
+            <MonitorThreadPane
+              thread={thread}
+              isActive={pane.active}
+              collapsed={workspace.monitorCollapsed}
+              onExpand={() => {
+                const { toggleMonitorCollapsed } = useSignalLoomStore.getState();
+                toggleMonitorCollapsed();
+              }}
+              onActivate={() => setActivePaneById(pane.id)}
+              onClose={canClose ? () => { setPendingCloseId(pane.id); } : undefined}
+            />
+          ) : (
+            <ThreadPane
+              thread={thread}
+              isActive={pane.active}
+              isSplit={nonMonitorPanes.length > 1}
+              paneRole={pane.role}
+              onSetActive={() => setActivePaneById(pane.id)}
+              onClose={canClose ? () => { setPendingCloseId(pane.id); } : undefined}
+              showDelegationTimeline={true}
+            />
+          )}
+        </motion.div>
+
+        {nextNonMonitor && (
+          <ResizeHandle
+            paneAId={pane.id}
+            paneBId={nextNonMonitor.id}
+            containerRef={centerRef}
+          />
+        )}
+      </Fragment>
+    );
+  };
 
   return (
-    /*
-     * flex-1: fills the remaining height between TopBar and RuntimeStrip.
-     * min-h-0: REQUIRED in a flex column — allows this element (and its flex
-     *   column children) to shrink below their content size. Without this, a
-     *   flex column item with height:100% will overflow rather than shrink.
-     * overflow: contained at the shell level via the outer MissionShell div.
-     */
     <div
       className="flex flex-1 min-h-0"
       style={{ background: 'var(--mb-carbon)' }}
     >
-      {/*
-       * Inner flex column: owns the pane layout. min-h-0 ensures panes
-       * (flex column children) can shrink below content size.
-       */}
       <div
         ref={centerRef}
-        className="flex flex-1 min-h-0"
+        className="flex flex-1 min-h-0 overflow-hidden"
       >
         <AnimatePresence mode="popLayout">
-          {workspace.panes.map((pane) => {
-            const thread = threads.find((t) => t.id === pane.threadId);
-            if (!thread) return null;
-
-            const isMonitor = pane.role === 'monitor';
-            // Monitor pane owns its own flex width (collapsed: 48px, expanded: 240px)
-            // Non-monitor panes use widthRatio from the store
-            const widthStyle = isMonitor
-              ? {}
-              : { width: `${pane.widthRatio * 100}%` };
-
-            // canClose: secondary panes can always be closed;
-            // monitor panes can always be closed; primary pane is never closeable
-            const canClose =
-              pane.role === 'secondary' ||
-              pane.role === 'monitor';
-
-            return (
-              <motion.div
-                key={pane.id}
-                // Exit animation: when pendingCloseId is set, pane fades out.
-                // After 200ms the store fires closePane and pane is removed permanently.
-                animate={
-                  pendingCloseId === pane.id
-                    ? { opacity: 0, scale: 0.97 }
-                    : { opacity: 1, scale: 1 }
-                }
-                transition={{ duration: 0.18, ease: 'easeIn' }}
-                // No layout prop — resize handle drives width directly.
-                // min-h-0: allows this flex column child to shrink below content size.
-                className="flex-shrink-0 flex h-full min-h-0 overflow-hidden"
-                style={widthStyle}
-              >
-                {isMonitor ? (
-                  <MonitorThreadPane
-                    thread={thread}
-                    isActive={pane.active}
-                    collapsed={workspace.monitorCollapsed}
-                    onExpand={() => {
-                      const { toggleMonitorCollapsed } = useSignalLoomStore.getState();
-                      toggleMonitorCollapsed();
-                    }}
-                    onActivate={() => setActivePaneById(pane.id)}
-                    onClose={canClose ? () => { setPendingCloseId(pane.id); } : undefined}
-                  />
-                ) : (
-                  <ThreadPane
-                    thread={thread}
-                    isActive={pane.active}
-                    isSplit={nonMonitorPanes.length > 1}
-                    paneRole={pane.role}
-                    onSetActive={() => setActivePaneById(pane.id)}
-                    onClose={canClose ? () => { setPendingCloseId(pane.id); } : undefined}
-                    showDelegationTimeline={true}
-                  />
-                )}
-              </motion.div>
-            );
-          })}
+          {workspace.panes.map(renderPane)}
         </AnimatePresence>
-
-        {/* Resize handles between non-monitor panes */}
-        {nonMonitorPanes.length > 1 && centerRef.current && (
-          <div className="flex-shrink-0 flex h-full min-h-0">
-            {nonMonitorPanes.slice(0, -1).map((paneA, idx) => {
-              const paneB = nonMonitorPanes[idx + 1];
-              return (
-                <ResizeHandle
-                  key={`handle-${paneA.id}-${paneB.id}`}
-                  paneAId={paneA.id}
-                  paneBId={paneB.id}
-                  containerRef={centerRef}
-                />
-              );
-            })}
-          </div>
-        )}
       </div>
     </div>
   );

@@ -164,6 +164,8 @@ export interface ResizeState {
 }
 
 // Sprint 2: Composer
+export type StreamingStatus = 'idle' | 'connecting' | 'streaming' | 'finalizing' | 'complete' | 'error' | 'cancelled';
+
 export interface ComposerState {
   isSending: boolean;
   /**
@@ -174,6 +176,18 @@ export interface ComposerState {
   streamingResponse: string | null;
   /** True while a stream is actively receiving chunks. */
   isStreaming: boolean;
+  /** Fine-grained stream lifecycle for the live response HUD. */
+  streamingStatus: StreamingStatus;
+  /** Incremented for every chunk/frame received from Hermes. */
+  streamingTokenCount: number;
+  /** Approximate live throughput, recalculated as chunks arrive. */
+  streamingCharsPerSecond: number;
+  /** Current streaming assistant message id, if any. */
+  streamingMessageId: string | null;
+  /** ISO timestamp when current stream started. */
+  streamingStartedAt: string | null;
+  /** ISO timestamp of the most recent stream chunk/frame. */
+  streamingLastChunkAt: string | null;
   error: string | null;
   lastSentAt: string | null;
 }

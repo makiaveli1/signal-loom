@@ -1,8 +1,7 @@
 'use client';
 
-// PRETEXT: Deferred — see PRETEXT_DEFERRED_ENHANCEMENT_PLAN.md
-// Pretext would help with: internal work-tab virtualization, long child-session label truncation,
-// dock density scaling. Not needed until list/tab density becomes a measurable problem.
+// PRETEXT: Active in dense operator labels via PretextSmartTitle.
+// Keep Pretext isolated to small client wrappers; do not measure full message bodies.
 
 import { create } from 'zustand';
 import type {
@@ -21,6 +20,36 @@ import type {
 } from '@/lib/types';
 import type { OpenClawSession } from '@/lib/openclaw/adapter/types';
 import type { EmailGateAuditEntry } from '@/lib/openclaw/adapter/types';
+
+const HIDDEN_THREADS_STORAGE_KEY = 'signal-loom-hidden-conversations-v1';
+
+type ThreadDockMode = 'focus' | 'all' | 'hidden';
+
+function readHiddenThreadIds(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(HIDDEN_THREADS_STORAGE_KEY) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    window.localStorage.removeItem(HIDDEN_THREADS_STORAGE_KEY);
+    return [];
+  }
+}
+
+function persistHiddenThreadIds(ids: string[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(HIDDEN_THREADS_STORAGE_KEY, JSON.stringify([...new Set(ids)]));
+}
+
+function newestVisibleThread(threads: Thread[], hiddenIds: Set<string>): Thread | undefined {
+  return [...threads]
+    .filter((thread) => !hiddenIds.has(thread.id))
+    .sort((a, b) => {
+      const aTime = a.lastActive ? new Date(a.lastActive).getTime() : 0;
+      const bTime = b.lastActive ? new Date(b.lastActive).getTime() : 0;
+      return bTime - aTime;
+    })[0];
+}
 
 /** Minimal email gate shape stored in the Signal Loom state */
 export interface EmailGateStoreItem {
@@ -227,7 +256,7 @@ import {
   loadSessionMessages as adapterLoadSessionMessages,
   sendMessage as adapterSendMessage,
   streamMessage,
-  loadDelegationEvents as adapterLoadDelegationEvents,
+  type StreamMessageEvent,
   resolveApproval as adapterResolveApproval,
 } from '@/lib/openclaw/adapter';
 
@@ -235,7 +264,6 @@ import {
 
 const MIN_FULL_PANE = 280;
 const MIN_MONITOR_COLLAPSED = 160;
-const MIN_MONITOR_EXPANDED = 220;
 
 function derivePresetFromPanes(panes: Pane[]): WorkspacePreset {
   const hasMonitor = panes.some((p) => p.role === 'monitor');
@@ -282,7 +310,7 @@ function calcWidthRatio(deltaX: number, containerWidth: number, startA: number, 
   const totalWidth = containerWidth;
   const deltaRatio = deltaX / totalWidth;
   const newRatioA = startA + deltaRatio;
-  const newRatioB = startB + deltaRatio;
+  const newRatioB = startB - deltaRatio;
   // Clamp — prevent panes going below minimums
   const minFull = MIN_FULL_PANE / totalWidth;
   const minMonitor = MIN_MONITOR_COLLAPSED / totalWidth;
@@ -300,11 +328,16 @@ interface SignalLoomStore {
   /** Raw OpenClaw sessions — used to build Thread objects for selection */
   sessions: OpenClawSession[];
   selectedThreadId: string;
+  hiddenThreadIds: string[];
+  threadDockMode: ThreadDockMode;
   agents: Agent[];
   approvals: Approval[];
   runtime: RuntimeState;
   approvalsPanelOpen: boolean;
   emailComposerOpen: boolean;
+  hermesCommandCenterOpen: boolean;
+  hermesSettingsOpen: boolean;
+  composerDraft: string | null;
   /** CRM Lead Dossier panel — concept-first workflow */
   crmPanelOpen: boolean;
   toggleCrmPanel: () => void;
@@ -360,9 +393,20 @@ interface SignalLoomStore {
 
   // Actions
   selectThread: (id: string, session?: OpenClawSession) => void;
+  hideThread: (id: string) => void;
+  hideThreads: (ids: string[]) => void;
+  unhideThread: (id: string) => void;
+  setThreadDockMode: (mode: ThreadDockMode) => void;
+  hydrateHiddenThreads: () => void;
   markThreadRead: (id: string) => void;
   toggleApprovalsPanel: () => void;
   toggleEmailComposer: () => void;
+  toggleHermesCommandCenter: () => void;
+  closeHermesCommandCenter: () => void;
+  toggleHermesSettings: () => void;
+  closeHermesSettings: () => void;
+  setComposerDraft: (draft: string) => void;
+  clearComposerDraft: () => void;
 
   // Sprint 3: Data loading via OpenClaw adapter
   loadSessions: () => Promise<void>;
@@ -405,11 +449,16 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   threads: mockThreads,
   sessions: [] as OpenClawSession[],
   selectedThreadId: 'thread-1',
+  hiddenThreadIds: [],
+  threadDockMode: 'focus',
   agents: mockAgents,
   approvals: [], // loaded from adapter on mount; store shows empty while loading
   runtime: mockRuntime,
   approvalsPanelOpen: false,
   emailComposerOpen: false,
+  hermesCommandCenterOpen: false,
+  hermesSettingsOpen: false,
+  composerDraft: null,
   crmPanelOpen: false,
 
   // Sprint 2 legacy (migrated to workspace in 2.5)
@@ -423,6 +472,12 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
     isSending: false,
     streamingResponse: null,
     isStreaming: false,
+    streamingStatus: 'idle',
+    streamingTokenCount: 0,
+    streamingCharsPerSecond: 0,
+    streamingMessageId: null,
+    streamingStartedAt: null,
+    streamingLastChunkAt: null,
     error: null,
     lastSentAt: null,
   },
@@ -630,6 +685,47 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       };
     }),
 
+  hideThread: (id) => get().hideThreads([id]),
+
+  hideThreads: (ids) =>
+    set((state) => {
+      const nextHiddenIds = [...new Set([...state.hiddenThreadIds, ...ids])];
+      persistHiddenThreadIds(nextHiddenIds);
+      const hiddenSet = new Set(nextHiddenIds);
+      const fallback = newestVisibleThread(state.threads, hiddenSet);
+      const selectedWasHidden = ids.includes(state.selectedThreadId);
+      const nextSelectedThreadId = selectedWasHidden ? (fallback?.id ?? '') : state.selectedThreadId;
+      return {
+        hiddenThreadIds: nextHiddenIds,
+        threadDockMode: state.threadDockMode === 'hidden' ? 'hidden' : 'focus',
+        selectedThreadId: nextSelectedThreadId,
+        workspace: selectedWasHidden
+          ? {
+              ...state.workspace,
+              panes: state.workspace.panes.map((pane) =>
+                ids.includes(pane.threadId)
+                  ? { ...pane, threadId: fallback?.id ?? '' }
+                  : pane
+              ),
+            }
+          : state.workspace,
+      };
+    }),
+
+  unhideThread: (id) =>
+    set((state) => {
+      const nextHiddenIds = state.hiddenThreadIds.filter((hiddenId) => hiddenId !== id);
+      persistHiddenThreadIds(nextHiddenIds);
+      return { hiddenThreadIds: nextHiddenIds };
+    }),
+
+  setThreadDockMode: (mode) => set({ threadDockMode: mode }),
+
+  hydrateHiddenThreads: () => {
+    const hiddenThreadIds = readHiddenThreadIds();
+    set({ hiddenThreadIds });
+  },
+
   markThreadRead: (id) =>
     set((state) => ({
       threads: state.threads.map((t) =>
@@ -646,6 +742,30 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
     set((state) => ({
       emailComposerOpen: !state.emailComposerOpen,
     })),
+
+  toggleHermesCommandCenter: () =>
+    set((state) => ({
+      hermesCommandCenterOpen: !state.hermesCommandCenterOpen,
+      hermesSettingsOpen: false,
+    })),
+
+  closeHermesCommandCenter: () =>
+    set({ hermesCommandCenterOpen: false }),
+
+  toggleHermesSettings: () =>
+    set((state) => ({
+      hermesSettingsOpen: !state.hermesSettingsOpen,
+      hermesCommandCenterOpen: false,
+    })),
+
+  closeHermesSettings: () =>
+    set({ hermesSettingsOpen: false }),
+
+  setComposerDraft: (draft) =>
+    set({ composerDraft: draft }),
+
+  clearComposerDraft: () =>
+    set({ composerDraft: null }),
 
   toggleCrmPanel: () =>
     set((state) => ({
@@ -861,7 +981,8 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
 
     // Select first real session when sessions are loaded.
     // Priority: adaptedThreads[0] (filtered) > result.data[0] > keep current.
-    const firstRealSession = adaptedThreads[0] ?? result.data[0] ?? null;
+    const hiddenThreadIds = get().hiddenThreadIds;
+    const firstRealSession = adaptedThreads.find((thread) => !hiddenThreadIds.includes(thread.id)) ?? null;
 
     // ---- Update store ----
     set((state) => ({
@@ -1033,7 +1154,8 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
         if (!childSessionIds[parent.id].includes(child.id)) childSessionIds[parent.id].push(child.id);
       }
     }
-    const firstRealSession = adaptedThreads[0] ?? result.data[0] ?? null;
+    const hiddenThreadIds = get().hiddenThreadIds;
+    const firstRealSession = adaptedThreads.find((thread) => !hiddenThreadIds.includes(thread.id)) ?? null;
     set((state) => {
       // Sprint 10.6: Preserve locally-derived thread state across session refreshes.
       // Only session-derived fields (title, status, lastActive, session, tags) come from
@@ -1409,7 +1531,13 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
         ...state.composerState,
         isSending: true,
         isStreaming: false,
+        streamingStatus: 'connecting',
         streamingResponse: null,
+        streamingTokenCount: 0,
+        streamingCharsPerSecond: 0,
+        streamingMessageId: null,
+        streamingStartedAt: new Date().toISOString(),
+        streamingLastChunkAt: null,
         error: null,
       },
     }));
@@ -1442,7 +1570,10 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
           ...state.composerState,
           isSending: false,
           isStreaming: false,
+          streamingStatus: 'error',
           streamingResponse: null,
+          streamingMessageId: null,
+          streamingLastChunkAt: new Date().toISOString(),
           error: result.error,
         },
       }));
@@ -1464,108 +1595,195 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
           : t
       ),
       composerState: {
+        ...state.composerState,
         isSending: false,
         streamingResponse: null,
         isStreaming: false,
+        streamingStatus: 'complete',
+        streamingTokenCount: 0,
+        streamingCharsPerSecond: 0,
+        streamingMessageId: null,
+        streamingStartedAt: null,
+        streamingLastChunkAt: null,
         error: null,
         lastSentAt: new Date().toISOString(),
       },
     }));
   },
 
-  // Sprint 7: Streaming message send
+  // Sprint 7+: Streaming message send with structured lifecycle events.
   sendStreamingMessage: async (threadId, content) => {
-    set((state) => ({
-      composerState: {
-        ...state.composerState,
-        isSending: true,
-        isStreaming: true,
-        streamingResponse: '',
-        error: null,
-      },
-    }));
-
-    // Optimistically add the user message to the thread
+    const startedAt = new Date().toISOString();
+    const currentThread = get().threads.find((t) => t.id === threadId);
+    const sessionKey = currentThread?.session?.id ?? threadId;
     const userMessageId = `msg-${threadId}-${Date.now()}`;
     const assistantMessageId = `msg-${threadId}-${Date.now()}-resp`;
     const userMessage = {
       id: userMessageId,
       role: 'user' as const,
       content,
-      timestamp: new Date().toISOString(),
+      timestamp: startedAt,
     };
-
-    set((state) => ({
-      threads: state.threads.map((t) =>
-        t.id === threadId
-          ? { ...t, messages: [...t.messages, userMessage], lastActive: new Date().toISOString() }
-          : t
-      ),
-    }));
-
-    // Start with an empty assistant message that we'll stream into
     const emptyAssistant = {
       id: assistantMessageId,
-      role: 'assistant' as const,
+      role: 'nero' as const,
       content: '',
-      timestamp: new Date().toISOString(),
+      timestamp: startedAt,
     };
 
-    set((state) => ({
-      threads: state.threads.map((t) =>
-        t.id === threadId
-          ? { ...t, messages: [...t.messages, emptyAssistant] as Thread['messages'], lastActive: new Date().toISOString() }
-          : t
-      ),
-    }));
+    const upsertSessionMessages = (
+      messages: Thread['messages'],
+      fetchedAt = new Date().toISOString(),
+    ) => ({
+      messages,
+      fetchedAt,
+    });
+
+    set((state) => {
+      const existingTranscript = state.sessionMessages[sessionKey] ?? state.sessionMessages[threadId];
+      const baseTranscript = existingTranscript?.messages ?? currentThread?.messages ?? [];
+      const nextTranscript = [...baseTranscript, userMessage, emptyAssistant] as Thread['messages'];
+      return {
+        threads: state.threads.map((t) =>
+          t.id === threadId
+            ? { ...t, messages: [...t.messages, userMessage, emptyAssistant] as Thread['messages'], lastActive: startedAt }
+            : t
+        ),
+        sessionMessages: {
+          ...state.sessionMessages,
+          [sessionKey]: upsertSessionMessages(nextTranscript, startedAt),
+          ...(sessionKey !== threadId ? { [threadId]: upsertSessionMessages(nextTranscript, startedAt) } : {}),
+        },
+        composerState: {
+          ...state.composerState,
+          isSending: true,
+          isStreaming: true,
+          streamingStatus: 'connecting',
+          streamingResponse: '',
+          streamingTokenCount: 0,
+          streamingCharsPerSecond: 0,
+          streamingMessageId: assistantMessageId,
+          streamingStartedAt: startedAt,
+          streamingLastChunkAt: null,
+          error: null,
+        },
+      };
+    });
+
+    const streamStartedMs = Date.now();
+    const controller = new AbortController();
+    let accumulated = '';
+    let chunkCount = 0;
+    let finalError: string | null = null;
+
+    const updateAssistantText = (nextContent: string, event?: StreamMessageEvent) => {
+      const now = new Date().toISOString();
+      const elapsedSeconds = Math.max((Date.now() - streamStartedMs) / 1000, 0.25);
+      const charsPerSecond = Math.round(nextContent.length / elapsedSeconds);
+
+      set((state) => {
+        const updateMessages = (messages: Thread['messages']) =>
+          messages.map((m) => (m.id === assistantMessageId ? { ...m, content: nextContent } : m));
+        const existingTranscript = state.sessionMessages[sessionKey] ?? state.sessionMessages[threadId];
+        const transcriptMessages = existingTranscript
+          ? updateMessages(existingTranscript.messages)
+          : updateMessages(currentThread?.messages ?? []);
+
+        return {
+          threads: state.threads.map((t) =>
+            t.id === threadId
+              ? {
+                  ...t,
+                  messages: updateMessages(t.messages) as Thread['messages'],
+                  lastActive: now,
+                }
+              : t
+          ),
+          sessionMessages: {
+            ...state.sessionMessages,
+            [sessionKey]: upsertSessionMessages(transcriptMessages as Thread['messages'], now),
+            ...(sessionKey !== threadId ? { [threadId]: upsertSessionMessages(transcriptMessages as Thread['messages'], now) } : {}),
+          },
+          composerState: {
+            ...state.composerState,
+            streamingResponse: nextContent,
+            streamingStatus: event?.type === 'chunk' ? 'streaming' : state.composerState.streamingStatus,
+            streamingTokenCount: chunkCount,
+            streamingCharsPerSecond: charsPerSecond,
+            streamingLastChunkAt: now,
+          },
+        };
+      });
+    };
 
     try {
-      const stream = streamMessage({
-        sessionKey: threadId,
-        content,
-      });
+      const stream = streamMessage({ sessionKey, content }, { signal: controller.signal });
       const reader = stream.getReader();
-      let accumulated = '';
 
       for (;;) {
         const { done, value } = await reader.read();
         if (done || !value) break;
 
-        accumulated += value;
+        if (value.type === 'open') {
+          set((state) => ({
+            composerState: {
+              ...state.composerState,
+              streamingStatus: 'streaming',
+              streamingLastChunkAt: value.at,
+            },
+          }));
+          continue;
+        }
 
-        // Update streaming response in composer state
-        set((state) => ({
-          composerState: {
-            ...state.composerState,
-            streamingResponse: accumulated,
-          },
-        }));
+        if (value.type === 'heartbeat') {
+          set((state) => ({
+            composerState: {
+              ...state.composerState,
+              streamingLastChunkAt: value.at,
+            },
+          }));
+          continue;
+        }
 
-        // Update the assistant message content progressively
-        set((state) => ({
-          threads: state.threads.map((t) =>
-            t.id === threadId
-              ? {
-                  ...t,
-                  messages: t.messages.map((m) =>
-                    m.id === assistantMessageId
-                      ? { ...m, content: accumulated }
-                      : m
-                  ),
-                }
-              : t
-          ),
-        }));
+        if (value.type === 'chunk') {
+          chunkCount += 1;
+          accumulated += value.chunk;
+          updateAssistantText(accumulated, value);
+          continue;
+        }
+
+        if (value.type === 'error') {
+          finalError = value.error;
+          break;
+        }
+
+        if (value.type === 'done') {
+          set((state) => ({
+            composerState: {
+              ...state.composerState,
+              streamingStatus: 'finalizing',
+              streamingLastChunkAt: value.at,
+            },
+          }));
+          break;
+        }
       }
     } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : 'Stream failed';
+      finalError = e instanceof Error ? e.message : 'Stream failed';
+    }
+
+    if (finalError) {
+      const errorText = accumulated || `Stream failed: ${finalError}`;
+      updateAssistantText(errorText);
       set((state) => ({
         composerState: {
           ...state.composerState,
           isSending: false,
           isStreaming: false,
-          streamingResponse: null,
-          error: errorMsg,
+          streamingStatus: 'error',
+          streamingResponse: errorText,
+          streamingMessageId: assistantMessageId,
+          error: finalError,
         },
       }));
       setTimeout(() => { get().clearComposerError(); }, 5000);
@@ -1578,7 +1796,10 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
         ...state.composerState,
         isSending: false,
         isStreaming: false,
+        streamingStatus: 'complete',
         streamingResponse: null,
+        streamingMessageId: null,
+        streamingLastChunkAt: new Date().toISOString(),
         lastSentAt: new Date().toISOString(),
       },
     }));
@@ -1591,6 +1812,13 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
         error: null,
         streamingResponse: null,
         isStreaming: false,
+        isSending: false,
+        streamingStatus: 'idle',
+        streamingTokenCount: 0,
+        streamingCharsPerSecond: 0,
+        streamingMessageId: null,
+        streamingStartedAt: null,
+        streamingLastChunkAt: null,
       },
     })),
 

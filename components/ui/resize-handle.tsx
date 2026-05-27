@@ -20,7 +20,6 @@ export function ResizeHandle({ paneAId, paneBId, containerRef, className }: Resi
     (e: React.MouseEvent) => {
       e.preventDefault();
       if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
       // Store initial width ratios from current workspace state
       const ws = useSignalLoomStore.getState().workspace;
       const paneA = ws.panes.find((p) => p.id === paneAId);
@@ -44,7 +43,7 @@ export function ResizeHandle({ paneAId, paneBId, containerRef, className }: Resi
       const rect = containerRef.current.getBoundingClientRect();
       applyResize(deltaX, rect.width);
     },
-    [resize, paneAId, paneBId, containerRef, applyResize]
+    [resize, containerRef, applyResize]
   );
 
   const onMouseUp = useCallback(() => {

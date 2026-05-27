@@ -20,95 +20,71 @@ interface AgentCardProps {
 export function AgentCard({ agent, onClick }: AgentCardProps) {
   const statusCfg = STATUS_CONFIG[agent.status];
   const isActive  = agent.status === 'active';
-  // Sprint 8: Derive lane descriptor from agent metadata
-  const laneMeta = getAgentLaneMeta(agent.id);  
+  const laneMeta = getAgentLaneMeta(agent.id);
+  const stateVerb = laneMeta?.stateVerb ?? statusCfg.label;
 
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
+      disabled={!onClick}
       className={cn(
-        "rounded-lg border p-3 transition-all duration-200",
-        isActive ? "" : "hover:bg-elevated/40",
-        onClick && "cursor-pointer"
+        'group relative w-full overflow-hidden rounded-xl border p-3 text-left transition-all duration-200 disabled:cursor-default',
+        onClick && 'cursor-pointer hover:-translate-y-0.5 active:translate-y-0',
+        !isActive && 'hover:bg-elevated/40'
       )}
       style={{
-        background: 'var(--mb-panel)',
-        borderColor: isActive ? `${agent.accentColor}35` : 'transparent',
+        background: isActive
+          ? `linear-gradient(135deg, ${agent.accentColor}10 0%, var(--mb-panel) 45%, rgba(0,0,0,0.12) 100%)`
+          : 'var(--mb-panel)',
+        borderColor: isActive ? `${agent.accentColor}42` : 'rgba(255,255,255,0.06)',
         boxShadow: isActive
-          ? `0 0 20px ${agent.accentColor}12, inset 0 0 0 1px ${agent.accentColor}08`
-          : 'none',
-        transitionProperty: 'box-shadow, border-color, background',
+          ? `0 0 22px ${agent.accentColor}10, inset 3px 0 0 ${agent.accentColor}`
+          : 'inset 3px 0 0 rgba(255,255,255,0.05)',
+        transitionProperty: 'box-shadow, border-color, background, transform',
       }}
+      title={onClick ? `${laneMeta?.visualName ?? agent.name}: open lane controls` : laneMeta?.visualName ?? agent.name}
     >
-      {/* Header — name + status */}
-      <div className="flex items-start justify-between mb-2.5">
-        <div className="flex items-center gap-2">
-          {/* Avatar mark */}
+      <div className="flex items-start justify-between gap-2 mb-2.5">
+        <div className="flex items-start gap-2 min-w-0">
           <div
-            className="w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
             style={{
-              background: `${agent.accentColor}20`,
+              background: `${agent.accentColor}18`,
               color: agent.accentColor,
-              border: `1px solid ${agent.accentColor}30`,
+              border: `1px solid ${agent.accentColor}34`,
+              boxShadow: isActive ? `0 0 14px ${agent.accentColor}16` : undefined,
             }}
+            aria-hidden="true"
           >
             {agent.name.charAt(0)}
           </div>
-          <p className="text-xs font-semibold" style={{ color: agent.accentColor }}>
-            {agent.name}
-          </p>
-          {/* Sprint 8: Lane badge — Build / Review / Design / Research / Commercial */}
-          {laneMeta && (
-            <span
-              className="text-xs font-mono px-1.5 py-0.5 rounded-full flex-shrink-0"
-              style={{
-                background: `${agent.accentColor}10`,
-                color: agent.accentColor,
-                border: `1px solid ${agent.accentColor}20`,
-                fontSize: '9px',
-                opacity: 0.75,
-              }}
-              title={`Lane: ${laneMeta.lane} — ${laneMeta.delegationReason}`}
-            >
-              {laneMeta.lane}
-            </span>
-          )}
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <p className="text-xs font-semibold truncate" style={{ color: agent.accentColor }}>
+                {laneMeta?.visualName ?? agent.name}
+              </p>
+            </div>
+            <p className="mt-0.5 text-[10px] font-mono uppercase tracking-[0.18em] text-ash">
+              {laneMeta?.laneName ?? agent.role}
+            </p>
+          </div>
         </div>
 
-        {/* Status + browser badge */}
-        <div className="flex items-center gap-2">
-          {agent.browserEnabled && (
-            <span title="Browser lane active">
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-label="Browser enabled">
-                <rect x="1" y="2" width="10" height="7" rx="1.5" stroke="var(--mb-teal)" strokeWidth="1.2" opacity="0.7" />
-                <path d="M4 9.5h4" stroke="var(--mb-teal)" strokeWidth="1.2" strokeLinecap="round" opacity="0.7" />
-                <circle cx="6" cy="5" r="1" fill="var(--mb-teal)" opacity="0.5" />
-              </svg>
-            </span>
-          )}
+        <span
+          className="flex items-center gap-1 text-[10px] font-mono flex-shrink-0"
+          style={{ color: statusCfg.color }}
+        >
           <span
-            className="flex items-center gap-1 text-xs font-mono"
-            style={{ color: statusCfg.color }}
-          >
-            {isActive ? (
-              <span
-                className="w-1.5 h-1.5 rounded-full signal-pulse flex-shrink-0"
-                style={{ background: statusCfg.color }}
-              />
-            ) : (
-              <span
-                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                style={{ background: statusCfg.color, opacity: 0.4 }}
-              />
-            )}
-            {statusCfg.label}
-          </span>
-        </div>
+            className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', isActive && 'signal-pulse')}
+            style={{ background: statusCfg.color, opacity: isActive ? 1 : 0.5 }}
+          />
+          {statusCfg.label}
+        </span>
       </div>
 
-      {/* Task preview — primary */}
       <p
-        className="text-xs text-ivory-dim leading-snug mb-2"
+        className="text-xs text-ivory-dim leading-snug mb-2.5"
         style={{
           display: '-webkit-box',
           WebkitLineClamp: 2,
@@ -119,10 +95,23 @@ export function AgentCard({ agent, onClick }: AgentCardProps) {
         {agent.taskPreview}
       </p>
 
-      {/* Role subtitle — de-emphasized */}
-      <p className="text-xs text-ash-muted font-mono leading-tight opacity-60">
-        {laneMeta?.delegationReason ?? agent.role.split('—')[1]?.trim() ?? agent.role}
-      </p>
-    </div>
+      <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-2">
+        <span className="text-[10px] font-mono" style={{ color: agent.accentColor }}>
+          {stateVerb}
+        </span>
+        <span className="text-[10px] text-ash truncate" title={laneMeta?.outputLabel ?? agent.role}>
+          {laneMeta?.outputLabel ?? agent.role}
+        </span>
+        {agent.browserEnabled && (
+          <span className="flex-shrink-0" title="Browser lane active" aria-label="Browser lane active">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <rect x="1" y="2" width="10" height="7" rx="1.5" stroke="var(--mb-teal)" strokeWidth="1.2" opacity="0.7" />
+              <path d="M4 9.5h4" stroke="var(--mb-teal)" strokeWidth="1.2" strokeLinecap="round" opacity="0.7" />
+              <circle cx="6" cy="5" r="1" fill="var(--mb-teal)" opacity="0.5" />
+            </svg>
+          </span>
+        )}
+      </div>
+    </button>
   );
 }
