@@ -91,7 +91,7 @@ export function ThreadDock({ width = 260, onCollapse }: { width?: number; onColl
             <button
               type="button"
               onClick={onCollapse}
-              className="rounded-md border border-white/10 px-1.5 py-1 text-[10px] text-ash transition-colors hover:text-ivory"
+              className="thread-dock-collapse-button rounded-md border border-white/10 px-1.5 py-1 text-[10px] text-ash transition-colors hover:text-ivory"
               title="Collapse chat list"
               aria-label="Collapse chat list"
             >
@@ -245,7 +245,7 @@ function DockGroupSection({
       <button
         onClick={isCollapsible ? onToggle : undefined}
         className={cn(
-          'flex items-center gap-2 w-full px-3 py-2 rounded-xl text-left text-xs font-semibold uppercase tracking-[0.18em] transition-all',
+          'thread-group-toggle flex items-center gap-2 w-full px-3 py-2 rounded-xl text-left text-xs font-semibold uppercase tracking-[0.18em] transition-all',
           isCollapsible ? 'hover:bg-white/[0.025] cursor-pointer' : 'cursor-default'
         )}
         style={{ color: headerColor }}

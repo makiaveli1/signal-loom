@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { promisify } from 'node:util';
 
 export const dynamic = 'force-dynamic';
 
 const execFileAsync = promisify(execFile);
 const HOME = process.env.HOME ?? '/home/likwid';
-const HERMES_HOME = process.env.HERMES_HOME ?? join(HOME, '.hermes');
-const CONFIG_PATH = process.env.HERMES_CONFIG ?? join(HERMES_HOME, 'config.yaml');
-const ENV_PATH = process.env.HERMES_ENV ?? join(HERMES_HOME, '.env');
-const STATE_DB_PATH = process.env.HERMES_STATE_DB ?? join(HERMES_HOME, 'state.db');
-const MEDIA_PATH = process.env.HERMES_MEDIA_DIR ?? join(HERMES_HOME, 'media_cache');
+const HERMES_HOME = process.env.HERMES_HOME ?? `${HOME}/.hermes`;
+const CONFIG_PATH = process.env.HERMES_CONFIG ?? `${HERMES_HOME}/config.yaml`;
+const ENV_PATH = process.env.HERMES_ENV ?? `${HERMES_HOME}/.env`;
+const STATE_DB_PATH = process.env.HERMES_STATE_DB ?? `${HERMES_HOME}/state.db`;
+const MEDIA_PATH = process.env.HERMES_MEDIA_DIR ?? `${HERMES_HOME}/media_cache`;
 const MAX_CONFIG_BYTES = 220_000;
 
 type SettingType = 'boolean' | 'select' | 'number' | 'text';
@@ -255,9 +255,29 @@ const QUICK_SETTINGS: QuickSetting[] = [
   },
 ];
 
+function fileExists(path: string): boolean {
+  return existsSync(/* turbopackIgnore: true */ path);
+}
+
+function readBytes(path: string): Buffer {
+  return readFileSync(/* turbopackIgnore: true */ path);
+}
+
 function readText(path: string): string {
-  if (!existsSync(path)) return '';
-  return readFileSync(path, 'utf8');
+  if (!fileExists(path)) return '';
+  return readFileSync(/* turbopackIgnore: true */ path, 'utf8');
+}
+
+function writeBytes(path: string, content: Buffer): void {
+  writeFileSync(/* turbopackIgnore: true */ path, content);
+}
+
+function writeText(path: string, content: string): void {
+  writeFileSync(/* turbopackIgnore: true */ path, content, 'utf8');
+}
+
+function ensureParentDirectory(path: string): void {
+  mkdirSync(/* turbopackIgnore: true */ dirname(path), { recursive: true });
 }
 
 async function run(command: string, args: string[], timeout = 12_000): Promise<{ ok: boolean; output: string }> {
@@ -457,21 +477,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: normalised.error }, { status: 400 });
     }
 
-    mkdirSync(dirname(CONFIG_PATH), { recursive: true });
+    ensureParentDirectory(CONFIG_PATH);
     const backupPath = `${CONFIG_PATH}.signal-loom-${new Date().toISOString().replace(/[:.]/g, '-')}.bak`;
-    if (existsSync(CONFIG_PATH)) {
-      writeFileSync(backupPath, readFileSync(CONFIG_PATH));
+    if (fileExists(CONFIG_PATH)) {
+      writeBytes(backupPath, readBytes(CONFIG_PATH));
     }
 
     const result = await run('hermes', ['config', 'set', key, normalised.value], 30_000);
     if (!result.ok) {
-      if (existsSync(backupPath)) writeFileSync(CONFIG_PATH, readFileSync(backupPath));
+      if (fileExists(backupPath)) writeBytes(CONFIG_PATH, readBytes(backupPath));
       return NextResponse.json({ ok: false, error: result.output || 'Hermes could not save that setting.', backupPath }, { status: 400 });
     }
 
     const validation = await run('hermes', ['config', 'check'], 30_000);
     if (!validation.ok) {
-      if (existsSync(backupPath)) writeFileSync(CONFIG_PATH, readFileSync(backupPath));
+      if (fileExists(backupPath)) writeBytes(CONFIG_PATH, readBytes(backupPath));
       return NextResponse.json({
         ok: false,
         error: 'That change made the config invalid, so Signal Loom restored the previous config.',
@@ -504,17 +524,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Config contains an invalid NUL byte.' }, { status: 400 });
   }
 
-  mkdirSync(dirname(CONFIG_PATH), { recursive: true });
+  ensureParentDirectory(CONFIG_PATH);
   const backupPath = `${CONFIG_PATH}.signal-loom-${new Date().toISOString().replace(/[:.]/g, '-')}.bak`;
-  if (existsSync(CONFIG_PATH)) {
-    writeFileSync(backupPath, readFileSync(CONFIG_PATH));
+  if (fileExists(CONFIG_PATH)) {
+    writeBytes(backupPath, readBytes(CONFIG_PATH));
   }
-  writeFileSync(CONFIG_PATH, content, 'utf8');
+  writeText(CONFIG_PATH, content);
 
   const validation = await run('hermes', ['config', 'check'], 30_000);
   if (!validation.ok) {
-    if (existsSync(backupPath)) {
-      writeFileSync(CONFIG_PATH, readFileSync(backupPath));
+    if (fileExists(backupPath)) {
+      writeBytes(CONFIG_PATH, readBytes(backupPath));
     }
     return NextResponse.json({
       ok: false,

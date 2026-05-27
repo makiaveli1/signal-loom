@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useSignalLoomStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 
@@ -98,6 +98,8 @@ const accentClass: Record<Capability['accent'], string> = {
 };
 
 export function HermesCommandCenter() {
+  const panelRef = useRef<HTMLElement>(null);
+
   const {
     hermesCommandCenterOpen,
     closeHermesCommandCenter,
@@ -119,6 +121,62 @@ export function HermesCommandCenter() {
     return { active, pendingEmail, pendingApprovals };
   }, [agents, approvals, emailGates]);
 
+  useEffect(() => {
+    if (!hermesCommandCenterOpen) return;
+
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusableSelector = [
+      'button:not([disabled]):not([tabindex="-1"])',
+      'a[href]',
+      'input:not([disabled])',
+      'select:not([disabled])',
+      'textarea:not([disabled])',
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(',');
+
+    window.setTimeout(() => panelRef.current?.focus(), 0);
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeHermesCommandCenter();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const panel = panelRef.current;
+      if (!panel) return;
+
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+        (element) => !element.hasAttribute('disabled') && element.offsetParent !== null
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previouslyFocused?.focus({ preventScroll: true });
+    };
+  }, [closeHermesCommandCenter, hermesCommandCenterOpen]);
+
   if (!hermesCommandCenterOpen) return null;
 
   const applyPrompt = (prompt: string) => {
@@ -132,10 +190,12 @@ export function HermesCommandCenter() {
         type="button"
         className="hermes-command-backdrop"
         aria-label="Close quick actions"
+        aria-hidden="true"
+        tabIndex={-1}
         onClick={closeHermesCommandCenter}
       />
 
-      <section className="hermes-command-panel" aria-labelledby="hermes-command-title">
+      <section ref={panelRef} className="hermes-command-panel" aria-labelledby="hermes-command-title" tabIndex={-1}>
         <header className="hermes-command-header">
           <div className="min-w-0">
             <p className="hermes-command-kicker">Quick actions</p>

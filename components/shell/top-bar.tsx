@@ -99,7 +99,7 @@ export function TopBar() {
           aria-pressed={approvalsPanelOpen}
           aria-label={totalPending > 0 ? `${totalPending} item${totalPending === 1 ? '' : 's'} waiting for review` : 'Open review queue'}
           className={cn(
-            'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150 border',
+            'top-review-button flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150 border',
             approvalsPanelOpen
               ? 'bg-brass-dim text-brass border-brass/35 shadow-[0_0_18px_rgba(201,160,58,0.12)]'
               : totalPending > 0

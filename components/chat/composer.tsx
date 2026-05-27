@@ -317,7 +317,7 @@ export function Composer({ threadId }: ComposerProps) {
               'flex-1 bg-transparent text-sm text-ivory placeholder:text-ash resize-none outline-none leading-relaxed',
               isSending && 'opacity-50'
             )}
-            style={{ minHeight: '22px', maxHeight: '120px' }}
+            style={{ minHeight: '2.5rem', maxHeight: '120px' }}
           />
           <button
             onClick={handleSend}

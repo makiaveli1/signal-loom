@@ -55,7 +55,7 @@ export function LiveAgentRail({ width = 280, onCollapse }: { width?: number; onC
               <button
                 type="button"
                 onClick={onCollapse}
-                className="rounded-md border border-white/10 px-1.5 py-1 text-[10px] text-ash transition-colors hover:text-ivory"
+                className="agent-rail-collapse-button rounded-md border border-white/10 px-1.5 py-1 text-[10px] text-ash transition-colors hover:text-ivory"
                 title="Collapse Live Lanes"
                 aria-label="Collapse Live Lanes"
               >
@@ -116,7 +116,7 @@ function CollapsibleIdleSection({
     <div>
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-1 py-1.5 text-xs font-mono text-ash hover:text-ivory-dim transition-colors duration-150 rounded"
+        className="agent-idle-toggle w-full flex items-center justify-between px-1 py-1.5 text-xs font-mono text-ash hover:text-ivory-dim transition-colors duration-150 rounded"
         aria-expanded={expanded}
       >
         <span className="flex items-center gap-1.5">

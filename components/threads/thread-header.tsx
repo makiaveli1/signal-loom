@@ -64,7 +64,7 @@ export function ThreadHeader({
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => setCollapsed((v) => !v)}
-            className="flex-shrink-0 w-6 h-6 rounded flex items-center justify-center cursor-pointer transition-all duration-150 hover:bg-white/[0.06] active:scale-95"
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded transition-all duration-150 hover:bg-white/[0.06] active:scale-95 sm:h-6 sm:w-6"
             style={{ color: 'var(--mb-ash)' }}
             title={collapsed ? 'Expand thread header' : 'Collapse header — give more room to chat'}
             aria-label={collapsed ? 'Expand thread header' : 'Collapse thread header'}

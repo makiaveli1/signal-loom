@@ -28,8 +28,8 @@
   --mb-ivory:        #eae6df;
   --mb-ivory-dim:    #b8b3aa;
   --mb-ivory-dimmed: #b8b3aa;
-  --mb-ash:          #7c7870;
-  --mb-ash-muted:    #4a4744;
+  --mb-ash:          #9a948a;
+  --mb-ash-muted:    #67615a;
 
   /* Signal / Active */
   --mb-teal:         #3dc9c4;
@@ -97,8 +97,8 @@ html[data-signal-theme="nero-ember"] {
   --mb-ivory:        #f3e4d2;
   --mb-ivory-dim:    #c7b6a3;
   --mb-ivory-dimmed: #c7b6a3;
-  --mb-ash:          #8e7665;
-  --mb-ash-muted:    #5b493d;
+  --mb-ash:          #a58b78;
+  --mb-ash-muted:    #756052;
   --mb-teal:         #65d6c7;
   --mb-teal-dim:     #246c64;
   --mb-teal-glow:    rgba(101, 214, 199, 0.16);
@@ -127,8 +127,8 @@ html[data-signal-theme="oracle-teal"] {
   --mb-ivory:        #e5f3ee;
   --mb-ivory-dim:    #acc8c1;
   --mb-ivory-dimmed: #acc8c1;
-  --mb-ash:          #6f8b86;
-  --mb-ash-muted:    #405b59;
+  --mb-ash:          #89a7a2;
+  --mb-ash-muted:    #607d79;
   --mb-teal:         #56eadf;
   --mb-teal-dim:     #1e807b;
   --mb-teal-glow:    rgba(86, 234, 223, 0.17);
@@ -157,8 +157,8 @@ html[data-signal-theme="papyrus-dawn"] {
   --mb-ivory:        #241a14;
   --mb-ivory-dim:    #59483a;
   --mb-ivory-dimmed: #59483a;
-  --mb-ash:          #806f5f;
-  --mb-ash-muted:    #a89583;
+  --mb-ash:          #6f5f50;
+  --mb-ash-muted:    #7b6958;
   --mb-teal:         #0b8b84;
   --mb-teal-dim:     #67c7bd;
   --mb-teal-glow:    rgba(11, 139, 132, 0.13);
@@ -725,6 +725,10 @@ html[data-signal-theme="papyrus-dawn"] {
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
 }
 
+.mobile-theme-select {
+  display: none;
+}
+
 @media (max-width: 760px) {
   .theme-swatch-group {
     max-width: 100%;
@@ -863,6 +867,7 @@ html[data-signal-theme="papyrus-dawn"] {
 }
 
 .layout-pill.command {
+  display: none;
   color: var(--mb-teal);
   border-color: rgba(61, 201, 196, 0.22);
   background: rgba(61, 201, 196, 0.06);
@@ -1500,4 +1505,138 @@ html[data-signal-theme="papyrus-dawn"] {
 
 .glow-brass {
   box-shadow: 0 0 12px var(--mb-brass-dim), 0 0 4px rgba(201, 160, 58, 0.3);
+}
+
+/* Final compact-shell overrides live after component defaults so mobile chrome wins cascade. */
+@media (max-width: 760px) {
+  .desktop-theme-swatch-group {
+    display: none;
+  }
+
+  .mobile-theme-select {
+    position: relative;
+    display: inline-flex;
+    min-height: 2.75rem;
+    min-width: min(100%, 10.5rem);
+    align-items: center;
+    gap: 0.45rem;
+    border: 1px solid rgba(61, 201, 196, 0.18);
+    border-radius: 999px;
+    background: rgba(61, 201, 196, 0.06);
+    color: var(--mb-ivory-dim);
+    padding: 0.35rem 0.75rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.68rem;
+  }
+
+  .mobile-theme-select span {
+    color: var(--mb-teal);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+  }
+
+  .mobile-theme-select strong {
+    max-width: 5.25rem;
+    overflow: hidden;
+    color: var(--mb-ivory);
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-theme-select:focus-within {
+    outline: 2px solid rgba(61, 201, 196, 0.48);
+    outline-offset: 2px;
+    border-color: rgba(61, 201, 196, 0.46);
+  }
+
+  .mobile-theme-select select {
+    position: absolute;
+    inset: 0;
+    cursor: pointer;
+    opacity: 0;
+  }
+
+  .layout-utility-bar {
+    align-items: stretch;
+    gap: 0.55rem;
+    padding: 0.55rem 0.65rem;
+  }
+
+  .layout-utility-bar > div:last-child {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .layout-pill.command {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .top-review-button,
+  .layout-pill,
+  .theme-swatch-pill,
+  .view-mode-button,
+  .work-trace-toggle {
+    min-height: 2.75rem;
+  }
+
+  .layout-pill {
+    padding-inline: 0.78rem;
+    font-size: 0.72rem;
+  }
+
+  .loom-mode-tab {
+    min-height: 2.5rem;
+  }
+
+  .thread-dock-collapse-button,
+  .thread-group-toggle,
+  .agent-rail-collapse-button,
+  .agent-idle-toggle {
+    min-height: 2.5rem;
+  }
+
+  .thread-dock-collapse-button,
+  .agent-rail-collapse-button {
+    min-width: 2.5rem;
+  }
+
+  .thread-row-action,
+  .thread-mini-action {
+    min-height: 2.5rem;
+    min-width: 2.75rem;
+    padding-inline: 0.65rem;
+  }
+
+  .thread-row-action {
+    top: 0.55rem;
+    opacity: 0.78;
+  }
+
+  .composer-shortcuts button {
+    min-height: 2.75rem;
+  }
+
+  .pane-mode-switcher {
+    padding: 0.55rem 0.65rem;
+  }
+
+  .pane-mode-switcher > div {
+    align-items: stretch;
+  }
+
+  .pane-mode-switcher > div > div:last-child {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.35rem;
+  }
+
+  .view-mode-button {
+    justify-content: center;
+    padding-inline: 0.35rem;
+    font-size: 0.66rem;
+  }
 }

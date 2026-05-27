@@ -17,13 +17,13 @@ const POLL_MS = 3000;
 const HEARTBEAT_MS = 25000;
 
 async function stateFingerprint(): Promise<string> {
-  const s = await stat(HERMES_STATE_DB);
+  const s = await stat(/* turbopackIgnore: true */ HERMES_STATE_DB);
   return `${s.mtimeMs}:${s.size}`;
 }
 
 export async function GET() {
   try {
-    await stat(HERMES_STATE_DB);
+    await stat(/* turbopackIgnore: true */ HERMES_STATE_DB);
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : `Hermes state DB unavailable: ${HERMES_STATE_DB}` },

@@ -353,6 +353,8 @@ function LayoutUtilityBar({
   onOpenHermesCommand: () => void;
   onOpenHermesSettings: () => void;
 }) {
+  const selectedTheme = SIGNAL_THEMES.find((theme) => theme.id === themeId) ?? SIGNAL_THEMES[0];
+
   return (
     <div className="layout-utility-bar flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2 sm:gap-3 sm:px-4">
       <div className="flex min-w-0 items-center gap-2 text-[10px] font-mono uppercase tracking-[0.18em] text-ash-muted">
@@ -361,7 +363,7 @@ function LayoutUtilityBar({
         <span className="hidden text-ash sm:inline normal-case tracking-normal">tuck rails, change theme, keep the stage clean</span>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-1.5">
-        <div className="theme-swatch-group" role="radiogroup" aria-label="Signal Loom theme">
+        <div className="theme-swatch-group desktop-theme-swatch-group" role="radiogroup" aria-label="Signal Loom theme">
           {SIGNAL_THEMES.map((theme) => {
             const isSelected = theme.id === themeId;
             return (
@@ -385,6 +387,19 @@ function LayoutUtilityBar({
             );
           })}
         </div>
+        <label className="mobile-theme-select">
+          <span>Theme</span>
+          <select
+            aria-label="Signal Loom theme"
+            value={themeId}
+            onChange={(event) => onThemeChange(event.currentTarget.value as SignalThemeId)}
+          >
+            {SIGNAL_THEMES.map((theme) => (
+              <option key={theme.id} value={theme.id}>{theme.label}</option>
+            ))}
+          </select>
+          <strong>{selectedTheme.label}</strong>
+        </label>
         <button type="button" onClick={onToggleSignals} className="layout-pill" aria-pressed={signalsOpen}>
           {signalsOpen ? 'Tuck Loom' : 'Open Loom'}
         </button>
@@ -394,11 +409,11 @@ function LayoutUtilityBar({
         <button type="button" onClick={onReset} className="layout-pill subdued">
           Reset
         </button>
-        <button type="button" onClick={onOpenHermesCommand} className="layout-pill command">
-          Command
+        <button type="button" onClick={onOpenHermesCommand} className="layout-pill command" aria-label="Open command center">
+          <span className="hidden sm:inline">Command</span><span className="sm:hidden">Cmd</span>
         </button>
-        <button type="button" onClick={onOpenHermesSettings} className="layout-pill command">
-          Settings
+        <button type="button" onClick={onOpenHermesSettings} className="layout-pill command" aria-label="Open Hermes settings">
+          <span className="hidden sm:inline">Settings</span><span className="sm:hidden">Set</span>
         </button>
       </div>
     </div>

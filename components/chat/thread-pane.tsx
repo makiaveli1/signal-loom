@@ -566,7 +566,7 @@ function SessionInfoPanel({
         style={{
           background: 'linear-gradient(90deg, rgba(201,160,58,0.045), rgba(255,255,255,0.01), rgba(61,201,196,0.025))',
           borderColor: 'rgba(255,255,255,0.055)',
-          minHeight: '34px',
+          minHeight: '44px',
         }}
         title="Open folded routing, delegated work, and session receipts"
       >
@@ -621,7 +621,7 @@ function SessionInfoPanel({
       <button
         onClick={onToggleCollapse}
         className="w-full flex items-center gap-3 px-5 py-2 cursor-pointer transition-all duration-200 hover:bg-white/[0.025]"
-        style={{ background: 'linear-gradient(90deg, rgba(201,160,58,0.05), rgba(255,255,255,0.012))' }}
+        style={{ background: 'linear-gradient(90deg, rgba(201,160,58,0.05), rgba(255,255,255,0.012))', minHeight: '44px' }}
         title="Fold receipts — give more room to Nero chat"
       >
         <span
