@@ -77,7 +77,7 @@ export function ApprovalCard({
 
   return (
     <div
-      className="rounded-lg border p-4 transition-all duration-150"
+      className="approval-card rounded-lg border p-4 transition-all duration-150"
       style={{
         background: 'var(--mb-elevated)',
         borderColor: cfg.border,
@@ -128,6 +128,12 @@ export function ApprovalCard({
       <p className="text-sm font-semibold text-ivory mb-2 leading-snug">
         {approval.title}
       </p>
+
+      {source === 'mock' && (
+        <p className="mb-3 rounded-md border border-white/10 px-2 py-1.5 text-xs text-ash-muted">
+          Demo approval — not from a live gateway request.
+        </p>
+      )}
 
       {/* Recommendation */}
       <p className="text-xs text-ivory-dim leading-relaxed mb-3 italic">
@@ -228,7 +234,8 @@ export function ApprovalCard({
           </button>
           <button
             onClick={() => onJumpToThread()}
-            className="text-xs px-3 py-1.5 rounded-md"
+            aria-label="Open linked thread for this approval"
+            className="approval-secondary-action text-xs px-3 py-1.5 rounded-md"
             style={{
               background: 'transparent',
               color: 'var(--mb-brass)',
@@ -237,7 +244,7 @@ export function ApprovalCard({
             title="Jump to linked thread"
             data-automation-id="review-thread-button"
           >
-            Review ↗
+            Open thread ↗
           </button>
         </div>
       )}
@@ -247,7 +254,8 @@ export function ApprovalCard({
         <div className="flex items-center gap-2">
           <button
             onClick={() => onJumpToThread()}
-            className="flex-1 text-xs px-3 py-1.5 rounded-md transition-all duration-150"
+            aria-label="Open linked thread for this approval"
+            className="approval-secondary-action flex-1 text-xs px-3 py-1.5 rounded-md transition-all duration-150"
             style={{
               background: 'transparent',
               color: 'var(--mb-brass)',
@@ -255,7 +263,7 @@ export function ApprovalCard({
             }}
             title="Jump to linked thread"
           >
-            Review thread ↗
+            Open thread ↗
           </button>
         </div>
       )}

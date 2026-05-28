@@ -106,7 +106,7 @@ export function EmailGateCard({ gate, onJumpToThread, onApprove, onDeny, onRetry
 
   return (
     <div
-      className="rounded-lg border p-4 transition-all duration-150"
+      className="approval-card rounded-lg border p-4 transition-all duration-150"
       style={{
         background: 'var(--mb-elevated)',
         borderColor: statusCfg.border,
@@ -150,6 +150,15 @@ export function EmailGateCard({ gate, onJumpToThread, onApprove, onDeny, onRetry
               style={{ color: 'var(--mb-red)', background: 'rgba(232,96,58,0.08)', border: '1px solid rgba(232,96,58,0.18)' }}
             >
               Executive
+            </span>
+          )}
+          {gate.source === 'demo' && (
+            <span
+              className="text-xs font-mono px-1.5 py-0.5 rounded"
+              style={{ color: 'var(--mb-ash)', background: 'rgba(128,128,120,0.08)', border: '1px solid rgba(128,128,120,0.18)' }}
+              title="Demo email gate — opt-in sample data"
+            >
+              Demo data
             </span>
           )}
         </div>
@@ -322,7 +331,8 @@ export function EmailGateCard({ gate, onJumpToThread, onApprove, onDeny, onRetry
           {gate.threadId && (
             <button
               onClick={onJumpToThread}
-              className="text-xs px-3 py-1.5 rounded-md"
+              aria-label="Open linked thread for this email gate"
+              className="approval-secondary-action text-xs px-3 py-1.5 rounded-md"
               style={{
                 background: 'transparent',
                 color: 'var(--mb-brass)',
@@ -331,7 +341,7 @@ export function EmailGateCard({ gate, onJumpToThread, onApprove, onDeny, onRetry
               title="Jump to linked thread"
               data-automation-id="email-gate-review-thread-button"
             >
-              Review thread ↗
+              Open thread ↗
             </button>
           )}
         </div>
@@ -342,14 +352,15 @@ export function EmailGateCard({ gate, onJumpToThread, onApprove, onDeny, onRetry
         <div className="flex items-center gap-2">
           <button
             onClick={onJumpToThread}
-            className="flex-1 text-xs px-3 py-1.5 rounded-md transition-all duration-150"
+            aria-label="Open linked thread for this email gate"
+            className="approval-secondary-action flex-1 text-xs px-3 py-1.5 rounded-md transition-all duration-150"
             style={{
               background: 'transparent',
               color: 'var(--mb-brass)',
               border: '1px solid rgba(201,160,58,0.3)',
             }}
           >
-            Review thread ↗
+            Open thread ↗
           </button>
         </div>
       )}

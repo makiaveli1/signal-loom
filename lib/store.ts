@@ -22,6 +22,7 @@ import type { OpenClawSession } from '@/lib/openclaw/adapter/types';
 import type { EmailGateAuditEntry } from '@/lib/openclaw/adapter/types';
 
 const HIDDEN_THREADS_STORAGE_KEY = 'signal-loom-hidden-conversations-v1';
+const DEMO_EMAIL_GATES_STORAGE_KEY = 'signal-loom-demo-email-gates';
 
 type ThreadDockMode = 'focus' | 'all' | 'hidden';
 
@@ -54,6 +55,8 @@ function newestVisibleThread(threads: Thread[], hiddenIds: Set<string>): Thread 
 /** Minimal email gate shape stored in the Signal Loom state */
 export interface EmailGateStoreItem {
   id: string;
+  /** Data origin. Demo gates are hidden by default in the live cockpit. */
+  source?: 'gateway' | 'derived' | 'demo';
   threadId?: string;
   /** CRM: which lead this email is for */
   leadId?: string;
@@ -87,6 +90,18 @@ export interface EmailGateStoreItem {
   sendError?: string;
   /** Number of send attempts */
   sendAttempts?: number;
+}
+
+function shouldShowDemoEmailGates(): boolean {
+  if (process.env.NEXT_PUBLIC_SIGNAL_LOOM_DEMO_EMAIL_GATES === 'true') return true;
+  if (typeof window === 'undefined') return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('demoEmailGates') === '1' ||
+      window.localStorage.getItem(DEMO_EMAIL_GATES_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -525,8 +540,10 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   initEmailGates: () => {
     const { emailGates } = get();
     if (emailGates.length > 0) return; // already initialized — don't re-init
-    // Email gates are initialized with mock data; real loading happens in useEffect
-    set({ emailGates: MOCK_EMAIL_GATES });
+    if (!shouldShowDemoEmailGates()) return;
+    // Demo email gates are opt-in only. They are useful for UI QA, but should not
+    // create fake approval pressure in the default live cockpit.
+    set({ emailGates: MOCK_EMAIL_GATES.map((gate) => ({ ...gate, source: 'demo' as const })) });
   },
 
   sendEmail: async (gateId) => {

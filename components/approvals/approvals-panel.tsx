@@ -9,6 +9,8 @@ import { ConceptApprovalCard } from '../crm/concept-approval-card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Approval } from '@/lib/types';
 
+const EMAIL_ACTION_STATUSES = new Set(['needs_review', 'ready_for_approval', 'human_approved', 'send_failed']);
+
 export function ApprovalsPanel() {
   const {
     approvals,
@@ -37,22 +39,30 @@ export function ApprovalsPanel() {
       return tb - ta;
     });
 
-  const pendingCount = approvals.filter(
-    (a) => a.status === undefined || a.status === 'pending'
-  ).length;
+  const isPendingApproval = (approval: Approval) => approval.status === undefined || approval.status === 'pending';
+  const pendingApprovals = sortedApprovals.filter(isPendingApproval);
+  const pendingCount = pendingApprovals.length;
 
-  // Email gates: count only gates that need human action (not yet approved/denied/sent/failed)
-  const pendingEmailGateCount = emailGates.filter(
-    (g) =>
-      g.gateStatus === 'needs_review' ||
-      g.gateStatus === 'ready_for_approval'
-  ).length;
+  const gatewayCount = pendingApprovals.filter((approval) => approval.source === 'gateway').length;
+  const derivedCount = pendingApprovals.filter((approval) => approval.source === undefined || approval.source === 'derived').length;
+  const mockCount = pendingApprovals.filter((approval) => approval.source === 'mock').length;
+
+  // Email gates: show only gates that still need a human action.
+  const visibleEmailGates = emailGates.filter((gate) => EMAIL_ACTION_STATUSES.has(gate.gateStatus));
+  const pendingEmailGateCount = visibleEmailGates.length;
 
   // Concept reviews: leads in internal_review awaiting Nero approval
   const conceptReviewLeads = leads.filter((l) => l.concept.status === 'internal_review');
   const conceptReviewCount = conceptReviewLeads.length;
 
   const totalPending = pendingCount + pendingEmailGateCount + conceptReviewCount;
+  const totalSourcePills = [
+    gatewayCount > 0 ? { label: `${gatewayCount} gateway`, tone: 'gateway' } : null,
+    derivedCount > 0 ? { label: `${derivedCount} derived`, tone: 'derived' } : null,
+    mockCount > 0 ? { label: `${mockCount} dev mock`, tone: 'mock' } : null,
+    pendingEmailGateCount > 0 ? { label: `${pendingEmailGateCount} email`, tone: visibleEmailGates.some((gate) => gate.source === 'demo') ? 'mock' : 'email' } : null,
+    conceptReviewCount > 0 ? { label: `${conceptReviewCount} concept`, tone: 'concept' } : null,
+  ].filter((pill): pill is { label: string; tone: string } => Boolean(pill));
 
   return (
     <AnimatePresence>
@@ -102,21 +112,29 @@ export function ApprovalsPanel() {
 
           {/* Source + decision hint */}
           <div
-            className="px-4 py-2 border-b text-xs"
+            className="approval-source-summary px-4 py-3 border-b text-xs"
             style={{
               borderColor: 'rgba(255,255,255,0.04)',
               color: 'var(--mb-ash)',
               background: 'rgba(201,160,58,0.04)',
             }}
           >
-            Pending decisions surface first — decisions are enforced via gateway.
-            Source labels indicate data origin.
+            <p>Pending decisions surface first. Demo email gates stay hidden unless explicitly enabled.</p>
+            {totalSourcePills.length > 0 && (
+              <div className="approval-source-pills" aria-label="Approval source breakdown">
+                {totalSourcePills.map((pill) => (
+                  <span key={`${pill.tone}-${pill.label}`} className={`approval-source-pill approval-source-pill-${pill.tone}`}>
+                    {pill.label}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Approval cards */}
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-3">
-              {sortedApprovals.length === 0 && emailGates.length === 0 && conceptReviewLeads.length === 0 ? (
+              {pendingApprovals.length === 0 && visibleEmailGates.length === 0 && conceptReviewLeads.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
                   <span className="text-lg opacity-30">✓</span>
                   <p className="text-xs text-ash-muted">No approvals pending</p>
@@ -126,12 +144,12 @@ export function ApprovalsPanel() {
                 </div>
               ) : (
                 <>
-                  {sortedApprovals.length > 0 && (
+                  {pendingApprovals.length > 0 && (
                     <>
                       <div className="text-xs font-semibold uppercase tracking-wider text-ash-muted px-1">
                         Delegation Approvals
                       </div>
-                      {sortedApprovals.map((approval) => (
+                      {pendingApprovals.map((approval) => (
                         <ApprovalCard
                           key={approval.id}
                           approval={approval}
@@ -147,12 +165,12 @@ export function ApprovalsPanel() {
                     </>
                   )}
 
-                  {emailGates.length > 0 && (
+                  {visibleEmailGates.length > 0 && (
                     <>
                       <div className="text-xs font-semibold uppercase tracking-wider text-ash-muted px-1 pt-1">
                         Email Outbound
                       </div>
-                      {emailGates.map((gate) => (
+                      {visibleEmailGates.map((gate) => (
                         <EmailGateCard
                           key={gate.id}
                           gate={gate}

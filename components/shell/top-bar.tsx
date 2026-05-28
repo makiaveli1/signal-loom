@@ -2,18 +2,30 @@
 
 import { Badge } from '@/components/ui/badge';
 import { useSignalLoomStore } from '@/lib/store';
+import { useCrmStore } from '@/lib/crm/store';
 import { cn } from '@/lib/utils';
 
 export function TopBar() {
   const { runtime, approvals, approvalsPanelOpen, toggleApprovalsPanel, emailGates, agents, hermesCommandCenterOpen, toggleHermesCommandCenter, hermesSettingsOpen, toggleHermesSettings } = useSignalLoomStore();
+  const { leads } = useCrmStore();
 
   const pendingApprovals = approvals.filter(
     (a) => a.status === undefined || a.status === 'pending'
   ).length;
   const pendingEmailGates = emailGates.filter(
-    (g) => g.gateStatus === 'needs_review' || g.gateStatus === 'ready_for_approval'
+    (g) =>
+      g.gateStatus === 'needs_review' ||
+      g.gateStatus === 'ready_for_approval' ||
+      g.gateStatus === 'human_approved' ||
+      g.gateStatus === 'send_failed'
   ).length;
-  const totalPending = pendingApprovals + pendingEmailGates;
+  const pendingConcepts = leads.filter((lead) => lead.concept.status === 'internal_review').length;
+  const totalPending = pendingApprovals + pendingEmailGates + pendingConcepts;
+  const approvalBreakdown = [
+    pendingApprovals > 0 ? `${pendingApprovals} action${pendingApprovals === 1 ? '' : 's'}` : null,
+    pendingEmailGates > 0 ? `${pendingEmailGates} email${pendingEmailGates === 1 ? '' : 's'}` : null,
+    pendingConcepts > 0 ? `${pendingConcepts} concept${pendingConcepts === 1 ? '' : 's'}` : null,
+  ].filter(Boolean).join(' · ');
   const activeLanes = agents.filter((a) => a.status === 'active').length;
 
   return (
@@ -30,7 +42,7 @@ export function TopBar() {
             viewBox="0 0 26 26"
             fill="none"
             aria-hidden="true"
-            className="flex-shrink-0"
+            className="signal-mark flex-shrink-0"
           >
             <circle cx="13" cy="13" r="3" fill="var(--sl-accent)" opacity="0.92" />
             <circle cx="13" cy="13" r="7" stroke="var(--sl-accent)" strokeWidth="1.4" opacity="0.42" />
@@ -97,9 +109,10 @@ export function TopBar() {
         <button
           onClick={toggleApprovalsPanel}
           aria-pressed={approvalsPanelOpen}
-          aria-label={totalPending > 0 ? `${totalPending} item${totalPending === 1 ? '' : 's'} waiting for review` : 'Open review queue'}
+          aria-label={totalPending > 0 ? `${totalPending} approval item${totalPending === 1 ? '' : 's'} waiting: ${approvalBreakdown}` : 'Open approvals queue'}
+          title={totalPending > 0 ? approvalBreakdown : 'Open approvals queue'}
           className={cn(
-            'top-review-button flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150 border',
+            'top-review-button top-approvals-button flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150 border',
             approvalsPanelOpen
               ? 'bg-brass-dim text-brass border-brass/35 shadow-[0_0_18px_rgba(201,160,58,0.12)]'
               : totalPending > 0
@@ -111,7 +124,12 @@ export function TopBar() {
             <path d="M6 1L7.5 4.5L11 5L8.5 7.5L9 11L6 9.5L3 11L3.5 7.5L1 5L4.5 4.5L6 1Z"
               fill={approvalsPanelOpen || totalPending > 0 ? 'var(--sl-decision)' : 'var(--sl-text-subtle)'} />
           </svg>
-          Review
+          Approvals
+          {approvalBreakdown && (
+            <span className="hidden xl:inline text-[10px] font-mono opacity-75">
+              {approvalBreakdown}
+            </span>
+          )}
           {totalPending > 0 && (
             <Badge
               variant="outline"
