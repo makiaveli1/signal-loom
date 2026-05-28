@@ -19,7 +19,7 @@ export function TopBar() {
   return (
     <header
       className="flex items-center justify-between gap-4 px-4 py-2.5 border-b"
-      style={{ background: 'var(--mb-shell)', borderColor: 'rgba(255,255,255,0.05)' }}
+      style={{ background: 'var(--sl-shell)', borderColor: 'var(--sl-border-soft)' }}
       role="banner"
     >
       <div className="flex items-center gap-3 min-w-0">
@@ -32,11 +32,11 @@ export function TopBar() {
             aria-hidden="true"
             className="flex-shrink-0"
           >
-            <circle cx="13" cy="13" r="3" fill="var(--mb-teal)" opacity="0.92" />
-            <circle cx="13" cy="13" r="7" stroke="var(--mb-teal)" strokeWidth="1.4" opacity="0.42" />
-            <circle cx="13" cy="13" r="11" stroke="var(--mb-brass)" strokeWidth="0.9" opacity="0.24" />
-            <path d="M2 13H7M19 13H24" stroke="var(--mb-red)" strokeWidth="1.6" strokeLinecap="round" opacity="0.82" />
-            <path d="M13 2V6M13 20V24" stroke="var(--mb-teal)" strokeWidth="1.1" strokeLinecap="round" opacity="0.45" />
+            <circle cx="13" cy="13" r="3" fill="var(--sl-accent)" opacity="0.92" />
+            <circle cx="13" cy="13" r="7" stroke="var(--sl-accent)" strokeWidth="1.4" opacity="0.42" />
+            <circle cx="13" cy="13" r="11" stroke="var(--sl-decision)" strokeWidth="0.9" opacity="0.24" />
+            <path d="M2 13H7M19 13H24" stroke="var(--sl-danger)" strokeWidth="1.6" strokeLinecap="round" opacity="0.82" />
+            <path d="M13 2V6M13 20V24" stroke="var(--sl-accent)" strokeWidth="1.1" strokeLinecap="round" opacity="0.45" />
           </svg>
           <div className="min-w-0">
             <div className="flex items-baseline gap-2 min-w-0">
@@ -109,14 +109,14 @@ export function TopBar() {
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
             <path d="M6 1L7.5 4.5L11 5L8.5 7.5L9 11L6 9.5L3 11L3.5 7.5L1 5L4.5 4.5L6 1Z"
-              fill={approvalsPanelOpen || totalPending > 0 ? 'var(--mb-brass)' : 'var(--mb-ash)'} />
+              fill={approvalsPanelOpen || totalPending > 0 ? 'var(--sl-decision)' : 'var(--sl-text-subtle)'} />
           </svg>
           Review
           {totalPending > 0 && (
             <Badge
               variant="outline"
               className="text-xs font-mono min-w-5 h-5 justify-center rounded-full"
-              style={{ borderColor: 'var(--mb-brass)', color: 'var(--mb-brass)', background: 'rgba(0,0,0,0.20)' }}
+              style={{ borderColor: 'var(--sl-decision)', color: 'var(--sl-decision)', background: 'color-mix(in srgb, var(--sl-bg) 72%, transparent)' }}
             >
               {totalPending}
             </Badge>

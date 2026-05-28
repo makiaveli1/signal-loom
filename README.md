@@ -30,10 +30,11 @@ It is built as a Next.js App Router application and is designed for a local Herm
 - Provides approval surfaces for human-gated actions and email review flows.
 - Provides a Hermes command/settings panel for safe diagnostics, selected config edits, and approval-gated update checks.
 - Supports theme switching with persisted, accessible swatches:
-  - Midnight
+  - Midnight Broadcast
   - Nero Ember
   - Oracle Teal
   - Papyrus Dawn
+  - Sentry Contrast
 - Collapses dense side rails into mobile drawers on compact screens.
 
 ## Current design direction

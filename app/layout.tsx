@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import Script from "next/script";
+import { cookies } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
+import { DEFAULT_SIGNAL_THEME, SIGNAL_THEME_STORAGE_KEY, isSignalThemeId, type SignalThemeId } from "@/lib/theme";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -20,32 +21,30 @@ export const metadata: Metadata = {
   description: "Workspace for Hermes chats, tools, settings, and approval review",
 };
 
-export default function RootLayout({
+async function readInitialTheme(): Promise<SignalThemeId> {
+  const cookieStore = await cookies();
+  const cookieTheme = cookieStore.get(SIGNAL_THEME_STORAGE_KEY)?.value;
+  return isSignalThemeId(cookieTheme) ? cookieTheme : DEFAULT_SIGNAL_THEME;
+}
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const initialTheme = await readInitialTheme();
+
   return (
-    <html lang="en" className="dark h-full" suppressHydrationWarning>
+    <html
+      lang="en"
+      className="dark h-full"
+      data-signal-theme={initialTheme}
+      style={{ colorScheme: initialTheme === 'papyrus-dawn' ? 'light' : 'dark' }}
+      suppressHydrationWarning
+    >
       <body
         className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       >
-        <Script
-          id="signal-loom-theme-bootstrap"
-          strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `(() => {
-              try {
-                const key = 'signal-loom-theme-v1';
-                const theme = localStorage.getItem(key);
-                const allowed = ['midnight-broadcast', 'nero-ember', 'oracle-teal', 'papyrus-dawn'];
-                document.documentElement.dataset.signalTheme = allowed.includes(theme) ? theme : 'midnight-broadcast';
-              } catch (_) {
-                document.documentElement.dataset.signalTheme = 'midnight-broadcast';
-              }
-            })();`,
-          }}
-        />
         {children}
       </body>
     </html>

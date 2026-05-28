@@ -171,9 +171,9 @@ export function Composer({ threadId }: ComposerProps) {
     <div
       className="composer-shell border-t px-4 py-3 sm:px-5"
       style={{
-        background: 'linear-gradient(180deg, rgba(19,22,31,0.92), rgba(10,12,17,0.98))',
-        borderColor: 'rgba(255,255,255,0.07)',
-        boxShadow: '0 -18px 42px rgba(0,0,0,0.22)',
+        background: 'linear-gradient(180deg, color-mix(in srgb, var(--sl-shell) 92%, transparent), color-mix(in srgb, var(--sl-bg) 98%, transparent))',
+        borderColor: 'var(--sl-border-soft)',
+        boxShadow: '0 -18px 42px color-mix(in srgb, var(--sl-bg) 22%, transparent)',
       }}
     >
       {/* Streaming indicator — shows progressive response */}
@@ -284,20 +284,20 @@ export function Composer({ threadId }: ComposerProps) {
         <div
           className="composer-input-frame flex-1 flex items-end gap-2 rounded-2xl border px-3.5 py-2.5 transition-all"
           style={{
-            background: 'linear-gradient(135deg, rgba(30,36,52,0.96), rgba(18,22,31,0.96))',
+            background: 'linear-gradient(135deg, color-mix(in srgb, var(--sl-panel-raised) 96%, transparent), color-mix(in srgb, var(--sl-stage) 96%, transparent))',
             borderColor: canSend
               ? streamingMode
-                ? 'rgba(0,200,150,0.25)'
-                : 'rgba(232,96,58,0.25)'
+                ? 'color-mix(in srgb, var(--sl-success) 32%, transparent)'
+                : 'color-mix(in srgb, var(--sl-danger) 32%, transparent)'
               : error
-              ? 'rgba(232,96,58,0.30)'
-              : 'rgba(255,255,255,0.08)',
+              ? 'color-mix(in srgb, var(--sl-danger) 36%, transparent)'
+              : 'var(--sl-border-soft)',
             boxShadow: canSend
               ? streamingMode
-                ? '0 0 0 1px rgba(0,200,150,0.10), inset 0 0 0 1px rgba(0,200,150,0.05)'
-                : '0 0 0 1px rgba(232,96,58,0.10), inset 0 0 0 1px rgba(232,96,58,0.05)'
+                ? '0 0 0 1px color-mix(in srgb, var(--sl-success) 14%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--sl-success) 8%, transparent)'
+                : '0 0 0 1px color-mix(in srgb, var(--sl-danger) 14%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--sl-danger) 8%, transparent)'
               : error
-              ? '0 0 0 1px rgba(232,96,58,0.15)'
+              ? '0 0 0 1px color-mix(in srgb, var(--sl-danger) 18%, transparent)'
               : 'none',
             transitionProperty: 'border-color, box-shadow',
             transitionDuration: '200ms',

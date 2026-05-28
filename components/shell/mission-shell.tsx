@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { TopBar } from './top-bar';
 import { RuntimeStrip } from './runtime-strip';
@@ -354,17 +354,47 @@ function LayoutUtilityBar({
   onOpenHermesSettings: () => void;
 }) {
   const selectedTheme = SIGNAL_THEMES.find((theme) => theme.id === themeId) ?? SIGNAL_THEMES[0];
+  const selectedThemeIndex = Math.max(0, SIGNAL_THEMES.findIndex((theme) => theme.id === themeId));
+
+  const moveThemeSelection = (direction: 1 | -1) => {
+    const nextIndex = (selectedThemeIndex + direction + SIGNAL_THEMES.length) % SIGNAL_THEMES.length;
+    onThemeChange(SIGNAL_THEMES[nextIndex].id);
+  };
+
+  const handleThemeKeyDown = (event: KeyboardEvent<HTMLButtonElement>, themeIndex: number) => {
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      moveThemeSelection(1);
+    }
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      moveThemeSelection(-1);
+    }
+    if (event.key === 'Home') {
+      event.preventDefault();
+      onThemeChange(SIGNAL_THEMES[0].id);
+    }
+    if (event.key === 'End') {
+      event.preventDefault();
+      onThemeChange(SIGNAL_THEMES[SIGNAL_THEMES.length - 1].id);
+    }
+    if (event.key === ' ' || event.key === 'Enter') {
+      event.preventDefault();
+      onThemeChange(SIGNAL_THEMES[themeIndex].id);
+    }
+  };
 
   return (
     <div className="layout-utility-bar flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2 sm:gap-3 sm:px-4">
       <div className="flex min-w-0 items-center gap-2 text-[10px] font-mono uppercase tracking-[0.18em] text-ash-muted">
         <span className="layout-drag-dot" aria-hidden="true" />
         <span>View</span>
-        <span className="hidden text-ash sm:inline normal-case tracking-normal">tuck rails, change theme, keep the stage clean</span>
+        <span className="theme-current-chip" title={selectedTheme.intent}>{selectedTheme.shortLabel}</span>
+        <span className="hidden text-ash sm:inline normal-case tracking-normal">{selectedTheme.intent}</span>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-1.5">
         <div className="theme-swatch-group desktop-theme-swatch-group" role="radiogroup" aria-label="Signal Loom theme">
-          {SIGNAL_THEMES.map((theme) => {
+          {SIGNAL_THEMES.map((theme, themeIndex) => {
             const isSelected = theme.id === themeId;
             return (
               <button
@@ -372,9 +402,11 @@ function LayoutUtilityBar({
                 type="button"
                 role="radio"
                 aria-checked={isSelected}
-                aria-label={`${theme.label}: ${theme.description}`}
-                title={theme.description}
+                aria-label={`${theme.label}: ${theme.intent} ${theme.description}`}
+                title={`${theme.intent} ${theme.description}`}
+                tabIndex={isSelected ? 0 : -1}
                 onClick={() => onThemeChange(theme.id)}
+                onKeyDown={(event) => handleThemeKeyDown(event, themeIndex)}
                 className="theme-swatch-pill"
               >
                 <span className="theme-swatch-stack" aria-hidden="true">
@@ -382,7 +414,8 @@ function LayoutUtilityBar({
                     <span key={color} className="theme-swatch-dot" style={{ background: color }} />
                   ))}
                 </span>
-                <span className="theme-swatch-label">{theme.label}</span>
+                <span className="theme-swatch-label">{theme.shortLabel}</span>
+                <span className="theme-swatch-tone">{theme.tone}</span>
               </button>
             );
           })}
@@ -395,7 +428,7 @@ function LayoutUtilityBar({
             onChange={(event) => onThemeChange(event.currentTarget.value as SignalThemeId)}
           >
             {SIGNAL_THEMES.map((theme) => (
-              <option key={theme.id} value={theme.id}>{theme.label}</option>
+              <option key={theme.id} value={theme.id}>{theme.shortLabel}</option>
             ))}
           </select>
           <strong>{selectedTheme.label}</strong>
