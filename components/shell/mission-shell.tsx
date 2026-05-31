@@ -10,20 +10,16 @@ import { ThreadDock } from '../threads/thread-dock';
 import { NeroWorkspace } from '../chat/nero-workspace';
 import { LiveAgentRail } from '../agents/live-agent-rail';
 import { ApprovalsPanel } from '../approvals/approvals-panel';
-import { HermesEmailComposer } from '../agents/hermes-email-composer';
 import { ShellResizeHandle } from '@/components/ui/shell-resize-handle';
 import { useSignalLoomStore } from '@/lib/store';
 import { applySignalTheme, getStoredSignalTheme, persistSignalTheme, SIGNAL_THEMES, type SignalThemeId } from '@/lib/theme';
-import { approveEmailGate, denyEmailGate, reviseEmailGate } from '@/lib/openclaw/adapter/email-gate';
-import type { EmailGate } from '@/lib/openclaw/adapter/types';
 
-const LAYOUT_STORAGE_KEY = 'signal-loom-layout-v2';
+const LAYOUT_STORAGE_KEY = 'signal-loom-layout-v3';
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 type ShellLayoutState = {
   signalWidth: number;
   laneWidth: number;
-  composerWidth: number;
   signalsOpen: boolean;
   lanesOpen: boolean;
 };
@@ -31,25 +27,17 @@ type ShellLayoutState = {
 const DEFAULT_LAYOUT: ShellLayoutState = {
   signalWidth: 292,
   laneWidth: 300,
-  composerWidth: 400,
-  signalsOpen: true,
-  lanesOpen: true,
+  signalsOpen: false,
+  lanesOpen: false,
 };
 
 export function MissionShell() {
   const {
-    emailComposerOpen,
-    emailGates,
-    updateEmailGate,
-    sendEmail,
     loadSessions,
     loadAgents,
     loadApprovals,
     loadRuntimeHealth,
-    initEmailGates,
     hydrateHiddenThreads,
-    toggleHermesCommandCenter,
-    toggleHermesSettings,
   } = useSignalLoomStore();
 
   const [layout, setLayout] = useState<ShellLayoutState>(DEFAULT_LAYOUT);
@@ -99,7 +87,6 @@ export function MissionShell() {
         setLayout({
           signalWidth: clamp(parsed.signalWidth ?? DEFAULT_LAYOUT.signalWidth, 220, 420),
           laneWidth: clamp(parsed.laneWidth ?? DEFAULT_LAYOUT.laneWidth, 220, 440),
-          composerWidth: clamp(parsed.composerWidth ?? DEFAULT_LAYOUT.composerWidth, 320, 560),
           signalsOpen: compactNow ? false : parsed.signalsOpen ?? DEFAULT_LAYOUT.signalsOpen,
           lanesOpen: compactNow ? false : parsed.lanesOpen ?? DEFAULT_LAYOUT.lanesOpen,
         });
@@ -122,7 +109,6 @@ export function MissionShell() {
   // the adapter's gatewayFetch which fails from browser (relative URL → Next.js → 404).
   useEffect(() => {
     hydrateHiddenThreads();
-    initEmailGates();
     loadSessions();
     loadAgents();
     loadApprovals();
@@ -130,7 +116,7 @@ export function MissionShell() {
 
     const interval = setInterval(loadRuntimeHealth, 30_000);
     return () => clearInterval(interval);
-  }, [loadSessions, loadAgents, loadApprovals, loadRuntimeHealth, initEmailGates, hydrateHiddenThreads]);
+  }, [loadSessions, loadAgents, loadApprovals, loadRuntimeHealth, hydrateHiddenThreads]);
 
   const resetLayout = useCallback(() => {
     setLayout(isCompactShell ? { ...DEFAULT_LAYOUT, signalsOpen: false, lanesOpen: false } : DEFAULT_LAYOUT);
@@ -232,8 +218,6 @@ export function MissionShell() {
               onToggleSignals={toggleSignals}
               onToggleLanes={toggleLanes}
               onReset={resetLayout}
-              onOpenHermesCommand={toggleHermesCommandCenter}
-              onOpenHermesSettings={toggleHermesSettings}
             />
             <NeroWorkspace />
           </div>
@@ -266,61 +250,6 @@ export function MissionShell() {
           <HermesCommandCenter />
           <HermesSettingsPanel />
 
-          {/* Email draft review — slides in from right when opened */}
-          {emailComposerOpen && (
-            <>
-              <ShellResizeHandle
-                ariaLabel="Resize email draft review"
-                side="right"
-                onDrag={(deltaX) => updateLayout({ composerWidth: clamp(layout.composerWidth + deltaX, 320, 560) })}
-                onReset={() => updateLayout({ composerWidth: DEFAULT_LAYOUT.composerWidth })}
-              />
-              <div
-                className="flex flex-col h-full border-l"
-                style={{
-                  background: 'var(--mb-shell)',
-                  borderColor: 'rgba(255,255,255,0.05)',
-                  width: `${layout.composerWidth}px`,
-                  minWidth: `${Math.min(layout.composerWidth, 360)}px`,
-                }}
-              >
-                {/* Composer header */}
-                <div
-                  className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0"
-                  style={{ borderColor: 'rgba(255,255,255,0.05)' }}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-ivory">Email drafts</span>
-                    <span className="text-xs text-ash-muted">Review before sending</span>
-                  </div>
-                  <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-ash-muted">
-                    drag the edge to resize
-                  </span>
-                </div>
-                {/* Composer body */}
-                <div className="flex-1 min-h-0">
-                  <HermesEmailComposer
-                    gates={emailGates}
-                    onApproved={(gate: EmailGate) => {
-                      const updated = approveEmailGate(gate);
-                      updateEmailGate(updated);
-                    }}
-                    onDenied={(gate: EmailGate) => {
-                      const updated = denyEmailGate(gate);
-                      updateEmailGate(updated);
-                    }}
-                    onRevised={(gate: EmailGate, revised) => {
-                      const updated = reviseEmailGate(gate, revised);
-                      updateEmailGate(updated);
-                    }}
-                    onSend={(gate: EmailGate) => {
-                      sendEmail(gate.id);
-                    }}
-                  />
-                </div>
-              </div>
-            </>
-          )}
         </div>
 
         {/* Runtime health strip */}
@@ -340,8 +269,6 @@ function LayoutUtilityBar({
   onToggleSignals,
   onToggleLanes,
   onReset,
-  onOpenHermesCommand,
-  onOpenHermesSettings,
 }: {
   signalsOpen: boolean;
   lanesOpen: boolean;
@@ -350,8 +277,6 @@ function LayoutUtilityBar({
   onToggleSignals: () => void;
   onToggleLanes: () => void;
   onReset: () => void;
-  onOpenHermesCommand: () => void;
-  onOpenHermesSettings: () => void;
 }) {
   const selectedTheme = SIGNAL_THEMES.find((theme) => theme.id === themeId) ?? SIGNAL_THEMES[0];
   const selectedThemeIndex = Math.max(0, SIGNAL_THEMES.findIndex((theme) => theme.id === themeId));
@@ -385,69 +310,87 @@ function LayoutUtilityBar({
   };
 
   return (
-    <div className="layout-utility-bar flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2 sm:gap-3 sm:px-4">
-      <div className="flex min-w-0 items-center gap-2 text-[10px] font-mono uppercase tracking-[0.18em] text-ash-muted">
+    <div className="layout-utility-bar calm-workbench-bar flex items-center justify-between gap-3 border-b px-3 py-2 sm:px-4">
+      <div className="layout-workbench-title min-w-0">
         <span className="layout-drag-dot" aria-hidden="true" />
-        <span>View</span>
-        <span className="theme-current-chip" title={selectedTheme.intent}>{selectedTheme.shortLabel}</span>
-        <span className="hidden text-ash sm:inline normal-case tracking-normal">{selectedTheme.intent}</span>
-      </div>
-      <div className="flex flex-wrap items-center justify-end gap-1.5">
-        <div className="theme-swatch-group desktop-theme-swatch-group" role="radiogroup" aria-label="Signal Loom theme">
-          {SIGNAL_THEMES.map((theme, themeIndex) => {
-            const isSelected = theme.id === themeId;
-            return (
-              <button
-                key={theme.id}
-                type="button"
-                role="radio"
-                aria-checked={isSelected}
-                aria-label={`${theme.label}: ${theme.intent} ${theme.description}`}
-                title={`${theme.intent} ${theme.description}`}
-                tabIndex={isSelected ? 0 : -1}
-                onClick={() => onThemeChange(theme.id)}
-                onKeyDown={(event) => handleThemeKeyDown(event, themeIndex)}
-                className="theme-swatch-pill"
-              >
-                <span className="theme-swatch-stack" aria-hidden="true">
-                  {theme.preview.map((color) => (
-                    <span key={color} className="theme-swatch-dot" style={{ background: color }} />
-                  ))}
-                </span>
-                <span className="theme-swatch-label">{theme.shortLabel}</span>
-                <span className="theme-swatch-tone">{theme.tone}</span>
-              </button>
-            );
-          })}
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-ash-muted">
+            <span>Workspace</span>
+            <span className="theme-current-chip" title={selectedTheme.intent}>{selectedTheme.shortLabel}</span>
+          </div>
+          <p className="hidden truncate text-[11px] text-ash sm:block">
+            Clean chat surface · rails and theme are tucked into intentional controls
+          </p>
         </div>
-        <label className="mobile-theme-select">
-          <span>Theme</span>
-          <select
-            aria-label="Signal Loom theme"
-            value={themeId}
-            onChange={(event) => onThemeChange(event.currentTarget.value as SignalThemeId)}
-          >
-            {SIGNAL_THEMES.map((theme) => (
-              <option key={theme.id} value={theme.id}>{theme.shortLabel}</option>
-            ))}
-          </select>
-          <strong>{selectedTheme.label}</strong>
-        </label>
-        <button type="button" onClick={onToggleSignals} className="layout-pill" aria-pressed={signalsOpen}>
-          {signalsOpen ? 'Tuck Loom' : 'Open Loom'}
+      </div>
+
+      <div className="layout-workbench-actions flex flex-shrink-0 items-center justify-end gap-1.5">
+        <button type="button" onClick={onToggleSignals} className="layout-pill rail-toggle" aria-pressed={signalsOpen}>
+          <span className="rail-toggle-dot" aria-hidden="true" />
+          Loom
         </button>
-        <button type="button" onClick={onToggleLanes} className="layout-pill" aria-pressed={lanesOpen}>
-          {lanesOpen ? 'Tuck Lanes' : 'Open Lanes'}
+        <button type="button" onClick={onToggleLanes} className="layout-pill rail-toggle" aria-pressed={lanesOpen}>
+          <span className="rail-toggle-dot" aria-hidden="true" />
+          Lanes
         </button>
-        <button type="button" onClick={onReset} className="layout-pill subdued">
-          Reset
-        </button>
-        <button type="button" onClick={onOpenHermesCommand} className="layout-pill command" aria-label="Open command center">
-          <span className="hidden sm:inline">Command</span><span className="sm:hidden">Cmd</span>
-        </button>
-        <button type="button" onClick={onOpenHermesSettings} className="layout-pill command" aria-label="Open Hermes settings">
-          <span className="hidden sm:inline">Settings</span><span className="sm:hidden">Set</span>
-        </button>
+
+        <details className="layout-menu">
+          <summary className="layout-pill layout-menu-summary">
+            View
+            <span className="hidden sm:inline">· {selectedTheme.shortLabel}</span>
+          </summary>
+          <div className="layout-menu-panel" role="group" aria-label="View and theme controls">
+            <div className="layout-menu-section">
+              <span className="layout-menu-label">Theme</span>
+              <div className="theme-swatch-group desktop-theme-swatch-group" role="radiogroup" aria-label="Signal Loom theme">
+                {SIGNAL_THEMES.map((theme, themeIndex) => {
+                  const isSelected = theme.id === themeId;
+                  return (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={isSelected}
+                      aria-label={`${theme.label}: ${theme.intent} ${theme.description}`}
+                      title={`${theme.intent} ${theme.description}`}
+                      tabIndex={isSelected ? 0 : -1}
+                      onClick={() => onThemeChange(theme.id)}
+                      onKeyDown={(event) => handleThemeKeyDown(event, themeIndex)}
+                      className="theme-swatch-pill"
+                    >
+                      <span className="theme-swatch-stack" aria-hidden="true">
+                        {theme.preview.map((color) => (
+                          <span key={color} className="theme-swatch-dot" style={{ background: color }} />
+                        ))}
+                      </span>
+                      <span className="theme-swatch-label">{theme.shortLabel}</span>
+                      <span className="theme-swatch-tone">{theme.tone}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <label className="mobile-theme-select">
+                <span>Theme</span>
+                <select
+                  aria-label="Signal Loom theme"
+                  value={themeId}
+                  onChange={(event) => onThemeChange(event.currentTarget.value as SignalThemeId)}
+                >
+                  {SIGNAL_THEMES.map((theme) => (
+                    <option key={theme.id} value={theme.id}>{theme.shortLabel}</option>
+                  ))}
+                </select>
+                <strong>{selectedTheme.label}</strong>
+              </label>
+            </div>
+            <div className="layout-menu-footer">
+              <span>{selectedTheme.intent}</span>
+              <button type="button" onClick={onReset} className="layout-pill subdued">
+                Reset layout
+              </button>
+            </div>
+          </div>
+        </details>
       </div>
     </div>
   );

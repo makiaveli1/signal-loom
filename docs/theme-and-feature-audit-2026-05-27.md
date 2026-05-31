@@ -32,8 +32,7 @@ The top-bar **Review** button opens the `ApprovalsPanel`.
 It aggregates human-gated work from three places:
 
 1. **Delegation approvals** from the OpenClaw/Hermes approval adapter.
-2. **Email outbound gates** from mocked/current email-gate state.
-3. **Concept review leads** from the CRM concept workflow.
+2. **Historical note:** earlier builds also showed email/CRM review queues; those have now been removed from the Hermes-focused product surface.
 
 The button is conceptually useful: it is the safety inbox for things Nero/Hermes should not do silently.
 
@@ -44,7 +43,7 @@ But the current implementation is noisy because much of its data is mock/demo lo
 ### Keep, but rename/clarify
 
 - **Review button**: keep it, but rename to **Approvals** or **Safety Queue**. “Review” is too vague; it reads like code review, notifications, or inbox review.
-- Add a subtitle/count breakdown in the button or tooltip: `2 emails · 1 approval · 0 concepts`.
+- Add a subtitle/count breakdown in the button or tooltip, e.g. `2 actions · 1 derived · 1 gateway`.
 - Hide the badge when all pending items are mock/demo data, or label demo data explicitly.
 
 ### Improve next
@@ -70,7 +69,7 @@ But the current implementation is noisy because much of its data is mock/demo lo
 
 ### Candidate removals / demotions
 
-- **Mock email gates in production-feeling UI**: remove from default live state or mark as demo. This is the main reason the Review badge feels suspicious.
+- **Mock operational pressure in production-feeling UI**: keep synthetic review items out of the default live state or label them as demo data.
 - **Always-visible theme switcher**: once themes are stable, demote to Settings or a compact menu. It is currently useful during design, but permanent cockpit chrome should prioritize work over decoration.
 - **Duplicate mobile Command/Settings access**: top bar plus utility bar can feel redundant. On mobile, keep the utility bar access; on desktop, top bar is enough.
 - **Decorative microcopy in dense chrome**: keep labels brutally functional. Signal Loom already has enough personality in the visual system.

@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_ENV=development next dev",
+    "dev": "NODE_ENV=development next dev --hostname 0.0.0.0 --port ${PORT:-3098}",
+    "dev:loopback": "NODE_ENV=development next dev --hostname 127.0.0.1 --port ${PORT:-3098}",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

@@ -1,10 +1,11 @@
 import { execFile } from 'node:child_process';
+import { homedir } from 'node:os';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
 const HERMES_STATE_DB = process.env.HERMES_STATE_DB
-  ?? `${process.env.HOME ?? '/home/likwid'}/.hermes/state.db`;
+  ?? `${process.env.HOME ?? homedir()}/.hermes/state.db`;
 
 async function runPythonJson<T>(script: string, args: string[] = []): Promise<T> {
   const { stdout } = await execFileAsync('python3', ['-c', script, HERMES_STATE_DB, ...args], {
@@ -38,6 +39,30 @@ export interface HermesStateMessage {
   timestamp: number;
   model?: string | null;
   finish_reason?: string | null;
+}
+
+export interface HermesStateCursor {
+  maxMessageId: number;
+  sessionCount: number;
+  maxSessionStartedAt: number | null;
+  maxMessageTimestamp: number | null;
+}
+
+export interface HermesStateDeltaMessage {
+  id: number;
+  session_id: string;
+  role: string;
+  tool_name?: string | null;
+  timestamp: number;
+  parent_session_id?: string | null;
+  session_title?: string | null;
+  session_source?: string | null;
+}
+
+export interface HermesStateDeltas {
+  cursor: HermesStateCursor;
+  messages: HermesStateDeltaMessage[];
+  changedSessionIds: string[];
 }
 
 const LIST_SESSIONS_SCRIPT = String.raw`
@@ -126,6 +151,60 @@ for r in reversed(rows):
 print(json.dumps({"ok": True, "messages": items}, ensure_ascii=False))
 `;
 
+const STATE_CURSOR_SCRIPT = String.raw`
+import json, os, sqlite3, sys
+path = sys.argv[1]
+if not os.path.exists(path):
+    print(json.dumps({"ok": False, "error": f"state.db not found: {path}", "cursor": None}))
+    raise SystemExit(0)
+conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+conn.row_factory = sqlite3.Row
+row = conn.execute("""
+    SELECT
+      COALESCE((SELECT MAX(id) FROM messages), 0) AS maxMessageId,
+      COALESCE((SELECT COUNT(*) FROM sessions), 0) AS sessionCount,
+      (SELECT MAX(started_at) FROM sessions) AS maxSessionStartedAt,
+      (SELECT MAX(timestamp) FROM messages) AS maxMessageTimestamp
+""").fetchone()
+print(json.dumps({"ok": True, "cursor": dict(row)}, ensure_ascii=False))
+`;
+
+const LOAD_DELTAS_SCRIPT = String.raw`
+import json, os, sqlite3, sys
+path = sys.argv[1]
+after_id = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+limit = int(sys.argv[3]) if len(sys.argv) > 3 else 80
+if not os.path.exists(path):
+    print(json.dumps({"ok": False, "error": f"state.db not found: {path}", "messages": [], "cursor": None, "changedSessionIds": []}))
+    raise SystemExit(0)
+conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+conn.row_factory = sqlite3.Row
+cursor_row = conn.execute("""
+    SELECT
+      COALESCE((SELECT MAX(id) FROM messages), 0) AS maxMessageId,
+      COALESCE((SELECT COUNT(*) FROM sessions), 0) AS sessionCount,
+      (SELECT MAX(started_at) FROM sessions) AS maxSessionStartedAt,
+      (SELECT MAX(timestamp) FROM messages) AS maxMessageTimestamp
+""").fetchone()
+rows = conn.execute("""
+    SELECT m.id, m.session_id, m.role, m.tool_name, m.timestamp,
+           s.parent_session_id, s.title AS session_title, s.source AS session_source
+    FROM messages m
+    LEFT JOIN sessions s ON s.id = m.session_id
+    WHERE m.id > ?
+    ORDER BY m.id ASC
+    LIMIT ?
+""", (after_id, limit)).fetchall()
+messages = [dict(r) for r in rows]
+changed = sorted({m.get('session_id') for m in messages if m.get('session_id')})
+print(json.dumps({
+    "ok": True,
+    "cursor": dict(cursor_row),
+    "messages": messages,
+    "changedSessionIds": changed,
+}, ensure_ascii=False))
+`;
+
 export async function listHermesSessions(limit = 200): Promise<HermesStateSession[]> {
   const result = await runPythonJson<{ ok: boolean; error?: string; sessions: HermesStateSession[] }>(
     LIST_SESSIONS_SCRIPT,
@@ -142,6 +221,30 @@ export async function loadHermesMessages(sessionId: string, limit = 80): Promise
   );
   if (!result.ok) throw new Error(result.error ?? 'Failed to read Hermes messages');
   return result.messages;
+}
+
+export async function getHermesStateCursor(): Promise<HermesStateCursor> {
+  const result = await runPythonJson<{ ok: boolean; error?: string; cursor: HermesStateCursor | null }>(
+    STATE_CURSOR_SCRIPT,
+  );
+  if (!result.ok || !result.cursor) throw new Error(result.error ?? 'Failed to read Hermes state cursor');
+  return result.cursor;
+}
+
+export async function loadHermesDeltas(afterMessageId = 0, limit = 80): Promise<HermesStateDeltas> {
+  const result = await runPythonJson<{
+    ok: boolean;
+    error?: string;
+    cursor: HermesStateCursor | null;
+    messages: HermesStateDeltaMessage[];
+    changedSessionIds: string[];
+  }>(LOAD_DELTAS_SCRIPT, [String(afterMessageId), String(limit)]);
+  if (!result.ok || !result.cursor) throw new Error(result.error ?? 'Failed to read Hermes state deltas');
+  return {
+    cursor: result.cursor,
+    messages: result.messages ?? [],
+    changedSessionIds: result.changedSessionIds ?? [],
+  };
 }
 
 export function unixToIso(ts?: number | null): string | null {

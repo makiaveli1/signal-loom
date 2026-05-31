@@ -1,24 +1,32 @@
 'use client';
 
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useSignalLoomStore } from '@/lib/store';
 import { AgentCard } from './agent-card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import type { Agent } from '@/lib/types';
-
-const HERMES_ID = 'hermes';
+import type { OpenClawSession } from '@/lib/openclaw/adapter/types';
 
 export function LiveAgentRail({ width = 280, onCollapse }: { width?: number; onCollapse?: () => void }) {
-  const { agents, toggleEmailComposer } = useSignalLoomStore();
+  const { agents, sessions, openChildSession } = useSignalLoomStore();
   const [idleExpanded, setIdleExpanded] = useState(true);
+
+  const childSessions = useMemo(() => sessions
+    .filter((session) => session.parentSessionId)
+    .sort((a, b) => {
+      const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+      const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+      return bTime - aTime;
+    })
+    .slice(0, 6), [sessions]);
 
   const visible = agents.filter(
     (a) => a.status === 'active' || a.status === 'waiting' || a.status === 'blocked'
   );
   const idleAgents = agents.filter((a) => a.status === 'idle' || a.status === 'done');
-  const activeCount = agents.filter((a) => a.status === 'active').length;
+  const activeCount = agents.filter((a) => a.status === 'active').length + childSessions.filter((s) => s.status === 'active').length;
   const waitingCount = agents.filter((a) => a.status === 'waiting' || a.status === 'blocked').length;
 
   return (
@@ -43,13 +51,17 @@ export function LiveAgentRail({ width = 280, onCollapse }: { width?: number; onC
               Live Lanes
             </span>
             <p className="mt-1 text-[11px] text-ash leading-tight">
-              Helper agents working on tasks
+              Helper agents and delegated sessions
             </p>
           </div>
           <div className="flex items-center gap-2">
             <div className="text-right font-mono text-[10px] text-ash">
-              <div className="text-signal-teal">{activeCount} active</div>
-              <div>{waitingCount} waiting</div>
+              <motion.div key={`active-${activeCount}`} initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }} className="text-signal-teal">
+                {activeCount} active
+              </motion.div>
+              <motion.div key={`waiting-${waitingCount}`} initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }}>
+                {waitingCount} waiting
+              </motion.div>
             </div>
             {onCollapse && (
               <button
@@ -69,29 +81,58 @@ export function LiveAgentRail({ width = 280, onCollapse }: { width?: number; onC
       <div className="flex flex-col min-h-0 flex-1 overflow-hidden">
         <ScrollArea className="flex-1">
           <div className="p-2.5 space-y-2">
-            {agents.length === 0 && (
+            {agents.length === 0 && childSessions.length === 0 && (
               <div className="py-7 px-3 text-center rounded-xl border border-white/5 bg-black/10">
                 <p className="text-xs text-ivory-dim font-medium">No helper agents active.</p>
                 <p className="text-xs text-ash mt-1 leading-relaxed">
-                  When work is delegated, helper agents appear here.
+                  When work is delegated, helper sessions appear here.
                 </p>
               </div>
             )}
 
-            {visible.map((agent) => (
-              <AgentCard
-                key={agent.id}
-                agent={agent}
-                onClick={agent.id === HERMES_ID ? toggleEmailComposer : undefined}
-              />
-            ))}
+            {childSessions.length > 0 && (
+              <section className="space-y-2">
+                <div className="flex items-center justify-between px-1 text-[10px] font-mono uppercase tracking-[0.16em] text-ash">
+                  <span>Delegated now</span>
+                  <span className="text-brass">{childSessions.length}</span>
+                </div>
+                <AnimatePresence initial={false}>
+                  {childSessions.map((session) => (
+                    <motion.div
+                      key={session.id}
+                      layout
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                      <SubagentSessionCard session={session} onOpen={() => openChildSession(session.id)} />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </section>
+            )}
+
+            <AnimatePresence initial={false}>
+              {visible.map((agent) => (
+                <motion.div
+                  key={agent.id}
+                  layout
+                  initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <AgentCard agent={agent} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
 
             {idleAgents.length > 0 && (
               <CollapsibleIdleSection
                 agents={idleAgents}
                 expanded={idleExpanded}
                 onToggle={() => setIdleExpanded((v) => !v)}
-                toggleEmailComposer={toggleEmailComposer}
               />
             )}
           </div>
@@ -101,16 +142,44 @@ export function LiveAgentRail({ width = 280, onCollapse }: { width?: number; onC
   );
 }
 
+function SubagentSessionCard({ session, onOpen }: { session: OpenClawSession; onOpen: () => void }) {
+  const active = session.status === 'active';
+  const toolCount = session.toolCallCount ?? 0;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={cn('subagent-session-card group w-full rounded-xl border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0', active && 'is-active')}
+      title={`Open delegated session ${session.shortId}`}
+    >
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={cn('h-1.5 w-1.5 rounded-full bg-signal-teal', active && 'signal-pulse')} aria-hidden="true" />
+            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-signal-teal">Subagent</span>
+          </div>
+          <p className="mt-1 truncate text-xs font-semibold text-ivory-dim">{session.title}</p>
+        </div>
+        <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[9px] font-mono text-ash">{session.shortId}</span>
+      </div>
+      <p className="line-clamp-2 text-xs leading-snug text-ash">{session.preview || 'Waiting for the delegated lane to write its first useful breadcrumb.'}</p>
+      <div className="mt-2 flex items-center justify-between border-t border-white/5 pt-2 text-[10px] font-mono text-ash-muted">
+        <span>{session.messageCount} msg{session.messageCount !== 1 ? 's' : ''}</span>
+        <span>{toolCount} tool{toolCount !== 1 ? 's' : ''}</span>
+        <span>{active ? 'live' : session.status}</span>
+      </div>
+    </button>
+  );
+}
+
 function CollapsibleIdleSection({
   agents,
   expanded,
   onToggle,
-  toggleEmailComposer,
 }: {
   agents: Agent[];
   expanded: boolean;
   onToggle: () => void;
-  toggleEmailComposer: () => void;
 }) {
   return (
     <div>
@@ -159,7 +228,6 @@ function CollapsibleIdleSection({
                 <AgentCard
                   key={agent.id}
                   agent={agent}
-                  onClick={agent.id === HERMES_ID ? toggleEmailComposer : undefined}
                 />
               ))}
             </div>

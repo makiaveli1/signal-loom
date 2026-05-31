@@ -86,7 +86,7 @@ const MOCK_AGENTS: OpenClawAgent[] = [
     name: 'Nero',
     status: 'active',
     accentColor: '#CC5500',
-    currentTask: 'Signal Loom Sprint 3 — DE outbound send lifecycle',
+    currentTask: 'Helping users understand and operate Hermes',
     role: 'orchestration',
   },
   {
@@ -94,8 +94,8 @@ const MOCK_AGENTS: OpenClawAgent[] = [
     name: 'Hermès',
     status: 'active',
     accentColor: '#E8A83C',
-    currentTask: 'Preparing outbound emails for review',
-    role: 'commercial',
+    currentTask: 'Monitoring Hermes sessions and setup state',
+    role: 'runtime guidance',
   },
   {
     id: 'hephaestus',
@@ -363,7 +363,7 @@ const MOCK_DELEGATION_EVENTS: DelegationEvent[] = [
     timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
     fromAgent: 'Nero',
     toAgent: 'Hermès',
-    taskSummary: 'Draft and gate outbound email to Brian McGarry',
+    taskSummary: 'Explain a Hermes workflow and split helper work',
     status: 'in_progress',
   },
   {
@@ -372,7 +372,7 @@ const MOCK_DELEGATION_EVENTS: DelegationEvent[] = [
     timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     fromAgent: 'Nero',
     toAgent: 'Hephaestus',
-    taskSummary: 'Build email gate API route for Graph sendMail',
+    taskSummary: 'Build Hermes connection diagnostics',
     status: 'completed',
   },
   {
@@ -381,7 +381,7 @@ const MOCK_DELEGATION_EVENTS: DelegationEvent[] = [
     timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
     fromAgent: 'Hephaestus',
     toAgent: 'Nero',
-    taskSummary: 'Email gate API route — build completed',
+    taskSummary: 'Hermes diagnostics build completed',
     status: 'completed',
   },
 ];
@@ -407,7 +407,7 @@ export async function loadDelegationEvents(): Promise<AdapterResult<DelegationEv
   // What we CANNOT infer (without transcript access):
   // - The specific task delegated
   // - The exact delegation chain for multi-agent flows
-  // - Approval/email events (require transcript analysis)
+  // - Exact approval events (require transcript analysis)
   //
   // All derived events are labeled as honestly as the evidence allows.
   try {

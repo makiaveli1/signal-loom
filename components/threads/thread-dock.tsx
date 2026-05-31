@@ -4,13 +4,10 @@ import { useCallback, useState } from 'react';
 import { PretextSmartTitle } from '@/components/ui/pretext-smart-title';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSignalLoomStore } from '@/lib/store';
-import { useCrmStore } from '@/lib/crm/store';
 import { ThreadListItem } from './thread-list-item';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Thread } from '@/lib/types';
 import { buildThreadGroups, type ConversationGroup } from '@/lib/conversation-groups';
-import type { EmailGateStoreItem } from '@/lib/store';
-import type { Lead } from '@/lib/crm/types';
 import { cn } from '@/lib/utils';
 
 type CollapseState = Map<string, boolean>;
@@ -281,7 +278,7 @@ function DockGroupSection({
         </span>
       </button>
 
-      {group.kind === 'conversation' && (
+      {group.kind === 'conversation' && isGroupSelected && (
         <div className="flex justify-end px-2 pb-1">
           <button
             type="button"
@@ -306,14 +303,9 @@ function DockGroupSection({
               className={cn('space-y-0.5 pb-1', group.kind === 'conversation' ? 'ml-3 pl-3 border-l' : '')}
               style={group.kind === 'conversation' ? { borderColor: 'rgba(201,160,58,0.16)' } : {}}
             >
-              {group.kind === 'conversation' && (
-                <div className="px-3 pb-1 text-[10px] text-ash">
-                  Selecting any item opens the whole bundle as one continuous chat.
-                </div>
-              )}
               {group.threads.map((thread, i) => (
                 <motion.div
-                  key={thread.id}
+                  key={`${group.id}:${thread.id}:${i}`}
                   initial={{ opacity: 0, y: 8, scale: 0.97 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   transition={{
@@ -384,7 +376,7 @@ function DockSection({
 }
 
 // ---------------------------------------------------------------------------
-// ThreadListItemWrapper — CRM context
+// ThreadListItemWrapper — common dock item props
 // ---------------------------------------------------------------------------
 
 function ThreadListItemWrapper({
@@ -402,26 +394,11 @@ function ThreadListItemWrapper({
   onHide: () => void;
   onUnhide: () => void;
 }) {
-  const { emailGates } = useSignalLoomStore();
-  const { leads, getConceptBadge } = useCrmStore();
-
-  const pendingEmailGates = (emailGates as EmailGateStoreItem[]).filter(
-    (g) => g.threadId === thread.id && (g.gateStatus === 'ready_for_approval' || g.gateStatus === 'needs_review')
-  );
-  const hasPendingEmail = pendingEmailGates.length > 0;
-  const hasReviewRequired = pendingEmailGates.some((g) => g.gateStatus === 'needs_review');
-  const leadId = (emailGates as EmailGateStoreItem[]).find((g) => g.threadId === thread.id && g.leadId)?.leadId;
-  const lead: Lead | undefined = leadId ? leads.find((l) => l.id === leadId) : undefined;
-  const conceptBadge = lead ? getConceptBadge(lead) : null;
-
   return (
     <ThreadListItem
       thread={thread}
       isSelected={isSelected}
       onSelect={onSelect}
-      hasPendingEmail={hasPendingEmail}
-      emailGateUrgent={hasReviewRequired}
-      conceptBadge={conceptBadge}
       childCount={thread.linkedChildren?.length ?? 0}
       isHidden={isHidden}
       onHide={onHide}

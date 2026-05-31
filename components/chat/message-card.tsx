@@ -239,6 +239,7 @@ function StandardMessageCard({ message, isHighlighted, isStreaming, isNew, isChi
           isUser && 'message-card-user ml-auto flex-row-reverse',
           isNero && 'message-card-nero',
           isSystem && 'message-card-system',
+          isStreaming && 'message-card-streaming',
           isChildSession && !isUser && 'message-card-child',
           display.operationalOnly && 'message-card-folded'
         )}

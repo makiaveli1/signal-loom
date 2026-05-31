@@ -27,7 +27,7 @@ export interface Thread {
   session?: OpenClawSession;
 }
 
-export type MessageRole = 'user' | 'nero' | 'system' | 'action-summary';
+export type MessageRole = 'user' | 'nero' | 'assistant' | 'system' | 'tool' | 'action-summary';
 
 export interface Message {
   id: string;

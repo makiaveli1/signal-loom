@@ -19,10 +19,40 @@ import type {
   Pane,
 } from '@/lib/types';
 import type { OpenClawSession } from '@/lib/openclaw/adapter/types';
-import type { EmailGateAuditEntry } from '@/lib/openclaw/adapter/types';
+
+type RuntimeGatewayEvent = {
+  type: string;
+  data?: {
+    source?: string;
+    sessionKey?: string;
+    parentSessionId?: string | null;
+    childSessionId?: string;
+    messageId?: string | number;
+    toolCallId?: string;
+    toolName?: string;
+    role?: string;
+    text?: string;
+    status?: string;
+    taskPreview?: string;
+    argsPreview?: string;
+    resultPreview?: string;
+    at?: string;
+  };
+};
+
+type RuntimeActivity = {
+  type: string;
+  label: string;
+  sessionKey: string;
+  parentSessionId?: string | null;
+  toolName?: string;
+  status: 'active' | 'done' | 'error';
+  preview?: string;
+  startedAt: string;
+  updatedAt: string;
+};
 
 const HIDDEN_THREADS_STORAGE_KEY = 'signal-loom-hidden-conversations-v1';
-const DEMO_EMAIL_GATES_STORAGE_KEY = 'signal-loom-demo-email-gates';
 
 type ThreadDockMode = 'focus' | 'all' | 'hidden';
 
@@ -51,215 +81,6 @@ function newestVisibleThread(threads: Thread[], hiddenIds: Set<string>): Thread 
       return bTime - aTime;
     })[0];
 }
-
-/** Minimal email gate shape stored in the Signal Loom state */
-export interface EmailGateStoreItem {
-  id: string;
-  /** Data origin. Demo gates are hidden by default in the live cockpit. */
-  source?: 'gateway' | 'derived' | 'demo';
-  threadId?: string;
-  /** CRM: which lead this email is for */
-  leadId?: string;
-  /** CRM: current concept status for this lead — mirrors the lead's concept state */
-  conceptStatus?: string;
-  /** CRM: whether a clean public preview URL exists for this lead's concept */
-  publicPreviewUrl?: string;
-  summary: string;
-  toRecipient: string;
-  toRole?: string;
-  toEmail?: string;
-  isExecutive: boolean;
-  isNewTopic: boolean;
-  confidence: 'high' | 'medium' | 'low';
-  rationale: string;
-  proposedTiming: string;
-  gateStatus: 'draft' | 'needs_review' | 'ready_for_approval' | 'human_approved' | 'sending' | 'sent' | 'send_failed' | 'human_denied';
-  lastChangedAt: string;
-  humanNote?: string;
-  approvalInvalidated?: boolean;
-  proposedEmail: {
-    subject: string;
-    body: string;
-    footer?: string;
-  };
-  /** Send audit trail */
-  auditLog?: EmailGateAuditEntry[];
-  /** ISO timestamp of successful send */
-  sentAt?: string;
-  /** Last send error message */
-  sendError?: string;
-  /** Number of send attempts */
-  sendAttempts?: number;
-}
-
-function shouldShowDemoEmailGates(): boolean {
-  if (process.env.NEXT_PUBLIC_SIGNAL_LOOM_DEMO_EMAIL_GATES === 'true') return true;
-  if (typeof window === 'undefined') return false;
-  try {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('demoEmailGates') === '1' ||
-      window.localStorage.getItem(DEMO_EMAIL_GATES_STORAGE_KEY) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Mock email gates — Sprint 3 DE verification data
-// All gates start in non-sendable states. Only human_approved is sendable.
-// ---------------------------------------------------------------------------
-
-const MOCK_EMAIL_GATES: EmailGateStoreItem[] = [
-  {
-    id: 'gate-brian-mcgary',
-    threadId: 'thread-hermes-1',
-    leadId: 'brian-mcgarry-plumber',
-    conceptStatus: 'approved',
-    publicPreviewUrl: 'https://makiaveli1.github.io/brian-mcgarry-plumber/',
-    summary: 'Brian McGarry — Verdantia website concept follow-up',
-    toRecipient: 'Brian McGarry',
-    toRole: 'Owner',
-    toEmail: 'brianmcgarry90@gmail.com',
-    isExecutive: false,
-    isNewTopic: true,
-    confidence: 'high',
-    rationale:
-      'Concept formally approved by Nero (2026-04-01). Outreach draft complete. ' +
-      'Pending: durable preview URL (GitHub Pages), Likwid human approval, mailbox setup. ' +
-      'Concept-first send rule enforced — all gates must pass before send.',
-    proposedTiming: 'Within 24 hours',
-    gateStatus: 'ready_for_approval',
-    lastChangedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-    auditLog: [
-      { at: new Date(Date.now() - 30 * 60 * 1000).toISOString(), action: 'draft_created' },
-      { at: new Date(Date.now() - 28 * 60 * 1000).toISOString(), action: 'submitted_for_review' },
-      { at: '2026-04-01T19:00:00Z', action: 'approved' }, // Nero formal concept approval
-      { at: '2026-04-01T19:00:00Z', action: 'approved' }, // Moved to pending Likwid review
-    ],
-    proposedEmail: {
-      subject: 'Verdantia — Your website concept is ready to review',
-      body: `Hi Brian,\n\nFollowing our conversation, I've built a custom website concept tailored for Brian McGarry Plumbing. I'd love to walk you through it — takes about 15 minutes.\n\nAre you available for a call this week?\n\nBest regards,\nOluwagbemi Akadiri`,
-      footer: '-- \nOluwagbemi Akadiri\nVerdantia Ltd\nAI Consulting & Training\nwww.verdantia.ai',
-    },
-  },
-  {
-    id: 'gate-larkfield-followup',
-    threadId: 'thread-hermes-2',
-    leadId: 'larkfield-plumbing-contractors',
-    conceptStatus: 'not_started',
-    summary: 'Larkfield — custom website concept introduction',
-    toRecipient: 'Sarah McGarry',
-    toRole: 'Managing Partner',
-    toEmail: 'sarah@larkfield.example.com',
-    isExecutive: false,
-    isNewTopic: true,
-    confidence: 'medium',
-    rationale:
-      'Higher scrutiny: first contact about a new topic (website concept). ' +
-      'Concept has not been started yet — outreach draft references the concept that will be built. ' +
-      'Gbemi — your approval is required before this can be sent.',
-    proposedTiming: 'Within SLA window',
-    gateStatus: 'needs_review',
-    lastChangedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    auditLog: [
-      { at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), action: 'draft_created' },
-      { at: new Date(Date.now() - 90 * 60 * 1000).toISOString(), action: 'submitted_for_review' },
-    ],
-    proposedEmail: {
-      subject: 'Verdantia — Custom website concept for Larkfield',
-      body: `Hi Sarah,\n\nThank you for your time on our call. As discussed, I've begun working on a custom website concept tailored for Larkfield Plumbing Contractors.\n\nBefore I send the full concept over — would you have 15 minutes this week to review it together?\n\nBest,\nOluwagbemi Akadiri`,
-      footer: '-- \nOluwagbemi Akadiri\nVerdantia Ltd\nAI Consulting & Training\nwww.verdantia.ai',
-    },
-  },
-  {
-    id: 'gate-cfo-escalation',
-    threadId: 'thread-hermes-3',
-    leadId: undefined,
-    conceptStatus: undefined,
-    summary: 'Verdantia expansion — internal proposal follow-up',
-    toRecipient: 'Adedolapo Grace Babalola',
-    toRole: 'CFO',
-    toEmail: 'grace.babalola@verdantia.example.com',
-    isExecutive: true,
-    isNewTopic: false,
-    confidence: 'low',
-    rationale:
-      'Higher scrutiny: addressed to executive role (CFO), Hermès has low confidence in this draft. ' +
-      'Review carefully before approving. Gbemi — your approval is required before this can be sent.',
-    proposedTiming: 'Within 2 hours (SLA)',
-    gateStatus: 'needs_review',
-    lastChangedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    auditLog: [
-      { at: new Date(Date.now() - 15 * 60 * 1000).toISOString(), action: 'draft_created' },
-      { at: new Date(Date.now() - 10 * 60 * 1000).toISOString(), action: 'submitted_for_review' },
-    ],
-    proposedEmail: {
-      subject: 'Verdantia — Q2 expansion proposal',
-      body: `Hi Grace,\n\nI wanted to share some thoughts on how Verdantia could expand its reach in Q2. Based on recent client conversations, I believe there's significant demand for AI training in the mid-market segment.\n\nWould you have 30 minutes to discuss?\n\nWith respect,\nOluwagbemi Akadiri`,
-      footer: '-- \nOluwagbemi Akadiri\nVerdantia Ltd\nAI Consulting & Training\nwww.verdantia.ai',
-    },
-  },
-  {
-    id: 'gate-approved-demo',
-    threadId: 'thread-hermes-4',
-    leadId: undefined,
-    conceptStatus: undefined,
-    summary: 'Follow-up after AI workshop — prospective client',
-    toRecipient: 'Michael Okafor',
-    toRole: 'Head of Learning, TechCorp',
-    toEmail: 'michael.okafor@techcorp.example.com',
-    isExecutive: false,
-    isNewTopic: false,
-    confidence: 'medium',
-    rationale:
-      'Standard review. This is a routine outreach or follow-up — ' +
-      'but your approval is still required before this goes out.',
-    proposedTiming: 'Within SLA window',
-    gateStatus: 'human_approved',
-    lastChangedAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-    humanNote: 'Approved — good framing',
-    auditLog: [
-      { at: new Date(Date.now() - 45 * 60 * 1000).toISOString(), action: 'draft_created' },
-      { at: new Date(Date.now() - 44 * 60 * 1000).toISOString(), action: 'submitted_for_review' },
-      { at: new Date(Date.now() - 45 * 60 * 1000).toISOString(), action: 'approved', note: 'Approved — good framing' },
-    ],
-    proposedEmail: {
-      subject: 'Verdantia — Next steps after the workshop',
-      body: `Hi Michael,\n\nThank you for attending the AI workshop last week. I enjoyed our conversation about TechCorp's upskilling goals.\n\nI've put together a short proposal covering the three areas we discussed. Happy to walk you through it whenever suits.\n\nBest,\nOluwagbemi Akadiri`,
-      footer: '-- \nOluwagbemi Akadiri\nVerdantia Ltd\nAI Consulting & Training\nwww.verdantia.ai',
-    },
-  },
-  {
-    id: 'gate-denied-revision',
-    threadId: 'thread-hermes-5',
-    leadId: undefined,
-    conceptStatus: undefined,
-    summary: 'Initial outreach — potential AI consulting lead',
-    toRecipient: 'David Walsh',
-    toRole: 'Operations Director, FinServe Ltd',
-    toEmail: 'david.walsh@finserve.example.com',
-    isExecutive: false,
-    isNewTopic: true,
-    confidence: 'low',
-    rationale:
-      'Higher scrutiny: first contact with this recipient about this topic, Hermès has low confidence in this draft. ' +
-      'Review carefully before approving. Gbemi — your approval is required before this can be sent.',
-    proposedTiming: 'Within 24 hours',
-    gateStatus: 'human_denied',
-    lastChangedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-    humanNote: 'Tone is too pushy — please revise',
-    auditLog: [
-      { at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), action: 'draft_created' },
-      { at: new Date(Date.now() - 2.5 * 60 * 60 * 1000).toISOString(), action: 'submitted_for_review' },
-      { at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), action: 'denied', note: 'Tone is too pushy — please revise' },
-    ],
-    proposedEmail: {
-      subject: 'Verdantia — Quick question about AI upskilling',
-      body: `Hi David,\n\nI think Verdantia could save your team a lot of time with AI automation. We're working with companies like yours right now and the results are incredible.\n\nCan we jump on a call?\n\nBest,\nOluwagbemi Akadiri`,
-      footer: '-- \nOluwagbemi Akadiri\nVerdantia Ltd\nAI Consulting & Training\nwww.verdantia.ai',
-    },
-  },
-];
 
 import { mockThreads, mockRuntime, mockAgents } from '@/lib/mock/data';
 import { mockDelegationEvents } from '@/lib/mock/delegation-data';
@@ -336,6 +157,55 @@ function calcWidthRatio(deltaX: number, containerWidth: number, startA: number, 
   return { ratioA, ratioB };
 }
 
+function runtimeEventLabel(event: RuntimeGatewayEvent): string {
+  const tool = event.data?.toolName;
+  if (event.type === 'assistant.delta') return 'Assistant streaming';
+  if (event.type === 'reasoning.delta') return 'Thinking';
+  if (event.type === 'tool.started') return `Tool started${tool ? ` · ${tool}` : ''}`;
+  if (event.type === 'tool.finished') return `Tool finished${tool ? ` · ${tool}` : ''}`;
+  if (event.type === 'subagent.started') return 'Subagent started';
+  if (event.type === 'subagent.finished') return 'Subagent finished';
+  if (event.type === 'message.started') return 'Message started';
+  if (event.type === 'message.finished') return 'Message finished';
+  if (event.type === 'runtime.error') return 'Runtime bridge error';
+  return event.type.replace(/[._-]/g, ' ');
+}
+
+function runtimeStatus(type: string, status?: string): RuntimeActivity['status'] {
+  if (type === 'runtime.error' || status === 'error' || status === 'failed') return 'error';
+  if (type.endsWith('.finished') || status === 'done' || status === 'complete') return 'done';
+  return 'active';
+}
+
+function ensureRuntimeThread(state: SignalLoomStore, sessionKey: string, at: string): Thread[] {
+  if (state.threads.some((thread) => thread.id === sessionKey)) return state.threads;
+  const session = state.sessions.find((item) => item.id === sessionKey);
+  return [
+    ...state.threads,
+    {
+      id: sessionKey,
+      title: session?.title ?? `Hermes session ${sessionKey.slice(-8)}`,
+      status: session?.status === 'done' || session?.status === 'idle' ? 'done' : 'active',
+      lastActive: session?.lastMessageAt ?? at,
+      unreadCount: 0,
+      hasApproval: false,
+      linkedAgents: [],
+      messages: [],
+      session,
+    } satisfies Thread,
+  ];
+}
+
+function upsertRuntimeMessage(messages: Thread['messages'], message: Thread['messages'][number]): Thread['messages'] {
+  const existing = messages.find((item) => item.id === message.id);
+  if (!existing) return [...messages, message];
+  return messages.map((item) =>
+    item.id === message.id
+      ? { ...item, content: item.content + message.content, timestamp: message.timestamp }
+      : item
+  );
+}
+
 // --- Store interface ---
 
 interface SignalLoomStore {
@@ -349,14 +219,9 @@ interface SignalLoomStore {
   approvals: Approval[];
   runtime: RuntimeState;
   approvalsPanelOpen: boolean;
-  emailComposerOpen: boolean;
   hermesCommandCenterOpen: boolean;
   hermesSettingsOpen: boolean;
   composerDraft: string | null;
-  /** CRM Lead Dossier panel — concept-first workflow */
-  crmPanelOpen: boolean;
-  toggleCrmPanel: () => void;
-
   // Sprint 2: Legacy split view (kept for migration compatibility)
   splitView: SplitViewState;
   composerState: ComposerState;
@@ -385,6 +250,7 @@ interface SignalLoomStore {
   }>;
   sessionMessagesLoading: Record<string, boolean>;
   liveConnected: boolean;
+  runtimeActivities: Record<string, RuntimeActivity>;
 
   // Sprint 8: Parent-child session relationships
   /** Maps parent session key → array of child session IDs */
@@ -398,14 +264,6 @@ interface SignalLoomStore {
   /** Sprint 8: ID of the delegation event the user is currently viewing (for visual marking) */
   activeDelegationEventId: string | null;
 
-  // Sprint 3 DE: Human email gate (Hermès)
-  // Minimal shape to avoid circular adapter imports in store
-  emailGates: EmailGateStoreItem[];
-  setEmailGates: (gates: EmailGateStoreItem[]) => void;
-  updateEmailGate: (gate: EmailGateStoreItem) => void;
-  initEmailGates: () => void;
-  sendEmail: (gateId: string) => Promise<void>;
-
   // Actions
   selectThread: (id: string, session?: OpenClawSession) => void;
   hideThread: (id: string) => void;
@@ -415,7 +273,6 @@ interface SignalLoomStore {
   hydrateHiddenThreads: () => void;
   markThreadRead: (id: string) => void;
   toggleApprovalsPanel: () => void;
-  toggleEmailComposer: () => void;
   toggleHermesCommandCenter: () => void;
   closeHermesCommandCenter: () => void;
   toggleHermesSettings: () => void;
@@ -432,6 +289,7 @@ interface SignalLoomStore {
   resolveApproval: (approvalId: string, decision: 'approved' | 'denied' | 'revised', note?: string) => Promise<void>;
   loadRuntimeHealth: () => Promise<void>;
   loadMessagesForThread: (sessionKey: string) => Promise<void>;
+  ingestRuntimeEvent: (event: RuntimeGatewayEvent) => void;
 
   // Sprint 2: Legacy split view actions
   setSplitView: (enabled: boolean, secondaryThreadId?: string) => void;
@@ -470,11 +328,9 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   approvals: [], // loaded from adapter on mount; store shows empty while loading
   runtime: mockRuntime,
   approvalsPanelOpen: false,
-  emailComposerOpen: false,
   hermesCommandCenterOpen: false,
   hermesSettingsOpen: false,
   composerDraft: null,
-  crmPanelOpen: false,
 
   // Sprint 2 legacy (migrated to workspace in 2.5)
   splitView: {
@@ -523,115 +379,13 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   sessionMessages: {},
   sessionMessagesLoading: {},
   liveConnected: false,
+  runtimeActivities: {},
 
   // Sprint 8: Parent-child session relationships
   childSessionIds: {},
   childToParentMap: {},
   followedSessionIds: [],
   activeDelegationEventId: null,
-
-  // Sprint 3 DE: Human email gate (Hermès)
-  emailGates: [],
-  setEmailGates: (gates) => set({ emailGates: gates }),
-  updateEmailGate: (gate) =>
-    set((state) => ({
-      emailGates: state.emailGates.map((g) => (g.id === gate.id ? gate : g)),
-    })),
-  initEmailGates: () => {
-    const { emailGates } = get();
-    if (emailGates.length > 0) return; // already initialized — don't re-init
-    if (!shouldShowDemoEmailGates()) return;
-    // Demo email gates are opt-in only. They are useful for UI QA, but should not
-    // create fake approval pressure in the default live cockpit.
-    set({ emailGates: MOCK_EMAIL_GATES.map((gate) => ({ ...gate, source: 'demo' as const })) });
-  },
-
-  sendEmail: async (gateId) => {
-    const { emailGates, updateEmailGate } = get();
-    const gate = emailGates.find((g) => g.id === gateId);
-    if (!gate) {
-      throw new Error(`Gate not found: ${gateId}`);
-    }
-
-    // Server-side enforcement — double-check before making the API call
-    if (gate.gateStatus !== 'human_approved') {
-      throw new Error(
-        `Send blocked: gate is "${gate.gateStatus}" — human approval is required.`
-      );
-    }
-
-    // Transition to sending
-    const sendingGate: EmailGateStoreItem = {
-      ...gate,
-      gateStatus: 'sending',
-      lastChangedAt: new Date().toISOString(),
-      sendAttempts: (gate.sendAttempts ?? 0) + 1,
-      auditLog: [
-        ...(gate.auditLog ?? []),
-        { at: new Date().toISOString(), action: 'send_initiated' },
-      ],
-    };
-    updateEmailGate(sendingGate);
-
-    // Call the real dispatch API
-    try {
-      const res = await fetch('/api/hermes/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gateId: gate.id,
-          toEmail: gate.toEmail ?? `${gate.toRecipient.replace(' ', '.').toLowerCase()}@example.com`,
-          toName: gate.toRecipient,
-          subject: gate.proposedEmail.subject,
-          body: gate.proposedEmail.body,
-          footer: gate.proposedEmail.footer,
-          gateStatus: gate.gateStatus,
-        }),
-      });
-
-      const data = (await res.json()) as { ok: boolean; sent?: boolean; sentAt?: string; error?: string };
-
-      if (data.ok && data.sent) {
-        updateEmailGate({
-          ...sendingGate,
-          gateStatus: 'sent',
-          lastChangedAt: new Date().toISOString(),
-          sentAt: data.sentAt ?? new Date().toISOString(),
-          auditLog: [
-            ...(sendingGate.auditLog ?? []),
-            { at: new Date().toISOString(), action: 'send_succeeded' },
-          ],
-        });
-      } else {
-        updateEmailGate({
-          ...sendingGate,
-          gateStatus: 'send_failed',
-          lastChangedAt: new Date().toISOString(),
-          sendError: data.error ?? 'Unknown send error',
-          auditLog: [
-            ...(sendingGate.auditLog ?? []),
-            {
-              at: new Date().toISOString(),
-              action: sendingGate.sendAttempts && sendingGate.sendAttempts > 1 ? 'retry_initiated' : 'send_failed',
-              note: data.error ?? 'Unknown send error',
-            },
-          ],
-        });
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Network error';
-      updateEmailGate({
-        ...sendingGate,
-        gateStatus: 'send_failed',
-        lastChangedAt: new Date().toISOString(),
-        sendError: message,
-        auditLog: [
-          ...(sendingGate.auditLog ?? []),
-          { at: new Date().toISOString(), action: 'send_failed', note: message },
-        ],
-      });
-    }
-  },
 
   // ---- Actions ----
 
@@ -755,11 +509,6 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       approvalsPanelOpen: !state.approvalsPanelOpen,
     })),
 
-  toggleEmailComposer: () =>
-    set((state) => ({
-      emailComposerOpen: !state.emailComposerOpen,
-    })),
-
   toggleHermesCommandCenter: () =>
     set((state) => ({
       hermesCommandCenterOpen: !state.hermesCommandCenterOpen,
@@ -783,11 +532,6 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
 
   clearComposerDraft: () =>
     set({ composerDraft: null }),
-
-  toggleCrmPanel: () =>
-    set((state) => ({
-      crmPanelOpen: !state.crmPanelOpen,
-    })),
 
   // ---- Sprint 3: OpenClaw adapter data loading ----
 
@@ -907,7 +651,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       argus:      { name: 'Argus',      role: 'review',    browserEnabled: false, accentColor: '#44BB44' },
       ariadne:   { name: 'Ariadne',    role: 'design',    browserEnabled: false, accentColor: '#CC44CC' },
       orion:     { name: 'Orion',      role: 'research',  browserEnabled: false, accentColor: '#4A9EFF' },
-      hermes:    { name: 'Hermes',     role: 'commercial', browserEnabled: false, accentColor: '#E8A83C' },
+      hermes:    { name: 'Hermes',     role: 'runtime guidance', browserEnabled: false, accentColor: '#E8A83C' },
     };
 
     const derivedAgents: Agent[] = (['hephaestus', 'argus', 'ariadne', 'orion', 'hermes'] as Agent['id'][])
@@ -925,33 +669,20 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
         } satisfies Agent;
       });
 
-    // ---- Derive childSessionIds map: Record<parentId, childId[]> ----
-    // Parent sessions have the 'delegated:N' tag. Subagent sessions are children.
-    // We associate subagent sessions with the most recent parent session that has a
-    // delegation count, in order of recency (approximate — gateway doesn't give us
-    // a direct parent reference for subagent sessions).
+    // ---- Derive childSessionIds map from Hermes' direct parent_session_id ----
     const childSessionIds: Record<string, string[]> = {};
-    const parentSessions = sessions
-      .filter((s) => s.tags?.some((t: string) => t.startsWith('delegated:')))
-      .sort((a, b) => {
-        const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
-        const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
-        return bTime - aTime; // newest parents first
-      });
-    const subagentSessions = sessions.filter((s) =>
-      s.id.includes(':subagent:') && s.status === 'done'
-    );
-    // Assign subagent sessions to parent sessions in round-robin fashion
-    // (approximation — gateway doesn't give direct parent reference)
-    for (const parent of parentSessions) {
-      const childTag = parent.tags?.find((t: string) => t.startsWith('delegated:'));
-      const childCount = childTag ? parseInt(childTag.split(':')[1]) : 0;
-      childSessionIds[parent.id] = [];
-      for (let i = 0; i < childCount && subagentSessions.length > 0; i++) {
-        const child = subagentSessions[i % subagentSessions.length];
-        if (!childSessionIds[parent.id].includes(child.id)) {
-          childSessionIds[parent.id].push(child.id);
-        }
+    for (const session of sessions) {
+      if (session.parentSessionId) {
+        childSessionIds[session.parentSessionId] = [
+          ...(childSessionIds[session.parentSessionId] ?? []),
+          session.id,
+        ];
+      }
+      if (session.childSessionIds?.length) {
+        childSessionIds[session.id] = Array.from(new Set([
+          ...(childSessionIds[session.id] ?? []),
+          ...session.childSessionIds,
+        ]));
       }
     }
 
@@ -959,33 +690,44 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
     const THREE_HRS = 3 * 60 * 60 * 1000;
     const derivedEvents: DelegationEvent[] = [];
 
-    for (const session of sessions.slice(0, 30)) {
+    for (const session of sessions.slice(0, 60)) {
       if (!session.lastMessageAt) continue;
       const ageMs = now - new Date(session.lastMessageAt).getTime();
       if (ageMs > THREE_HRS) continue;
 
-      const childTag = session.tags?.find((t: string) => t.startsWith('delegated:'));
-      const childCount = childTag ? parseInt(childTag.split(':')[1]) : 0;
-
-      if (childCount > 0) {
+      const children = childSessionIds[session.id] ?? [];
+      if (children.length > 0) {
         derivedEvents.push({
           id: `evt-delegated-${session.shortId}`,
           threadId: session.id,
           type: 'delegated',
           actor: 'nero',
-          title: `Nero delegated to specialist (${childCount} sub-session${childCount > 1 ? 's' : ''})`,
+          title: `Nero delegated ${children.length} helper session${children.length > 1 ? 's' : ''}`,
           createdAt: session.lastMessageAt,
-          childSessionIds: childSessionIds[session.id] ?? [],
+          childSessionIds: children,
         });
       }
 
-      if (session.status === 'active' && ageMs < FIVE_MINS) {
+      if (session.parentSessionId) {
+        derivedEvents.push({
+          id: `evt-child-${session.shortId}`,
+          threadId: session.parentSessionId,
+          type: session.status === 'active' && ageMs < FIVE_MINS ? 'agent_active' : 'agent_returned',
+          actor: 'nero',
+          title: `${session.status === 'active' && ageMs < FIVE_MINS ? 'Helper active' : 'Helper updated'} · ${session.title}`,
+          detail: `${session.messageCount} message${session.messageCount !== 1 ? 's' : ''}${session.toolCallCount ? ` · ${session.toolCallCount} tool${session.toolCallCount !== 1 ? 's' : ''}` : ''}`,
+          createdAt: session.lastMessageAt,
+          childSessionIds: [session.id],
+        });
+      }
+
+      if (session.status === 'active' && ageMs < FIVE_MINS && !session.parentSessionId) {
         derivedEvents.push({
           id: `evt-active-${session.shortId}`,
           threadId: session.id,
           type: 'agent_active',
           actor: 'nero',
-          title: 'Active specialist session',
+          title: 'Live Hermes session active',
           createdAt: session.lastMessageAt,
         });
       }
@@ -1137,7 +879,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       argus:      { name: 'Argus',      role: 'review',    browserEnabled: false, accentColor: '#44BB44' },
       ariadne:   { name: 'Ariadne',   role: 'design',    browserEnabled: false, accentColor: '#CC44CC' },
       orion:     { name: 'Orion',     role: 'research',  browserEnabled: false, accentColor: '#4A9EFF' },
-      hermes:    { name: 'Hermes',    role: 'commercial', browserEnabled: false, accentColor: '#E8A83C' },
+      hermes:    { name: 'Hermes',    role: 'runtime guidance', browserEnabled: false, accentColor: '#E8A83C' },
     };
     const derivedAgents: Agent[] = (['hephaestus', 'argus', 'ariadne', 'orion', 'hermes'] as Agent['id'][])
       .map((id) => {
@@ -1154,21 +896,18 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
         } satisfies Agent;
       });
     const childSessionIds: Record<string, string[]> = {};
-    const parentSessions = sessions
-      .filter((s) => s.tags?.some((t: string) => t.startsWith('delegated:')))
-      .sort((a, b) => {
-        const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
-        const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
-        return bTime - aTime;
-      });
-    const subagentSessions = sessions.filter((s) => s.id.includes(':subagent:') && s.status === 'done');
-    for (const parent of parentSessions) {
-      const childTag = parent.tags?.find((t: string) => t.startsWith('delegated:'));
-      const childCount = childTag ? parseInt(childTag.split(':')[1]) : 0;
-      childSessionIds[parent.id] = [];
-      for (let i = 0; i < childCount && subagentSessions.length > 0; i++) {
-        const child = subagentSessions[i % subagentSessions.length];
-        if (!childSessionIds[parent.id].includes(child.id)) childSessionIds[parent.id].push(child.id);
+    for (const session of sessions) {
+      if (session.parentSessionId) {
+        childSessionIds[session.parentSessionId] = [
+          ...(childSessionIds[session.parentSessionId] ?? []),
+          session.id,
+        ];
+      }
+      if (session.childSessionIds?.length) {
+        childSessionIds[session.id] = Array.from(new Set([
+          ...(childSessionIds[session.id] ?? []),
+          ...session.childSessionIds,
+        ]));
       }
     }
     const hiddenThreadIds = get().hiddenThreadIds;
@@ -1343,6 +1082,107 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
 
   setLiveConnected: (connected) =>
     set(() => ({ liveConnected: connected })),
+
+  ingestRuntimeEvent: (event) =>
+    set((state) => {
+      const data = event.data ?? {};
+      const sessionKey = data.sessionKey ?? data.childSessionId;
+      if (!sessionKey) return state;
+
+      const at = data.at ?? new Date().toISOString();
+      const preview = data.text ?? data.resultPreview ?? data.argsPreview ?? data.taskPreview;
+      const status = runtimeStatus(event.type, data.status);
+      const label = runtimeEventLabel(event);
+      const previousActivity = state.runtimeActivities[sessionKey];
+      const activity: RuntimeActivity = {
+        type: event.type,
+        label,
+        sessionKey,
+        parentSessionId: data.parentSessionId,
+        toolName: data.toolName,
+        status,
+        preview,
+        startedAt: previousActivity?.startedAt ?? at,
+        updatedAt: at,
+      };
+
+      let nextThreads = ensureRuntimeThread(state, sessionKey, at);
+      let nextSessionMessages = state.sessionMessages;
+      const maybeChildSessionId = data.childSessionId ?? sessionKey;
+      const shouldUpdateTranscript = event.type === 'assistant.delta'
+        || event.type === 'reasoning.delta'
+        || event.type === 'tool.started'
+        || event.type === 'tool.finished';
+
+      if (shouldUpdateTranscript && preview) {
+        const messageRole: Thread['messages'][number]['role'] = event.type.startsWith('tool.') ? 'tool' : event.type === 'reasoning.delta' ? 'system' : 'assistant';
+        const messageId = event.type.startsWith('tool.')
+          ? `runtime-${sessionKey}-${data.toolCallId ?? data.toolName ?? 'tool'}`
+          : `runtime-${sessionKey}-${data.messageId ?? event.type}`;
+        const content = event.type === 'reasoning.delta'
+          ? `[Reasoning]\n${preview}`
+          : event.type === 'tool.started'
+            ? `[Tool:${data.toolName ?? 'tool'}]\n${preview || 'Tool call started.'}`
+            : event.type === 'tool.finished'
+              ? `\n[Result] ${preview || data.status || 'Tool call finished.'}`
+              : preview;
+        const runtimeMessage: Thread['messages'][number] = {
+          id: messageId,
+          role: messageRole,
+          content,
+          timestamp: at,
+        };
+
+        nextThreads = nextThreads.map((thread) =>
+          thread.id === sessionKey
+            ? {
+                ...thread,
+                status: status === 'done' ? 'done' : 'active',
+                lastActive: at,
+                messages: upsertRuntimeMessage(thread.messages, runtimeMessage),
+              }
+            : thread
+        );
+
+        const threadMessages = nextThreads.find((thread) => thread.id === sessionKey)?.messages ?? [];
+        const transcriptBase = state.sessionMessages[sessionKey]?.messages ?? threadMessages;
+        nextSessionMessages = {
+          ...state.sessionMessages,
+          [sessionKey]: {
+            ...(state.sessionMessages[sessionKey] ?? {}),
+            messages: upsertRuntimeMessage(transcriptBase, runtimeMessage),
+            fetchedAt: at,
+          },
+        };
+      } else {
+        nextThreads = nextThreads.map((thread) =>
+          thread.id === sessionKey
+            ? { ...thread, status: status === 'done' ? 'done' : 'active', lastActive: at }
+            : thread
+        );
+      }
+
+      const nextChildSessionIds = { ...state.childSessionIds };
+      const nextChildToParentMap = { ...state.childToParentMap };
+      if (data.parentSessionId && maybeChildSessionId) {
+        nextChildSessionIds[data.parentSessionId] = Array.from(new Set([
+          ...(nextChildSessionIds[data.parentSessionId] ?? []),
+          maybeChildSessionId,
+        ]));
+        nextChildToParentMap[maybeChildSessionId] = data.parentSessionId;
+      }
+
+      return {
+        threads: nextThreads,
+        sessionMessages: nextSessionMessages,
+        runtimeActivities: {
+          ...state.runtimeActivities,
+          [sessionKey]: activity,
+        },
+        childSessionIds: nextChildSessionIds,
+        childToParentMap: nextChildToParentMap,
+      };
+    }),
 
   setActivePane: (pane) =>
     set((state) => {
@@ -1860,13 +1700,8 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
         ? state.delegationEvents.find((e) => e.id === delegationEventId)
         : null;
       const parentSessionId = delegationEvent?.threadId
-        ?? state.sessions
-            .filter((s) => s.id !== childSessionId && s.tags?.some((t) => t.startsWith('delegated:')))
-            .sort((a, b) => {
-              const aT = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
-              const bT = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
-              return bT - aT;
-            })[0]?.id;
+        ?? childSession.parentSessionId
+        ?? state.childToParentMap[childSessionId];
 
       // Build a Thread for the child session
       const childThread: Thread = {

@@ -134,7 +134,7 @@ export function streamMessage(
     { role: 'user' as const, content },
   ];
 
-  const body = JSON.stringify({ sessionKey, content, model, messages });
+  const body = JSON.stringify({ sessionKey, content, model, history: messages });
 
   return new ReadableStream<StreamMessageEvent>({
     async start(controller) {

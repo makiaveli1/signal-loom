@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { homedir } from 'node:os';
 import { promisify } from 'node:util';
 
 export const dynamic = 'force-dynamic';
 
 const execFileAsync = promisify(execFile);
-const HOME = process.env.HOME ?? '/home/likwid';
+const HOME = process.env.HOME ?? homedir();
 const HERMES_HOME = process.env.HERMES_HOME ?? `${HOME}/.hermes`;
 const CONFIG_PATH = process.env.HERMES_CONFIG ?? `${HERMES_HOME}/config.yaml`;
 const ENV_PATH = process.env.HERMES_ENV ?? `${HERMES_HOME}/.env`;

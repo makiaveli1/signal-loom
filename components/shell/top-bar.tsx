@@ -2,31 +2,20 @@
 
 import { Badge } from '@/components/ui/badge';
 import { useSignalLoomStore } from '@/lib/store';
-import { useCrmStore } from '@/lib/crm/store';
 import { cn } from '@/lib/utils';
 
 export function TopBar() {
-  const { runtime, approvals, approvalsPanelOpen, toggleApprovalsPanel, emailGates, agents, hermesCommandCenterOpen, toggleHermesCommandCenter, hermesSettingsOpen, toggleHermesSettings } = useSignalLoomStore();
-  const { leads } = useCrmStore();
+  const { runtime, approvals, approvalsPanelOpen, toggleApprovalsPanel, agents, hermesCommandCenterOpen, toggleHermesCommandCenter, hermesSettingsOpen, toggleHermesSettings } = useSignalLoomStore();
 
   const pendingApprovals = approvals.filter(
     (a) => a.status === undefined || a.status === 'pending'
   ).length;
-  const pendingEmailGates = emailGates.filter(
-    (g) =>
-      g.gateStatus === 'needs_review' ||
-      g.gateStatus === 'ready_for_approval' ||
-      g.gateStatus === 'human_approved' ||
-      g.gateStatus === 'send_failed'
-  ).length;
-  const pendingConcepts = leads.filter((lead) => lead.concept.status === 'internal_review').length;
-  const totalPending = pendingApprovals + pendingEmailGates + pendingConcepts;
-  const approvalBreakdown = [
-    pendingApprovals > 0 ? `${pendingApprovals} action${pendingApprovals === 1 ? '' : 's'}` : null,
-    pendingEmailGates > 0 ? `${pendingEmailGates} email${pendingEmailGates === 1 ? '' : 's'}` : null,
-    pendingConcepts > 0 ? `${pendingConcepts} concept${pendingConcepts === 1 ? '' : 's'}` : null,
-  ].filter(Boolean).join(' · ');
+  const totalPending = pendingApprovals;
+  const approvalBreakdown = pendingApprovals > 0
+    ? `${pendingApprovals} action${pendingApprovals === 1 ? '' : 's'}`
+    : '';
   const activeLanes = agents.filter((a) => a.status === 'active').length;
+  const systemHealthy = runtime.gateway === 'healthy' && runtime.queue === 'healthy' && runtime.heartbeatFreshness === 'fresh';
 
   return (
     <header
@@ -64,14 +53,20 @@ export function TopBar() {
         </div>
       </div>
 
-      <div className="hidden lg:flex items-center gap-2 min-w-0" aria-label="Hermes runtime health">
-        <InstrumentChip label="Gateway" status={runtime.gateway} />
-        <InstrumentChip label="Queue" status={runtime.queue} />
-        <InstrumentChip label="Heartbeat" status={runtime.heartbeatFreshness === 'fresh' ? 'fresh' : 'stale'} />
-        <span className="h-4 w-px bg-white/10" aria-hidden="true" />
-        <span className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] font-mono text-signal-teal">
-          <span className="w-1.5 h-1.5 rounded-full bg-signal-teal signal-pulse" />
-          {activeLanes} agent{activeLanes === 1 ? '' : 's'} active
+      <div className="hidden lg:flex min-w-0 items-center justify-center" aria-label="Hermes runtime summary">
+        <span
+          className={cn(
+            'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-mono transition-colors',
+            systemHealthy
+              ? 'border-emerald-300/15 bg-emerald-300/[0.045] text-emerald-200/80'
+              : 'border-rust/25 bg-rust/10 text-rust'
+          )}
+          title={`Gateway ${runtime.gateway} · queue ${runtime.queue} · heartbeat ${runtime.heartbeatFreshness}`}
+        >
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: systemHealthy ? 'var(--mb-jade)' : 'var(--mb-rust)' }} />
+          {systemHealthy ? 'Hermes healthy' : 'Hermes needs attention'}
+          <span className="text-ash-muted">·</span>
+          <span className="text-ash">{activeLanes} live lane{activeLanes === 1 ? '' : 's'}</span>
         </span>
       </div>
 
@@ -142,19 +137,5 @@ export function TopBar() {
         </button>
       </div>
     </header>
-  );
-}
-
-function InstrumentChip({ label, status }: { label: string; status: string }) {
-  const healthy = status === 'healthy' || status === 'fresh';
-  return (
-    <span className="flex items-center gap-1.5 rounded-full border border-white/10 bg-black/15 px-2 py-1 text-[11px] font-mono">
-      <span
-        className={cn('w-1.5 h-1.5 rounded-full', healthy && 'signal-pulse')}
-        style={{ background: healthy ? 'var(--mb-jade)' : 'var(--mb-rust)' }}
-      />
-      <span className="text-ash">{label}</span>
-      <span style={{ color: healthy ? 'var(--mb-jade)' : 'var(--mb-rust)' }}>{status}</span>
-    </span>
   );
 }

@@ -90,7 +90,7 @@ function StreamingIndicator({
 export function Composer({ threadId }: ComposerProps) {
   const { composerState, sendMessage, sendStreamingMessage, composerDraft, clearComposerDraft } = useSignalLoomStore();
   const [value, setValue] = useState('');
-  const [streamingMode, setStreamingMode] = useState(false);
+  const [streamingMode, setStreamingMode] = useState(true);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [sendPulse, setSendPulse] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -220,66 +220,60 @@ export function Composer({ threadId }: ComposerProps) {
         </div>
       )}
 
-      {/* Nero command shortcuts — folded by default to keep the conversation tab quiet */}
-      <div className="composer-shortcuts mb-2 flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-ash">
+      {/* Composer options — one quiet affordance instead of a row of tiny always-visible controls */}
+      <div className="composer-quiet-row mb-2 flex items-center justify-between gap-3 text-[11px] text-ash">
         <button
           type="button"
           onClick={() => setShortcutsOpen((v) => !v)}
-          className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-ivory-dim transition-all duration-150 hover:border-brass/30 hover:text-brass"
+          className="composer-options-trigger rounded-full border border-white/10 bg-black/15 px-3 py-1.5 text-[11px] font-mono text-ivory-dim transition-all duration-150 hover:border-brass/30 hover:text-brass"
           aria-expanded={shortcutsOpen}
         >
-          {shortcutsOpen ? 'Hide prompt shortcuts' : 'Prompt shortcuts'}
+          Options
         </button>
-        {shortcutsOpen && commandChips.map((chip) => (
-          <button
-            type="button"
-            key={chip.label}
-            onClick={() => {
-              applyChip(chip.prompt);
-              setShortcutsOpen(false);
-            }}
-            disabled={isSending}
-            className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 transition-all duration-150 hover:-translate-y-0.5 hover:border-brass/30 hover:bg-brass/10 disabled:opacity-40"
-            style={{ color: chip.label === 'Synthesize' ? 'var(--mb-brass)' : 'var(--mb-ivory-dim)' }}
-          >
-            {chip.label}
-          </button>
-        ))}
+        <span className="hidden truncate sm:inline">
+          {streamingMode ? 'Streaming replies · Enter sends' : 'Direct send · Enter sends'}
+        </span>
       </div>
+
+      {shortcutsOpen && (
+        <div className="composer-options-panel mb-2 rounded-2xl border border-white/10 bg-black/15 p-2.5">
+          <div className="mb-2 flex items-center justify-between gap-3 border-b border-white/5 pb-2">
+            <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-ash-muted">Reply mode</span>
+            <button
+              type="button"
+              onClick={() => setStreamingMode((v) => !v)}
+              title={streamingMode ? 'Disable streaming mode' : 'Enable streaming mode — streams response in real time'}
+              className="layout-pill rail-toggle"
+              disabled={isSending}
+              aria-pressed={streamingMode}
+              aria-label={streamingMode ? 'Streaming mode on — click to disable' : 'Streaming mode off — click to enable'}
+            >
+              <span className="rail-toggle-dot" aria-hidden="true" />
+              {streamingMode ? 'Streaming on' : 'Streaming off'}
+            </button>
+          </div>
+          <div className="composer-shortcuts flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-ash">
+            {commandChips.map((chip) => (
+              <button
+                type="button"
+                key={chip.label}
+                onClick={() => {
+                  applyChip(chip.prompt);
+                  setShortcutsOpen(false);
+                }}
+                disabled={isSending}
+                className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1.5 transition-all duration-150 hover:-translate-y-0.5 hover:border-brass/30 hover:bg-brass/10 disabled:opacity-40"
+                style={{ color: chip.label === 'Synthesize' ? 'var(--mb-brass)' : 'var(--mb-ivory-dim)' }}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Composer input row */}
       <div className="flex items-end gap-2">
-        {/* Stream mode toggle */}
-        <button
-          onClick={() => setStreamingMode((v) => !v)}
-          title={streamingMode ? 'Disable streaming mode' : 'Enable streaming mode — streams response in real time'}
-          className="composer-icon-button mb-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md transition-all duration-150"
-          style={{
-            background: streamingMode
-              ? 'rgba(0,200,150,0.15)'
-              : 'rgba(255,255,255,0.04)',
-            border: streamingMode
-              ? '1px solid rgba(0,200,150,0.30)'
-              : '1px solid rgba(255,255,255,0.08)',
-            color: streamingMode ? 'var(--mb-teal)' : 'var(--mb-ash-muted)',
-            cursor: isSending ? 'not-allowed' : 'pointer',
-            opacity: isSending ? 0.5 : 1,
-          }}
-          disabled={isSending}
-          aria-label={streamingMode ? 'Streaming mode on — click to disable' : 'Streaming mode off — click to enable'}
-        >
-          {/* Lightning bolt SVG */}
-          <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-            <path
-              d="M7 1L3 7H6L5 11L9 5H6L7 1Z"
-              fill="currentColor"
-              stroke="currentColor"
-              strokeWidth="0.5"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-
         {/* Input area */}
         <div
           className="composer-input-frame flex-1 flex items-end gap-2 rounded-2xl border px-3.5 py-2.5 transition-all"
@@ -322,7 +316,7 @@ export function Composer({ threadId }: ComposerProps) {
           <button
             onClick={handleSend}
             className={cn(
-              'composer-icon-button flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md transition-all duration-150',
+              'composer-icon-button flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl transition-all duration-150',
               canSend ? 'cursor-pointer' : 'cursor-not-allowed',
               sendPulse && 'composer-send-ready'
             )}
@@ -352,29 +346,16 @@ export function Composer({ threadId }: ComposerProps) {
         </div>
       </div>
 
-      {/* Footer hint */}
-      <p className="text-xs text-ash-muted mt-1.5 px-1 flex items-center gap-2">
-        {isSending && !isStreaming && <span>Sending…</span>}
-        {isSending && isStreaming && <span className="animate-pulse">◷ Streaming response…</span>}
-        {!isSending && lastSentAt && (
-          <span>Last sent {new Date(lastSentAt).toLocaleTimeString()}</span>
-        )}
-        {!isSending && !lastSentAt && (
-          <span>
-            <span
-              className="inline-flex items-center gap-1"
-              style={{ color: streamingMode ? 'var(--mb-teal)' : 'var(--mb-ash-muted)' }}
-            >
-              {streamingMode && (
-                <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
-                  <path d="M7 1L3 7H6L5 11L9 5H6L7 1Z" fill="currentColor" />
-                </svg>
-              )}
-              {streamingMode ? 'Streaming Hermes response · Enter to send' : 'Nero is monitoring Hermes state · specialist routing is live'}
-            </span>
-          </span>
-        )}
-      </p>
+      {/* Footer hint — only appears when state changes, keeping the default composer calm. */}
+      {(isSending || lastSentAt) && (
+        <p className="mt-1.5 flex items-center gap-2 px-1 text-xs text-ash-muted">
+          {isSending && !isStreaming && <span>Sending…</span>}
+          {isSending && isStreaming && <span className="animate-pulse">Streaming response…</span>}
+          {!isSending && lastSentAt && (
+            <span>Last sent {new Date(lastSentAt).toLocaleTimeString()}</span>
+          )}
+        </p>
+      )}
 
       <style>{`
         @keyframes pulse-dot {

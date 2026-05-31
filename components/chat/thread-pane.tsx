@@ -562,20 +562,20 @@ function SessionInfoPanel({
     return (
       <button
         onClick={onToggleCollapse}
-        className="w-full group flex items-center gap-3 px-5 py-1.5 border-b cursor-pointer transition-all duration-200 hover:bg-white/[0.035]"
+        className="w-full group flex items-center gap-2 px-5 py-1 border-b cursor-pointer transition-all duration-200 hover:bg-white/[0.03]"
         style={{
-          background: 'linear-gradient(90deg, rgba(201,160,58,0.045), rgba(255,255,255,0.01), rgba(61,201,196,0.025))',
-          borderColor: 'rgba(255,255,255,0.055)',
-          minHeight: '44px',
+          background: 'color-mix(in srgb, var(--sl-stage) 74%, transparent)',
+          borderColor: 'rgba(255,255,255,0.045)',
+          minHeight: '34px',
         }}
         title="Open folded routing, delegated work, and session receipts"
       >
         <span
-          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border transition-transform duration-200 group-hover:translate-x-0.5"
+          className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border text-[10px] transition-transform duration-200 group-hover:translate-x-0.5"
           style={{
-            borderColor: 'rgba(201,160,58,0.26)',
+            borderColor: 'rgba(201,160,58,0.20)',
             color: 'var(--mb-brass)',
-            background: 'rgba(201,160,58,0.08)',
+            background: 'rgba(201,160,58,0.05)',
           }}
           aria-hidden="true"
         >
@@ -588,27 +588,13 @@ function SessionInfoPanel({
               Receipts
             </span>
             <span className="hidden text-[11px] text-ash xl:inline">
-              routing + tools folded
+              routing folded
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {hasDelegatedChildren && (
-            <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-2 py-1 text-[10px] font-mono text-signal-violet">
-              {(thread.linkedChildren ?? []).length} delegated
-            </span>
-          )}
-          {showDelegationTimeline && threadEvents.length > 0 && (
-            <span className="rounded-full border border-brass/20 bg-brass/10 px-2 py-1 text-[10px] font-mono text-brass">
-              {threadEvents.length} event{threadEvents.length !== 1 ? 's' : ''}
-            </span>
-          )}
-          {hasSession && (
-            <span className="rounded-full border border-white/10 bg-black/15 px-2 py-1 text-[10px] font-mono text-ash">
-              session
-            </span>
-          )}
+        <div className="flex items-center gap-2 flex-shrink-0 text-[10px] font-mono text-ash-muted">
+          <span>open</span>
         </div>
       </button>
     );

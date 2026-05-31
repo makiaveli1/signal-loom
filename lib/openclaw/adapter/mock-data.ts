@@ -33,16 +33,16 @@ export const MOCK_SESSIONS: OpenClawSession[] = [
     preview: 'Sprint 3 should make Signal Loom operationally real before making it more elaborate...',
   },
   {
-    id: 'agent:forge:session:verdantia-q2',
-    shortId: 'verdantia',
-    title: 'Verdantia Q2 positioning strategy',
+    id: 'agent:forge:session:hermes-setup',
+    shortId: 'setup',
+    title: 'Hermes setup walkthrough',
     agentId: 'hephaestus',
     agentName: 'Hephaestus',
     messageCount: 31,
     lastMessageAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
     status: 'idle',
-    tags: ['verdantia', 'strategy'],
-    preview: 'The Q2 positioning should focus on AI training services for enterprise clients...',
+    tags: ['hermes', 'setup'],
+    preview: 'The setup walkthrough should make Hermes connection, models, tools, and sessions understandable...',
   },
   {
     id: 'agent:scout:session:last30days-research',
@@ -158,7 +158,7 @@ export const MOCK_AGENTS: OpenClawAgent[] = [
     status: 'idle',
     accentColor: '#e8a04a',
     lastActiveAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-    role: 'commercial',
+    role: 'runtime guidance',
   },
 ];
 

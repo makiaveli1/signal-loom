@@ -9,6 +9,9 @@ import { NextResponse } from 'next/server';
 import { listHermesSessions, unixToIso, type HermesStateSession } from '@/lib/hermes/state-db';
 import type { OpenClawSession, SessionStatus } from '@/lib/openclaw/adapter/types';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 function shortId(id: string): string {
   const tail = id.split(/[:/_-]/).filter(Boolean).pop() ?? id;
   return tail.length > 12 ? tail.slice(0, 8) : tail;
@@ -68,6 +71,9 @@ function normalizeSession(raw: HermesStateSession): OpenClawSession {
     agentId,
     agentName: agentNameFromId(agentId),
     messageCount: raw.message_count ?? 0,
+    toolCallCount: raw.tool_call_count ?? 0,
+    source: raw.source,
+    parentSessionId: raw.parent_session_id ?? null,
     lastMessageAt: unixToIso(raw.last_active),
     status: normalizeStatus(raw),
     tags,
@@ -76,11 +82,31 @@ function normalizeSession(raw: HermesStateSession): OpenClawSession {
   };
 }
 
+function attachSessionRelationships(sessions: OpenClawSession[]): OpenClawSession[] {
+  const childrenByParent = new Map<string, string[]>();
+  for (const session of sessions) {
+    if (!session.parentSessionId) continue;
+    const children = childrenByParent.get(session.parentSessionId) ?? [];
+    children.push(session.id);
+    childrenByParent.set(session.parentSessionId, children);
+  }
+
+  return sessions.map((session) => {
+    const childSessionIds = childrenByParent.get(session.id) ?? [];
+    const tags = new Set(session.tags);
+    if (childSessionIds.length > 0) {
+      tags.add('parent');
+      tags.add(`children:${childSessionIds.length}`);
+    }
+    if (session.parentSessionId) tags.add('child');
+    return { ...session, tags: [...tags], childSessionIds };
+  });
+}
+
 export async function GET() {
   try {
     const raw = await listHermesSessions(200);
-    const sessions = raw
-      .map(normalizeSession)
+    const sessions = attachSessionRelationships(raw.map(normalizeSession))
       .filter((s) => {
         if (!s.lastMessageAt) return true;
         if (s.status !== 'done') return true;
@@ -90,7 +116,7 @@ export async function GET() {
 
     return NextResponse.json(sessions, {
       headers: {
-        'Cache-Control': 'private, max-age=30',
+        'Cache-Control': 'no-store',
         'X-Adapter-Fetched-At': new Date().toISOString(),
       },
     });

@@ -55,7 +55,7 @@ interface SessionsCache {
 
 let _sessionsCache: SessionsCache | null = null;
 let _sessionsInFlight: Promise<OpenClawSession[]> | null = null;
-const SESSIONS_CACHE_TTL_MS = 15_000;
+const SESSIONS_CACHE_TTL_MS = 0;
 
 function unixToIso(ts?: number | null): string | null {
   if (!ts) return null;
@@ -139,12 +139,36 @@ function normalizeSession(raw: HermesStateSession): OpenClawSession {
     agentId,
     agentName: agentNameFromId(agentId),
     messageCount: raw.message_count ?? 0,
+    toolCallCount: raw.tool_call_count ?? 0,
+    source: raw.source,
+    parentSessionId: raw.parent_session_id ?? null,
     lastMessageAt: unixToIso(raw.last_active),
     status: normalizeStatus(raw),
     tags,
     preview: raw.preview ?? '',
     childSessionIds: [],
   };
+}
+
+function attachSessionRelationships(sessions: OpenClawSession[]): OpenClawSession[] {
+  const childrenByParent = new Map<string, string[]>();
+  for (const session of sessions) {
+    if (!session.parentSessionId) continue;
+    const children = childrenByParent.get(session.parentSessionId) ?? [];
+    children.push(session.id);
+    childrenByParent.set(session.parentSessionId, children);
+  }
+
+  return sessions.map((session) => {
+    const childSessionIds = childrenByParent.get(session.id) ?? [];
+    const tags = new Set(session.tags);
+    if (childSessionIds.length > 0) {
+      tags.add('parent');
+      tags.add(`children:${childSessionIds.length}`);
+    }
+    if (session.parentSessionId) tags.add('child');
+    return { ...session, tags: [...tags], childSessionIds };
+  });
 }
 
 export async function loadSessionsReal(): Promise<AdapterResult<OpenClawSession[]>> {
@@ -162,8 +186,7 @@ export async function loadSessionsReal(): Promise<AdapterResult<OpenClawSession[
   _sessionsInFlight = (async () => {
     const { listHermesSessions } = await loadStateDbModule();
     const raw = await listHermesSessions(200);
-    const normalized = raw
-      .map(normalizeSession)
+    const normalized = attachSessionRelationships(raw.map(normalizeSession))
       .filter((s) => {
         if (!s.lastMessageAt) return true;
         if (s.status !== 'done') return true;

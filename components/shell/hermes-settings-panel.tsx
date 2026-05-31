@@ -36,11 +36,31 @@ type HermesSettingsPayload = {
   env: { path: string; keys: Array<{ key: string; present: boolean; preview: string }>; note: string };
 };
 
+type HermesDetection = {
+  ok: boolean;
+  status: string;
+  fetchedAt: string;
+  binary?: { found: boolean; path?: string; version?: string };
+  home?: {
+    path: string;
+    exists: boolean;
+    configPath?: string;
+    configExists: boolean;
+    envPath?: string;
+    envExists: boolean;
+    stateDbPath?: string;
+    stateDbExists: boolean;
+  };
+  api?: { url: string; reachable: boolean; authenticated?: boolean; error?: string };
+  nextSteps?: Array<{ id: string; label: string; command?: string; risk: 'safe' | 'requires_permission' | 'manual_only' }>;
+  error?: string;
+};
+
 type SettingsTab = 'home' | 'model' | 'chat' | 'voice' | 'privacy' | 'safety' | 'tools' | 'advanced' | 'update';
 type DiagnosticCommand = 'doctor' | 'gateway' | 'memory' | 'mcp' | 'tools';
 
 const TABS: Array<{ id: SettingsTab; label: string; hint: string }> = [
-  { id: 'home', label: 'Start here', hint: 'status and safe checks' },
+  { id: 'home', label: 'Connect', hint: 'install and status' },
   { id: 'model', label: 'Model', hint: 'default model and provider' },
   { id: 'chat', label: 'Chat display', hint: 'context, output, progress' },
   { id: 'voice', label: 'Voice', hint: 'speech in and out' },
@@ -114,6 +134,86 @@ function HighlightList({ title, lines, empty }: { title: string; lines?: Highlig
         </div>
       ) : (
         <p className="text-sm leading-6 text-ash">{empty}</p>
+      )}
+    </section>
+  );
+}
+
+
+function connectionLabel(status: string) {
+  const labels: Record<string, string> = {
+    ready: 'Ready',
+    missing_binary: 'Hermes is not installed',
+    installed_not_configured: 'Hermes needs setup',
+    configured_api_missing: 'API server not configured',
+    api_unreachable: 'API server is not reachable',
+    state_db_missing: 'No saved sessions yet',
+    needs_token: 'API token required',
+    unknown_error: 'Detection failed',
+  };
+  return labels[status] ?? status.replace(/_/g, ' ');
+}
+
+function StatusRow({ label, ok, detail }: { label: string; ok: boolean; detail?: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-2xl border border-white/10 bg-black/15 px-3 py-2 text-sm">
+      <div className="min-w-0">
+        <div className="font-semibold text-ivory-dim">{label}</div>
+        {detail && <div className="mt-0.5 break-all font-mono text-[11px] leading-5 text-ash">{detail}</div>}
+      </div>
+      <span className={cn('shrink-0 rounded-full border px-2 py-0.5 font-mono text-[10px]', ok ? 'border-signal-teal/30 text-signal-teal' : 'border-brass/30 text-brass')}>
+        {ok ? 'ok' : 'needs work'}
+      </span>
+    </div>
+  );
+}
+
+function HermesConnectOverview({ detection, loading, onRefresh }: { detection: HermesDetection | null; loading: boolean; onRefresh: () => void }) {
+  const status = detection?.status ?? 'unknown_error';
+  const ready = status === 'ready';
+  return (
+    <section className={cn(
+      'rounded-3xl border p-5 shadow-2xl shadow-black/15',
+      ready ? 'border-signal-teal/20 bg-signal-teal-glow' : 'border-brass/20 bg-[linear-gradient(135deg,rgba(201,160,58,0.10),rgba(61,201,196,0.04))]'
+    )}>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <p className={cn('text-[10px] font-semibold uppercase tracking-[0.24em]', ready ? 'text-signal-teal' : 'text-brass')}>Hermes connection</p>
+          <h3 className="mt-2 text-2xl font-semibold tracking-tight text-ivory">{loading ? 'Checking local Hermes…' : connectionLabel(status)}</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-ivory-dim">
+            Signal Loom is a local interface. It does not host an agent for you — it connects to the Hermes CLI, local API server, config, and session database on this machine.
+          </p>
+        </div>
+        <button type="button" onClick={onRefresh} disabled={loading} className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-xs font-semibold text-ivory-dim transition hover:border-signal-teal/30 hover:text-signal-teal disabled:cursor-wait disabled:opacity-60">
+          {loading ? 'Checking…' : 'Re-check'}
+        </button>
+      </div>
+
+      <div className="mt-5 grid gap-2 lg:grid-cols-2">
+        <StatusRow label="Hermes CLI" ok={Boolean(detection?.binary?.found)} detail={detection?.binary?.version ?? detection?.binary?.path ?? 'Run the install command below if this is missing.'} />
+        <StatusRow label="Config file" ok={Boolean(detection?.home?.configExists)} detail={detection?.home?.configPath ?? 'No config path detected yet.'} />
+        <StatusRow label="API server" ok={Boolean(detection?.api?.reachable && detection?.api?.authenticated !== false)} detail={detection?.api?.error ? `${detection.api.url} — ${detection.api.error}` : detection?.api?.url} />
+        <StatusRow label="Session database" ok={Boolean(detection?.home?.stateDbExists)} detail={detection?.home?.stateDbPath ?? 'A state DB appears after Hermes has stored sessions.'} />
+      </div>
+
+      {detection?.nextSteps && detection.nextSteps.length > 0 && (
+        <div className="mt-5 rounded-2xl border border-white/10 bg-black/15 p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h4 className="text-xs font-semibold uppercase tracking-[0.22em] text-brass">Next safe steps</h4>
+            <span className="text-[10px] text-ash">copy commands manually; Signal Loom will not auto-install Hermes from the browser</span>
+          </div>
+          <div className="grid gap-2">
+            {detection.nextSteps.map((step) => (
+              <div key={step.id} className="rounded-xl border border-white/5 bg-carbon/70 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-ivory-dim">{step.label}</span>
+                  <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-ash">{step.risk.replace(/_/g, ' ')}</span>
+                </div>
+                {step.command && <pre className="mt-2 overflow-x-auto rounded-lg border border-white/5 bg-black/25 px-3 py-2 font-mono text-[11px] leading-5 text-signal-teal">{step.command}</pre>}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </section>
   );
@@ -312,9 +412,11 @@ export function HermesSettingsPanel() {
   const { hermesSettingsOpen, closeHermesSettings } = useSignalLoomStore();
   const [activeTab, setActiveTab] = useState<SettingsTab>('home');
   const [settings, setSettings] = useState<HermesSettingsPayload | null>(null);
+  const [detection, setDetection] = useState<HermesDetection | null>(null);
   const [pendingValues, setPendingValues] = useState<Record<string, SettingValue>>({});
   const [configDraft, setConfigDraft] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingDetection, setLoadingDetection] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
@@ -338,6 +440,25 @@ export function HermesSettingsPanel() {
     return grouped;
   }, [settings]);
 
+
+  const loadDetection = async () => {
+    setLoadingDetection(true);
+    try {
+      const res = await fetch('/api/hermes/detect', { cache: 'no-store' });
+      const payload = await res.json() as HermesDetection;
+      setDetection(payload);
+    } catch (error) {
+      setDetection({
+        ok: false,
+        status: 'unknown_error',
+        fetchedAt: new Date().toISOString(),
+        error: error instanceof Error ? error.message : 'Could not detect Hermes.',
+      });
+    } finally {
+      setLoadingDetection(false);
+    }
+  };
+
   const loadSettings = async () => {
     setLoading(true);
     setNotice(null);
@@ -357,6 +478,7 @@ export function HermesSettingsPanel() {
 
   useEffect(() => {
     if (!hermesSettingsOpen) return;
+    loadDetection();
     loadSettings();
   }, [hermesSettingsOpen]);
 
@@ -533,26 +655,31 @@ export function HermesSettingsPanel() {
                   </motion.div>
                 )}
 
-                {settings && activeTab === 'home' && (
+                {activeTab === 'home' && (
                   <div className="space-y-4">
-                    <div className="grid gap-3 md:grid-cols-3">
-                      <StatCard label="Version" value={versionLines[0] ?? 'Hermes'} tone={settings.runtime.updateAvailable ? 'brass' : 'teal'} />
-                      <StatCard label="Config file" value={`${settings.config.bytes.toLocaleString()} bytes`} />
-                      <StatCard label="Update status" value={settings.runtime.updateAvailable ? 'Update available' : 'Up to date'} tone={settings.runtime.updateAvailable ? 'brass' : 'teal'} />
-                    </div>
-                    <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-4">
-                      <h3 className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brass">Where files live</h3>
-                      <p className="mt-1 text-sm leading-6 text-ash">Signal Loom reads these paths so you do not have to remember them.</p>
-                      <div className="mt-3 grid gap-2">
-                        {Object.entries(settings.paths).map(([key, value]) => (
-                          <div key={key} className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-xl border border-white/5 bg-black/15 px-3 py-2 text-xs">
-                            <span className="font-semibold uppercase tracking-[0.16em] text-ash">{key}</span>
-                            <span className="break-all font-mono text-ivory-dim">{value}</span>
+                    <HermesConnectOverview detection={detection} loading={loadingDetection} onRefresh={() => { loadDetection(); loadSettings(); }} />
+                    {settings && (
+                      <>
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <StatCard label="Version" value={versionLines[0] ?? 'Hermes'} tone={settings.runtime.updateAvailable ? 'brass' : 'teal'} />
+                          <StatCard label="Config file" value={`${settings.config.bytes.toLocaleString()} bytes`} />
+                          <StatCard label="Update status" value={settings.runtime.updateAvailable ? 'Update available' : 'Up to date'} tone={settings.runtime.updateAvailable ? 'brass' : 'teal'} />
+                        </div>
+                        <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-4">
+                          <h3 className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brass">Where files live</h3>
+                          <p className="mt-1 text-sm leading-6 text-ash">Signal Loom reads these paths so you do not have to remember them.</p>
+                          <div className="mt-3 grid gap-2">
+                            {Object.entries(settings.paths).map(([key, value]) => (
+                              <div key={key} className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-xl border border-white/5 bg-black/15 px-3 py-2 text-xs">
+                                <span className="font-semibold uppercase tracking-[0.16em] text-ash">{key}</span>
+                                <span className="break-all font-mono text-ivory-dim">{value}</span>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    </section>
-                    <SafeActions runningDiagnostic={runningDiagnostic} diagnosticOutput={diagnosticOutput} onRun={runDiagnostic} />
+                        </section>
+                        <SafeActions runningDiagnostic={runningDiagnostic} diagnosticOutput={diagnosticOutput} onRun={runDiagnostic} />
+                      </>
+                    )}
                   </div>
                 )}
 

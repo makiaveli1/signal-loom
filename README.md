@@ -1,6 +1,6 @@
 # Signal Loom
 
-Signal Loom is a local web cockpit for operating Hermes/Nero sessions, live agent lanes, approvals, settings, and conversation history from one dense but readable interface.
+Signal Loom is a local web cockpit for operating Hermes/Nero sessions, live helper lanes, approvals, settings, and conversation history from one dense but readable interface.
 
 It is built as a Next.js App Router application and is designed for a local Hermes runtime first: the browser talks to Next.js API routes, and those server-side routes proxy into Hermes/OpenClaw-compatible local services so secrets stay out of the client bundle.
 
@@ -27,7 +27,9 @@ It is built as a Next.js App Router application and is designed for a local Herm
   - Ariadne / Studio
   - Orion / Scout
   - Hermes / Mercury
-- Provides approval surfaces for human-gated actions and email review flows.
+- Provides approval surfaces for human-gated Hermes actions and local decision tracking.
+- Detects whether Hermes is installed, configured, API-reachable, and storing sessions.
+- Streams live Hermes state changes into the UI so CLI/TUI/API sessions refresh without manual reloads.
 - Provides a Hermes command/settings panel for safe diagnostics, selected config edits, and approval-gated update checks.
 - Supports theme switching with persisted, accessible swatches:
   - Midnight Broadcast
@@ -69,12 +71,12 @@ The recent polish pass focused on:
 ```text
 app/
   api/
-    hermes/                 Hermes settings, send, and update routes
+    hermes/                 Hermes detect, settings, and update routes
     openclaw/               Session, health, live, chat, and approval proxy routes
   layout.tsx                Root layout and theme bootstrap
   page.tsx                  App entry point
 components/
-  agents/                   Live lane cards and email review composer
+  agents/                   Live helper lane cards
   approvals/                Human approval cards and panels
   chat/                     Nero workspace, thread panes, messages, composer
   shell/                    Top bar, mission shell, runtime strip, command/settings panels
@@ -83,7 +85,6 @@ components/
 lib/
   hermes/                   Local Hermes state database readers
   openclaw/adapter/         Gateway/session/chat/health adapters
-  crm/                      Legacy concept/email gate support types
   conversation-groups.ts    Related-session grouping logic
   store.ts                  Zustand state store
   theme.ts                  Signal Loom theme definitions
@@ -115,6 +116,25 @@ NEXT_PUBLIC_HERMES_API_URL=http://127.0.0.1:8642
 
 The adapter still accepts older OpenClaw environment names while the migration finishes, but new setups should prefer Hermes names.
 
+
+## Connect Hermes
+
+Signal Loom now has a read-only detection route and Connect tab:
+
+```text
+GET /api/hermes/detect
+```
+
+It checks:
+
+- `hermes` binary and version
+- Hermes config path
+- Hermes env path
+- `~/.hermes/state.db`
+- local API reachability at `http://127.0.0.1:8642`
+
+If Hermes is missing or partly configured, the UI shows copy-paste commands instead of trying to run a browser-triggered installer. That is intentional: first-run install should stay explicit and local until the control plane has proper authentication and installer provenance checks.
+
 ## Install
 
 ```bash
@@ -126,16 +146,22 @@ npm install
 Start the dev server:
 
 ```bash
-npm run dev -- --hostname 0.0.0.0 --port 3098
+PORT=3098 npm run dev
 ```
 
 Open:
 
 ```text
-http://localhost:3098
+http://127.0.0.1:3098
 ```
 
-In WSL/Windows setups, `localhost` is usually more reliable from the Windows browser than raw IPv4 loopback.
+The default dev script binds to `0.0.0.0` so the app is reachable from the Windows browser when running inside WSL. If Windows localhost forwarding gets weird, use the WSL IP printed by `hostname -I`:
+
+```bash
+echo "http://$(hostname -I | awk '{print $1}'):3098"
+```
+
+Use `npm run dev:loopback` only when you intentionally want WSL-only loopback access.
 
 ## Production-style local launch
 
@@ -199,6 +225,7 @@ Important local routes:
 - `POST /api/openclaw/chat`
 - `POST /api/openclaw/chat/stream`
 - `POST /api/openclaw/approvals/resolve`
+- `GET /api/hermes/detect`
 - `GET /api/hermes/settings`
 - `POST /api/hermes/settings`
 - `POST /api/hermes/update`

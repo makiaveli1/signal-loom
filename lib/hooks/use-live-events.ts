@@ -1,9 +1,9 @@
 /**
  * useLiveEvents — subscribes to Hermes runtime change events via SSE.
  *
- * Bridges /api/openclaw/live (SSE) → Hermes state.db polling → store updates.
- * Uses silentReloadSessions for all live event refreshes so the thread list
- * never flickers or shows a loading spinner during background updates.
+ * Bridges /api/openclaw/live (SSE) → Hermes state.db delta polling → store
+ * updates. The route emits actionable session ids so CLI/TUI/API conversations
+ * can refresh the visible transcript without the operator touching the UI.
  */
 
 'use client';
@@ -11,12 +11,8 @@
 import { useEffect, useRef } from 'react';
 import { useSignalLoomStore } from '@/lib/store';
 
-// Sprint 10.6: Module-level cooldown for silentReloadSessions debouncing.
-// sessions_list takes ~2.6s per call at the gateway. SSE events fire many times per second.
-// Without debouncing, each event triggers a new sessions_list call, stacking up and
-// saturating the gateway. Minimum 3s gap between sessions_list calls.
 let _lastSessionsReload = 0;
-const SESSIONS_RELOAD_COOLDOWN_MS = 3000;
+const SESSIONS_RELOAD_COOLDOWN_MS = 1200;
 
 function safeReload(reloadSessions: () => Promise<void>) {
   const now = Date.now();
@@ -25,8 +21,28 @@ function safeReload(reloadSessions: () => Promise<void>) {
   void reloadSessions();
 }
 
+function activeSessionKeys(): Set<string> {
+  const state = useSignalLoomStore.getState();
+  const keys = new Set<string>();
+  keys.add(state.selectedThreadId);
+  for (const pane of state.workspace.panes) keys.add(pane.threadId);
+  for (const sessionId of state.followedSessionIds) keys.add(sessionId);
+  for (const thread of state.threads) {
+    if (thread.session?.id) keys.add(thread.session.id);
+  }
+  return keys;
+}
+
+function refreshTranscriptIfVisible(sessionKey?: string | null, parentSessionId?: string | null) {
+  if (!sessionKey) return;
+  const { loadMessagesForThread } = useSignalLoomStore.getState();
+  const visible = activeSessionKeys();
+  if (visible.has(sessionKey)) void loadMessagesForThread(sessionKey);
+  if (parentSessionId && visible.has(parentSessionId)) void loadMessagesForThread(parentSessionId);
+}
+
 export function useLiveEvents() {
-  const { loadMessagesForThread, setLiveConnected, silentReloadSessions } = useSignalLoomStore();
+  const { setLiveConnected, silentReloadSessions, ingestRuntimeEvent } = useSignalLoomStore();
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -39,46 +55,59 @@ export function useLiveEvents() {
       const es = new EventSource('/api/openclaw/live');
       esRef.current = es;
 
-      // Mark live connection as active when SSE stream opens
       es.addEventListener('connected', () => {
         if (!mounted) return;
         setLiveConnected(true);
-        // Silent refresh — threads stay visible, only data updates
         safeReload(silentReloadSessions);
       }, { once: true });
 
-      // Handle all gateway event types — all trigger silent background refresh
       es.addEventListener('gateway', (e) => {
         if (!mounted) return;
         try {
-          const msg = JSON.parse(e.data as string) as { type: string; data?: unknown };
+          const msg = JSON.parse(e.data as string) as {
+            type: string;
+            data?: {
+              source?: string;
+              sessionKey?: string;
+              parentSessionId?: string | null;
+              childSessionId?: string;
+              changedSessionIds?: string[];
+              messageId?: string | number;
+              toolCallId?: string;
+              toolName?: string;
+              role?: string;
+              text?: string;
+              status?: string;
+              taskPreview?: string;
+              argsPreview?: string;
+              resultPreview?: string;
+              at?: string;
+            };
+          };
 
-          if (msg.type === 'session.message') {
-            const data = msg.data as { sessionKey?: string };
-            if (data?.sessionKey) {
-              // Sprint 10.6: Only load by session key if the session is attached to a thread.
-              // t.id === data.sessionKey would match bare thread IDs (thread-1) before
-              // sessions are attached, causing a 500 with thread-1 as the session key.
-              const { threads } = useSignalLoomStore.getState();
-              const thread = threads.find((t) => t.session?.id === data.sessionKey);
-              if (thread) {
-                loadMessagesForThread(data.sessionKey); // pass SESSION KEY to API
-              }
+          if (msg.data?.source === 'hermes-runtime-events') {
+            ingestRuntimeEvent(msg);
+            if (msg.type === 'session.started' || msg.type.startsWith('subagent.')) {
+              safeReload(silentReloadSessions);
             }
-            safeReload(silentReloadSessions);
-
-          } else if (msg.type === 'sessions.changed') {
-            safeReload(silentReloadSessions);
-
-          } else if (msg.type === 'session.tool') {
-            safeReload(silentReloadSessions);
-
-          } else {
-            // Catch-all for any unhandled gateway event
-            safeReload(silentReloadSessions);
+            return;
           }
+
+          if (msg.type === 'session.message' || msg.type === 'session.tool' || msg.type.startsWith('subagent.')) {
+            refreshTranscriptIfVisible(msg.data?.sessionKey ?? msg.data?.childSessionId, msg.data?.parentSessionId ?? null);
+            safeReload(silentReloadSessions);
+            return;
+          }
+
+          if (msg.type === 'sessions.changed') {
+            for (const sessionKey of msg.data?.changedSessionIds ?? []) refreshTranscriptIfVisible(sessionKey, null);
+            safeReload(silentReloadSessions);
+            return;
+          }
+
+          safeReload(silentReloadSessions);
         } catch {
-          // Ignore parse errors
+          // Ignore malformed frames. The next heartbeat/delta will reconnect the dots.
         }
       });
 
@@ -91,11 +120,6 @@ export function useLiveEvents() {
           if (mounted) connect();
         }, 3000);
       };
-
-      return () => {
-        if (esRef.current) { esRef.current.close(); esRef.current = null; }
-        if (reconnectTimeoutRef.current) { clearTimeout(reconnectTimeoutRef.current); reconnectTimeoutRef.current = null; }
-      };
     }
 
     connect();
@@ -107,5 +131,5 @@ export function useLiveEvents() {
       if (reconnectTimeoutRef.current) { clearTimeout(reconnectTimeoutRef.current); reconnectTimeoutRef.current = null; }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run once on mount
+  }, []);
 }

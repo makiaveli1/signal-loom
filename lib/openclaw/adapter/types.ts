@@ -24,6 +24,9 @@ export interface OpenClawSession {
   agentId: string;               // e.g. "nero", "hephaestus"
   agentName: string;             // display name, e.g. "Nero"
   messageCount: number;          // total messages in session
+  toolCallCount?: number;        // total recorded tool calls, if Hermes exposes it
+  source?: string;               // Hermes source, e.g. tui, api, telegram
+  parentSessionId?: string | null; // direct Hermes parent session id for subagents
   lastMessageAt: string | null;  // ISO timestamp of last message
   status: SessionStatus;
   tags: string[];
@@ -61,7 +64,7 @@ export interface OpenClawAgent {
   accentColor: string;
   currentTask?: string;   // human-readable current task description
   lastActiveAt?: string;  // ISO timestamp
-  role: string;           // "execution" | "review" | "design" | "research" | "commercial"
+  role: string;           // "execution" | "review" | "design" | "research" | "runtime guidance"
 }
 
 export type AgentId = 'nero' | 'hephaestus' | 'argus' | 'ariadne' | 'orion' | 'hermes';
@@ -147,102 +150,7 @@ export type DelegationEventType =
   | 'agent_active'
   | 'agent_returned'
   | 'approval_requested'
-  | 'decision_made'
-  | 'email_proposed'
-  | 'email_approved'
-  | 'email_sent'
-  | 'email_denied';
-
-// ---------------------------------------------------------------------------
-// Email gate (Human-in-the-loop for Hermès email decisions)
-// ---------------------------------------------------------------------------
-
-/** Whether Hermès can act autonomously or a human must approve */
-export type EmailGateStatus =
-  | 'draft'             // Hermès is preparing — not yet ready for review
-  | 'needs_review'       // Hermès is ready — human must review before approval
-  | 'ready_for_approval' // Hermès recommends — human reviews and approves or revises
-  | 'human_approved'    // Human approved — ready to dispatch, not yet sent
-  | 'sending'           // Dispatch in progress
-  | 'sent'              // Successfully sent via Graph sendMail
-  | 'send_failed'       // Send failed — may retry if still approved
-  | 'human_denied';    // Human blocked — Hermès must revise and resubmit
-  // No email is ever sent without human_approved first.
-  // Only 'sent' represents a successful outbound delivery.
-
-export interface EmailGate {
-  id: string;
-  threadId?: string;
-  /** Summary of the proposed email content */
-  summary: string;
-  /** Who the email is addressed to */
-  toRecipient: string;
-  toRole?: string;
-  /** Executive level detected — always needs_review */
-  isExecutive: boolean;
-  /** First time Verdantia is emailing this recipient about this topic */
-  isNewTopic: boolean;
-  /** Hermès confidence: 'high' | 'medium' | 'low' */
-  confidence: 'high' | 'medium' | 'low';
-  /** Why the gate is in its current state */
-  rationale: string;
-  /** Human-readable timing of the proposed send */
-  proposedTiming: string;
-  gateStatus: EmailGateStatus;
-  /** ISO timestamp — when gate last changed state */
-  lastChangedAt: string;
-  /** Human's decision note if any */
-  humanNote?: string;
-  /** The proposed email itself */
-  proposedEmail: {
-    subject: string;
-    body: string;
-    footer?: string;
-  };
-  /** If true, the current draft has changed since human approval — approval is invalidated */
-  approvalInvalidated?: boolean;
-  /** Send audit — one entry per meaningful lifecycle event */
-  auditLog?: EmailGateAuditEntry[];
-  /** ISO timestamp of successful send */
-  sentAt?: string;
-  /** Last send error message */
-  sendError?: string;
-  /** Number of send attempts */
-  sendAttempts?: number;
-}
-
-export interface EmailGateAuditEntry {
-  at: string;
-  action: EmailGateAuditAction;
-  note?: string;
-}
-
-export type EmailGateAuditAction =
-  | 'draft_created'
-  | 'submitted_for_review'
-  | 'approved'
-  | 'denied'
-  | 'revision_submitted'
-  | 'approval_invalidated'
-  | 'send_initiated'
-  | 'send_succeeded'
-  | 'send_failed'
-  | 'retry_initiated';
-
-/**
- * Input to computeEmailGate()
- */
-export interface EmailGateInput {
-  threadId?: string;
-  summary: string;
-  toRecipient: string;
-  toRole?: string;
-  proposedEmail: {
-    subject: string;
-    body: string;
-  };
-  isNewTopic?: boolean;
-}
+  | 'decision_made';
 
 // ---------------------------------------------------------------------------
 // Adapter result types (always returned, never thrown to UI)

@@ -37,10 +37,6 @@ interface ThreadListItemProps {
   thread: Thread;
   isSelected: boolean;
   onSelect: () => void;
-  hasPendingEmail?: boolean;
-  emailGateUrgent?: boolean;
-  /** CRM: concept readiness badge for lead-associated threads */
-  conceptBadge?: { label: string; color: string } | null;
   /** Sprint 8: Number of child sessions delegated from this thread (for indicator) */
   childCount?: number;
   isHidden?: boolean;
@@ -48,7 +44,7 @@ interface ThreadListItemProps {
   onUnhide?: () => void;
 }
 
-export function ThreadListItem({ thread, isSelected, onSelect, conceptBadge, childCount, isHidden = false, onHide, onUnhide }: ThreadListItemProps) {
+export function ThreadListItem({ thread, isSelected, onSelect, childCount, isHidden = false, onHide, onUnhide }: ThreadListItemProps) {
   const statusColor = STATUS_COLORS[thread.status];
   const statusBg    = STATUS_BG[thread.status];
   const isActive    = thread.status === 'active';
@@ -147,21 +143,6 @@ export function ThreadListItem({ thread, isSelected, onSelect, conceptBadge, chi
             {STATUS_LABELS[thread.status]}
           </span>
 
-          {/* CRM concept badge */}
-          {conceptBadge && (
-            <span
-              className="inline-flex items-center gap-1 text-xs font-mono px-1.5 py-0.5 rounded-full flex-shrink-0"
-              style={{
-                color: conceptBadge.color,
-                background: `${conceptBadge.color}18`,
-                border: `1px solid ${conceptBadge.color}35`,
-                fontSize: '9px',
-              }}
-              title="Concept readiness"
-            >
-              {conceptBadge.label}
-            </span>
-          )}
 
           {/* Badges + time */}
           <div className="flex items-center gap-1.5 flex-shrink-0">

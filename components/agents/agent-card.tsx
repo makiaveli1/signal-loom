@@ -29,7 +29,8 @@ export function AgentCard({ agent, onClick }: AgentCardProps) {
       onClick={onClick}
       disabled={!onClick}
       className={cn(
-        'group relative w-full overflow-hidden rounded-xl border p-3 text-left transition-all duration-200 disabled:cursor-default',
+        'agent-card group relative w-full overflow-hidden rounded-xl border p-3 text-left transition-all duration-200 disabled:cursor-default',
+        `agent-card-${agent.status}`,
         onClick && 'cursor-pointer hover:-translate-y-0.5 active:translate-y-0',
         !isActive && 'hover:bg-elevated/40'
       )}

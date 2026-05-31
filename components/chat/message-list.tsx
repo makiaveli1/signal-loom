@@ -46,6 +46,7 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
   const { highlightedMessageId, composerState, childToParentMap } = useSignalLoomStore();
   const isStreaming = composerState.isStreaming;
   const streamingContent = composerState.streamingResponse;
+  const showThinkingCard = composerState.isSending && (!streamingContent || composerState.streamingStatus === 'connecting');
   const messages = rawMessages.filter((message, index) => {
     const isLastRawMessage = index === rawMessages.length - 1;
     const isLiveStreamingPlaceholder =
@@ -94,15 +95,24 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
   }, [isAtBottom, scrollToBottom]);
 
   const prevMessageCountRef = useRef(messages.length);
+  const seenMessageIdsRef = useRef<Set<string>>(new Set(messages.map((message) => message.id)));
+  const [newArrivalIds, setNewArrivalIds] = useState<Set<string>>(new Set());
 
-  // Count new messages when user is scrolled away
+  // Count and mark new messages when user is scrolled away / live updates arrive.
   useEffect(() => {
     const prevCount = prevMessageCountRef.current;
-    if (messages.length > prevCount && !isAtBottom) {
-      setNewMessageCount((n) => n + (messages.length - prevCount));
+    const seen = seenMessageIdsRef.current;
+    const arrivals = messages.filter((message) => !seen.has(message.id)).map((message) => message.id);
+    if (arrivals.length > 0) {
+      setNewArrivalIds(new Set(arrivals));
+      const clearTimer = setTimeout(() => setNewArrivalIds(new Set()), 900);
+      for (const id of arrivals) seen.add(id);
+      if (!isAtBottom) setNewMessageCount((n) => n + Math.max(messages.length - prevCount, arrivals.length));
+      prevMessageCountRef.current = messages.length;
+      return () => clearTimeout(clearTimer);
     }
     prevMessageCountRef.current = messages.length;
-  }, [messages.length, isAtBottom]);
+  }, [messages, isAtBottom]);
 
   // Scroll to highlighted message
   useEffect(() => {
@@ -137,28 +147,23 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
         <div className="space-y-4">
           {conversationBundle && conversationBundle.threads.length > 1 && (
             <motion.div
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.22, ease: 'easeOut' }}
-              className="mx-auto flex max-w-3xl items-center gap-3 rounded-2xl border border-brass/20 bg-[linear-gradient(135deg,rgba(201,160,58,0.10),rgba(255,255,255,0.025))] px-4 py-3 shadow-xl shadow-black/15"
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="mx-auto flex max-w-3xl items-center gap-2 rounded-full border border-brass/14 bg-white/[0.018] px-3 py-1.5 text-[11px] text-ash shadow-sm shadow-black/10"
             >
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-brass/25 bg-brass/10 text-sm text-brass">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-brass/18 bg-brass/5 text-[10px] text-brass" aria-hidden="true">
                 {conversationBundle.reason === 'delegated' ? '↱' : '∿'}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-brass">
-                  Continuous chat
-                  <span className="rounded-full border border-white/10 px-1.5 py-0.5 font-mono tracking-normal text-ivory-dim">
-                    {conversationBundle.threads.length} sessions joined
-                  </span>
-                </div>
-                <PretextSmartTitle
-                  text={`${conversationBundle.topic ?? thread.title} · related messages are shown together in timestamp order`}
-                  maxWidth={520}
-                  maxLines={2}
-                  className="mt-1 text-xs text-ivory-dim"
-                />
-              </div>
+              </span>
+              <span className="font-mono uppercase tracking-[0.18em] text-brass/80">Continuous chat</span>
+              <span className="text-ash-muted">·</span>
+              <span>{conversationBundle.threads.length} sessions joined</span>
+              <PretextSmartTitle
+                text={conversationBundle.topic ?? thread.title}
+                maxWidth={360}
+                maxLines={1}
+                className="hidden min-w-0 flex-1 text-ash-muted md:block"
+              />
             </motion.div>
           )}
           {messages.length === 0 && (
@@ -176,9 +181,10 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
             const isLast = idx === messages.length - 1;
             const previousMessage = messages[idx - 1];
             const showSourceDivider = !!message.sourceThreadId && message.sourceThreadId !== previousMessage?.sourceThreadId;
+            const renderKey = `${message.sourceThreadId ?? thread.id}:${message.id}:${idx}`;
             return (
               <div
-                key={message.id}
+                key={renderKey}
                 ref={(el) => {
                   if (el) messageRefs.current.set(message.id, el);
                   else messageRefs.current.delete(message.id);
@@ -191,12 +197,17 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
                   message={message}
                   isHighlighted={message.id === highlightedMessageId}
                   isStreaming={isLast && isLastMsgStreaming}
-                  isNew={false}
+                  isNew={newArrivalIds.has(message.id)}
                   isChildSession={!!childToParentMap[message.sourceThreadId ?? thread.id]}
                 />
               </div>
             );
           })}
+          <AnimatePresence>
+            {showThinkingCard && (
+              <ThinkingCard status={composerState.streamingStatus} />
+            )}
+          </AnimatePresence>
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
@@ -230,6 +241,30 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+function ThinkingCard({ status }: { status: string }) {
+  const label = status === 'connecting' ? 'Opening stream' : status === 'finalizing' ? 'Finalizing' : 'Nero is thinking';
+  return (
+    <motion.div
+      key="thinking-card"
+      initial={{ opacity: 0, y: 8, scale: 0.985 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 6, scale: 0.985 }}
+      transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+      className="thinking-card mx-auto flex max-w-3xl items-center gap-3 rounded-2xl border px-4 py-3"
+      aria-live="polite"
+    >
+      <div className="message-avatar message-avatar-nero flex-shrink-0" aria-hidden="true">N</div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-nero-brass">
+          {label}
+          <span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>
+        </div>
+        <p className="mt-1 text-xs text-ivory-dim">Routing context, tools, and live state into one answer.</p>
+      </div>
+    </motion.div>
   );
 }
 

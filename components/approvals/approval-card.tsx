@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { Approval } from '@/lib/types';
 
-/** Denied-state next-step cue — harmonized across approval-card and email-gate-card */
+/** Denied-state next-step cue for local/gateway approval cards. */
 const DENIAL_NEXT_STEP = 'Revise and resubmit — return to the linked thread to address feedback.';
 
 const URGENCY_CONFIG: Record<Approval['urgency'], { label: string; color: string; bg: string; border: string }> = {

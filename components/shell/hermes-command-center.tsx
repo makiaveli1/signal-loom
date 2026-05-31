@@ -43,6 +43,15 @@ const CAPABILITIES: Capability[] = [
     prompt: 'Search prior Hermes sessions for context related to this task, summarize only the durable facts that matter, then continue from there without making me repeat myself.',
   },
   {
+    id: 'explain-hermes',
+    label: 'Explain this screen',
+    lane: 'Guide',
+    accent: 'jade',
+    description: 'Turn the dense cockpit into a plain-English walkthrough.',
+    helper: 'Good for first-time users or when the operator labels are too much.',
+    prompt: 'Explain how to use this Hermes workspace in plain English: what Loom, Live Lanes, Approvals, Command, Settings, and the composer do. Include the first three actions a new user should try.',
+  },
+  {
     id: 'watcher',
     label: 'Create a watcher',
     lane: 'Cron',
@@ -70,13 +79,13 @@ const CAPABILITIES: Capability[] = [
     prompt: 'Review the pending approval/risky action in this thread. Tell me approve, revise, or block, with the reason and the safest next action.',
   },
   {
-    id: 'commercial',
-    label: 'Draft outreach',
-    lane: 'Mercury',
+    id: 'connect-hermes',
+    label: 'Connect Hermes',
+    lane: 'Setup',
     accent: 'brass',
-    description: 'Draft Verdantia outreach, follow-ups, posts, or offer copy.',
-    helper: 'Commercial output stays draft-only unless you explicitly approve sending/posting.',
-    prompt: 'Mercury lane: draft this as Verdantia-facing commercial communication. Keep it useful, specific, non-salesy, and approval-gated. Return 2 options plus your recommendation.',
+    description: 'Check whether Hermes is installed, configured, and reachable from this app.',
+    helper: 'Use this when the UI is open but sessions, chat, or tools feel disconnected.',
+    prompt: 'Diagnose my local Hermes setup for Signal Loom. Check binary, config path, env path, API server, state database, gateway status, and give me the safest next command to run.',
   },
   {
     id: 'qa',
@@ -105,21 +114,17 @@ export function HermesCommandCenter() {
     closeHermesCommandCenter,
     setComposerDraft,
     toggleApprovalsPanel,
-    toggleEmailComposer,
     approvalsPanelOpen,
-    emailComposerOpen,
     runtime,
     agents,
-    emailGates,
     approvals,
   } = useSignalLoomStore();
 
   const stats = useMemo(() => {
     const active = agents.filter((agent) => agent.status === 'active').length;
-    const pendingEmail = emailGates.filter((gate) => gate.gateStatus === 'needs_review' || gate.gateStatus === 'ready_for_approval').length;
     const pendingApprovals = approvals.filter((approval) => approval.status === undefined || approval.status === 'pending').length;
-    return { active, pendingEmail, pendingApprovals };
-  }, [agents, approvals, emailGates]);
+    return { active, pendingApprovals };
+  }, [agents, approvals]);
 
   useEffect(() => {
     if (!hermesCommandCenterOpen) return;
@@ -216,7 +221,7 @@ export function HermesCommandCenter() {
           <StatusPill label="Queue" value={runtime.queue} good={runtime.queue === 'healthy'} />
           <StatusPill label="Heartbeat" value={runtime.heartbeatFreshness} good={runtime.heartbeatFreshness === 'fresh'} />
           <StatusPill label="Active agents" value={`${stats.active}`} good={stats.active > 0} />
-          <StatusPill label="Needs review" value={`${stats.pendingApprovals + stats.pendingEmail}`} good={stats.pendingApprovals + stats.pendingEmail === 0} />
+          <StatusPill label="Needs review" value={`${stats.pendingApprovals}`} good={stats.pendingApprovals === 0} />
         </div>
 
         <div className="hermes-command-quickrow" aria-label="Open review panels">
@@ -226,15 +231,7 @@ export function HermesCommandCenter() {
             onClick={toggleApprovalsPanel}
           >
             <span>Needs review</span>
-            <strong>{stats.pendingApprovals + stats.pendingEmail}</strong>
-          </button>
-          <button
-            type="button"
-            className={cn('hermes-command-quick', emailComposerOpen && 'is-open')}
-            onClick={toggleEmailComposer}
-          >
-            <span>Email drafts</span>
-            <strong>{stats.pendingEmail}</strong>
+            <strong>{stats.pendingApprovals}</strong>
           </button>
           <button
             type="button"

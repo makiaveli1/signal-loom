@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import type { Thread } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
 import { useSignalLoomStore } from '@/lib/store';
 
 const STATUS_LABELS: Record<Thread['status'], string> = {
@@ -33,7 +32,7 @@ export function ThreadHeader({
   delegationCount?: number;
   onOpenChildSession?: (childId: string) => void;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const { childToParentMap, threads } = useSignalLoomStore();
   const parentSessionId = childToParentMap[thread.id];
@@ -44,46 +43,49 @@ export function ThreadHeader({
   const hasLinkedAgents = thread.linkedAgents.length > 0;
   const hasApproval = thread.hasApproval;
   const hasParent = !!parentThread;
+  const detailCount = Number(hasLinkedAgents) + Number(hasDelegation) + Number(hasParent) + Number(hasApproval);
 
   return (
     <div
-      className="flex flex-col"
+      className="thread-focus-header flex flex-col"
       style={{
-        background: 'var(--mb-shell)',
-        borderBottom: '1px solid rgba(255,255,255,0.05)',
+        background: 'color-mix(in srgb, var(--sl-shell) 86%, transparent)',
+        borderBottom: '1px solid var(--sl-border-soft)',
       }}
     >
-      {/* Always-visible header strip */}
-      <div
-        className={cn(
-          'flex items-center justify-between px-4 transition-all duration-200',
-          collapsed ? 'py-2' : 'py-3'
-        )}
-      >
-        {/* Left: toggle + title + core badges */}
-        <div className="flex items-center gap-3 min-w-0">
-          <button
-            onClick={() => setCollapsed((v) => !v)}
-            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded transition-all duration-150 hover:bg-white/[0.06] active:scale-95 sm:h-6 sm:w-6"
-            style={{ color: 'var(--mb-ash)' }}
-            title={collapsed ? 'Expand thread header' : 'Collapse header — give more room to chat'}
-            aria-label={collapsed ? 'Expand thread header' : 'Collapse thread header'}
-          >
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 10 10"
-              fill="none"
-              className={cn('transition-transform duration-200', !collapsed && 'rotate-90deg')}
-            >
-              <path d="M3 2L7 5L3 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+      <div className="flex min-h-[3rem] items-center justify-between gap-3 px-4 py-2">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+            style={{ background: statusColor, boxShadow: `0 0 14px ${statusColor}42` }}
+            aria-hidden="true"
+          />
+          <div className="min-w-0">
+            <h1 className="truncate text-sm font-semibold tracking-[-0.01em] text-ivory">
+              {thread.title}
+            </h1>
+            <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] text-ash">
+              <span className="font-mono" style={{ color: statusColor }}>{STATUS_LABELS[thread.status]}</span>
+              {hasApproval && <span className="text-brass">· approval waiting</span>}
+            </div>
+          </div>
+        </div>
 
-          <h1 className="text-sm font-semibold text-ivory truncate">
-            {thread.title}
-          </h1>
+        <button
+          type="button"
+          onClick={() => setDetailsOpen((v) => !v)}
+          className="thread-details-button flex h-8 flex-shrink-0 items-center gap-2 rounded-full border px-3 text-[11px] font-mono text-ash transition-colors hover:text-ivory"
+          style={{ borderColor: 'var(--sl-border-soft)', background: 'var(--sl-control)' }}
+          aria-expanded={detailsOpen}
+          aria-label={detailsOpen ? 'Hide thread details' : 'Show thread details'}
+        >
+          Details
+          {detailCount > 0 && <span className="text-brass">{detailCount}</span>}
+        </button>
+      </div>
 
+      {detailsOpen && (
+        <div className="flex flex-wrap items-center gap-2 border-t px-4 py-2" style={{ borderColor: 'var(--sl-border-soft)' }}>
           <Badge
             variant="outline"
             className="flex-shrink-0 text-xs font-mono"
@@ -96,104 +98,57 @@ export function ThreadHeader({
             {STATUS_LABELS[thread.status]}
           </Badge>
 
-          {hasApproval && (
-            <Badge
-              variant="outline"
-              className="flex-shrink-0 text-xs font-mono"
+          {hasLinkedAgents && thread.linkedAgents.map((agentId) => (
+            <AgentChip key={agentId} agentId={agentId} />
+          ))}
+
+          {hasDelegation && (
+            onOpenChildSession ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const firstChildId = thread.linkedChildren?.[0];
+                  if (firstChildId) onOpenChildSession(firstChildId);
+                }}
+                title="Open first child session"
+                className="text-xs font-mono px-2 py-1 rounded-full border cursor-pointer transition-all duration-100 hover:opacity-80 active:scale-95"
+                style={{
+                  borderColor: 'rgba(155,141,200,0.3)',
+                  color: '#9b8dc8',
+                  background: 'rgba(155,141,200,0.08)',
+                }}
+              >
+                Open {delegationCount} delegated lane{delegationCount !== 1 ? 's' : ''}
+              </button>
+            ) : (
+              <span
+                className="text-xs font-mono px-2 py-1 rounded-full border"
+                style={{
+                  borderColor: 'rgba(155,141,200,0.3)',
+                  color: '#9b8dc8',
+                  background: 'rgba(155,141,200,0.08)',
+                }}
+              >
+                {delegationCount} delegated lane{delegationCount !== 1 ? 's' : ''}
+              </span>
+            )
+          )}
+
+          {hasParent && (
+            <span
+              className="text-xs font-mono px-2 py-1 rounded-full border"
               style={{
-                borderColor: 'rgba(201,160,58,0.4)',
-                color: 'var(--mb-brass)',
-                background: 'var(--mb-brass-dim)',
+                borderColor: 'rgba(58,184,200,0.3)',
+                color: '#3ab8c8',
+                background: 'rgba(58,184,200,0.08)',
               }}
+              title={`Spawned from: ${parentThread.title}`}
             >
-              ▲ approval
-            </Badge>
+              Parent: {parentThread.title.length > 42 ? parentThread.title.slice(0, 42) + '…' : parentThread.title}
+            </span>
           )}
         </div>
-
-        {/* Right: secondary badges (hidden when collapsed) */}
-        {!collapsed && (
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {hasLinkedAgents && (
-              <div className="flex items-center gap-1.5">
-                {thread.linkedAgents.map((agentId) => (
-                  <AgentChip key={agentId} agentId={agentId} />
-                ))}
-              </div>
-            )}
-
-            {hasDelegation && (
-              onOpenChildSession ? (
-                <button
-                  onClick={() => {
-                    const firstChildId = thread.linkedChildren?.[0];
-                    if (firstChildId) onOpenChildSession(firstChildId);
-                  }}
-                  title="Open first child session"
-                  className="text-xs font-mono px-2 py-0.5 rounded-full border cursor-pointer transition-all duration-100 hover:opacity-80 active:scale-95"
-                  style={{
-                    borderColor: 'rgba(155,141,200,0.3)',
-                    color: '#9b8dc8',
-                    background: 'rgba(155,141,200,0.08)',
-                  }}
-                >
-                  {delegationCount} child{delegationCount !== 1 ? 's' : ''} ↗
-                </button>
-              ) : (
-                <span
-                  className="text-xs font-mono px-2 py-0.5 rounded-full border"
-                  style={{
-                    borderColor: 'rgba(155,141,200,0.3)',
-                    color: '#9b8dc8',
-                    background: 'rgba(155,141,200,0.08)',
-                  }}
-                >
-                  {delegationCount} child session{delegationCount !== 1 ? 's' : ''}
-                </span>
-              )
-            )}
-
-            {hasParent && (
-              <span
-                className="text-xs font-mono px-2 py-0.5 rounded-full border"
-                style={{
-                  borderColor: 'rgba(58,184,200,0.3)',
-                  color: '#3ab8c8',
-                  background: 'rgba(58,184,200,0.08)',
-                }}
-                title={`Spawned from: ${parentThread.title}`}
-              >
-                ↙ {parentThread.title.length > 20 ? parentThread.title.slice(0, 20) + '…' : parentThread.title}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Collapsed: inline hints */}
-        {collapsed && (
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono text-ivory-dim">Session Info</span>
-            {hasDelegation && (
-              <span
-                className="text-[10px] font-mono px-1.5 py-0.5 rounded-full"
-                style={{
-                  background: 'rgba(155,141,200,0.10)',
-                  border: '1px solid rgba(155,141,200,0.20)',
-                  color: '#9b8dc8',
-                }}
-              >
-                {delegationCount} delegated
-              </span>
-            )}
-            {hasApproval && (
-              <span className="text-[10px] font-mono" style={{ color: 'var(--mb-brass)' }}>
-                · ▲
-              </span>
-            )}
-            <span className="text-[10px] text-ash-muted">expand ↗</span>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }

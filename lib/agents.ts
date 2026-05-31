@@ -53,14 +53,14 @@ export const AGENT_LANE_META: Record<AgentId, AgentLaneMeta> = {
     outputLabel: 'source packs, comparisons',
   },
   hermes: {
-    lane: 'Mercury',
-    laneName: 'Mercury Lane',
-    role: 'commercial drafting + outreach',
-    delegationReason: 'commercial drafting',
+    lane: 'Runtime',
+    laneName: 'Hermes Runtime',
+    role: 'workflow guidance + automation setup',
+    delegationReason: 'Hermes workflow guidance',
     name: 'Hermes',
-    visualName: 'Hermes / Mercury',
-    stateVerb: 'Composing',
-    outputLabel: 'offers, drafts, follow-ups',
+    visualName: 'Hermes / Runtime',
+    stateVerb: 'Guiding',
+    outputLabel: 'sessions, tools, setup',
   },
 };
 

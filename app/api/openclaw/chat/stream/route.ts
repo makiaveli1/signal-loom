@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Request body must be an object' }, { status: 400 });
   }
 
-  const { sessionKey, content, model, history } = body as Record<string, unknown>;
+  const { sessionKey, content, model, history, messages: bodyMessages } = body as Record<string, unknown>;
 
   if (!sessionKey || typeof sessionKey !== 'string') {
     return NextResponse.json({ error: 'sessionKey is required' }, { status: 400 });
@@ -52,9 +52,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Message too long (max 10000 chars)' }, { status: 400 });
   }
 
+  const sourceHistory = Array.isArray(history)
+    ? history
+    : Array.isArray(bodyMessages)
+      ? bodyMessages
+      : [];
+
   const messages: ChatMessage[] = [
-    ...(Array.isArray(history) ? history : []).map((m: Record<string, unknown>) => ({
-      role: (m.role === 'action-summary' ? 'assistant' : m.role) as ChatMessage['role'],
+    ...sourceHistory.map((m: Record<string, unknown>) => ({
+      role: (m.role === 'action-summary' || m.role === 'nero' ? 'assistant' : m.role) as ChatMessage['role'],
       content: String(m.content ?? ''),
       name: String(m.name ?? ''),
     })),

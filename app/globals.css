@@ -642,6 +642,10 @@ html[data-signal-theme="papyrus-dawn"] {
   min-width: 2rem;
 }
 
+.composer-options-trigger {
+  min-height: 2rem;
+}
+
 .composer-shell::before {
   content: '';
   position: absolute;
@@ -689,31 +693,29 @@ html[data-signal-theme="papyrus-dawn"] {
    Premium chat transcript surfaces
    ======================================================================== */
 .message-card-premium {
-  width: min(82%, 54rem);
-  border-color: var(--sl-border-soft);
+  width: min(78%, 52rem);
+  border-color: color-mix(in srgb, var(--sl-text) 7%, transparent);
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--sl-text) 5%, transparent), transparent 72%),
-    color-mix(in srgb, var(--sl-panel) 92%, transparent);
+    linear-gradient(135deg, color-mix(in srgb, var(--sl-text) 3%, transparent), transparent 76%),
+    color-mix(in srgb, var(--sl-panel) 88%, transparent);
   box-shadow:
-    var(--sl-shadow-control),
-    inset 0 1px 0 color-mix(in srgb, var(--sl-text) 5%, transparent);
-  backdrop-filter: blur(10px);
+    0 10px 28px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 color-mix(in srgb, var(--sl-text) 4%, transparent);
+  backdrop-filter: blur(8px);
 }
 
 .message-card-nero {
-  border-left: 2px solid color-mix(in srgb, var(--sl-danger) 68%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--sl-danger) 46%, transparent);
   background:
-    radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--sl-danger) 12%, transparent), transparent 34%),
-    linear-gradient(135deg, color-mix(in srgb, var(--sl-panel-raised) 96%, transparent), color-mix(in srgb, var(--sl-panel) 92%, transparent));
+    linear-gradient(135deg, color-mix(in srgb, var(--sl-panel-raised) 94%, transparent), color-mix(in srgb, var(--sl-panel) 90%, transparent));
 }
 
 .message-card-user {
-  width: min(76%, 44rem);
-  border-color: color-mix(in srgb, var(--sl-accent) 24%, transparent);
-  border-right: 2px solid color-mix(in srgb, var(--sl-accent) 72%, transparent);
+  width: min(72%, 42rem);
+  border-color: color-mix(in srgb, var(--sl-accent) 18%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--sl-accent) 50%, transparent);
   background:
-    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--sl-accent) 14%, transparent), transparent 36%),
-    linear-gradient(135deg, color-mix(in srgb, var(--sl-panel-raised) 92%, transparent), color-mix(in srgb, var(--sl-stage) 92%, transparent));
+    linear-gradient(135deg, color-mix(in srgb, var(--sl-panel-raised) 90%, transparent), color-mix(in srgb, var(--sl-stage) 90%, transparent));
 }
 
 .message-card-system,
@@ -727,6 +729,95 @@ html[data-signal-theme="papyrus-dawn"] {
 
 .message-card-child {
   border-left-color: rgba(58, 184, 200, 0.58);
+}
+
+.message-card-streaming {
+  isolation: isolate;
+  border-color: color-mix(in srgb, var(--mb-teal) 26%, var(--sl-border-soft));
+  box-shadow:
+    var(--sl-shadow-control),
+    inset 0 1px 0 color-mix(in srgb, var(--mb-teal) 12%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--mb-teal) 10%, transparent);
+}
+
+.message-card-streaming::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 0%, color-mix(in srgb, var(--mb-teal) 16%, transparent) 38%, transparent 70%);
+  transform: translateX(-120%);
+  animation: loom-soft-scan 2.6s ease-in-out infinite;
+  z-index: -1;
+}
+
+.thinking-card {
+  border-color: color-mix(in srgb, var(--mb-brass) 20%, transparent);
+  background:
+    radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--mb-brass) 12%, transparent), transparent 38%),
+    color-mix(in srgb, var(--sl-panel) 88%, transparent);
+  box-shadow: var(--sl-shadow-control), inset 0 1px 0 color-mix(in srgb, var(--sl-text) 5%, transparent);
+}
+
+.thinking-dots {
+  display: inline-flex;
+  gap: 0.2rem;
+  align-items: center;
+}
+
+.thinking-dots i {
+  width: 0.25rem;
+  height: 0.25rem;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.38;
+  animation: loom-dot-breathe 1.35s ease-in-out infinite;
+}
+
+.thinking-dots i:nth-child(2) { animation-delay: 140ms; }
+.thinking-dots i:nth-child(3) { animation-delay: 280ms; }
+
+.subagent-session-card {
+  position: relative;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--mb-teal) 18%, transparent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--mb-teal) 7%, transparent), transparent 54%),
+    var(--mb-panel);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--mb-teal) 42%, transparent);
+}
+
+.subagent-session-card.is-active::before,
+.agent-card-active::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: linear-gradient(180deg, transparent, var(--mb-teal), transparent);
+  animation: loom-edge-current 2.4s ease-in-out infinite;
+}
+
+.agent-card-waiting .signal-pulse,
+.agent-card-waiting::before {
+  animation-duration: 2.8s;
+}
+
+@keyframes loom-soft-scan {
+  0% { transform: translateX(-120%); opacity: 0; }
+  22% { opacity: 0.85; }
+  58% { opacity: 0.3; }
+  100% { transform: translateX(120%); opacity: 0; }
+}
+
+@keyframes loom-dot-breathe {
+  0%, 100% { transform: translateY(0); opacity: 0.32; }
+  50% { transform: translateY(-2px); opacity: 1; }
+}
+
+@keyframes loom-edge-current {
+  0%, 100% { opacity: 0.3; transform: translateY(-24%); }
+  50% { opacity: 1; transform: translateY(24%); }
 }
 
 .message-avatar {
@@ -865,7 +956,8 @@ html[data-signal-theme="papyrus-dawn"] {
     min-width: 2.875rem;
   }
 
-  .composer-shortcuts button {
+  .composer-shortcuts button,
+  .composer-options-trigger {
     min-height: 2.75rem;
     padding-inline: 0.85rem;
   }
@@ -915,7 +1007,94 @@ html[data-signal-theme="papyrus-dawn"] {
 .layout-utility-bar {
   border-color: var(--sl-border-soft);
   background:
-    linear-gradient(90deg, color-mix(in srgb, var(--sl-accent) 8%, transparent), color-mix(in srgb, var(--sl-decision) 7%, transparent), color-mix(in srgb, var(--sl-shell) 86%, transparent));
+    linear-gradient(90deg, color-mix(in srgb, var(--sl-shell) 94%, transparent), color-mix(in srgb, var(--sl-stage) 88%, transparent));
+}
+
+.calm-workbench-bar {
+  min-height: 3.15rem;
+}
+
+.layout-workbench-title {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.layout-workbench-actions {
+  position: relative;
+}
+
+.layout-menu {
+  position: relative;
+}
+
+.layout-menu > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.layout-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.layout-menu:not([open]) .layout-menu-panel {
+  display: none;
+}
+
+.layout-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.45rem);
+  z-index: 65;
+  width: min(34rem, calc(100vw - 1.5rem));
+  border: 1px solid var(--sl-border-soft);
+  border-radius: 1rem;
+  background:
+    radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--sl-accent) 9%, transparent), transparent 34%),
+    color-mix(in srgb, var(--sl-shell) 98%, black 2%);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.48), inset 0 1px 0 color-mix(in srgb, var(--sl-text) 5%, transparent);
+  padding: 0.75rem;
+}
+
+.layout-menu-section {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.layout-menu-label {
+  color: var(--sl-text-faint);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.layout-menu-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--sl-border-soft);
+  color: var(--sl-text-subtle);
+  font-size: 0.72rem;
+}
+
+.rail-toggle[aria-pressed="true"] .rail-toggle-dot {
+  background: var(--sl-accent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--sl-accent) 30%, transparent);
+}
+
+.rail-toggle[aria-pressed="false"] .rail-toggle-dot {
+  background: var(--mb-ash-muted);
+}
+
+.rail-toggle-dot {
+  display: inline-block;
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 999px;
 }
 
 .mobile-shell-backdrop {
@@ -997,7 +1176,7 @@ html[data-signal-theme="papyrus-dawn"] {
 }
 
 .layout-pill:hover,
-.layout-pill[aria-pressed="false"] {
+.rail-toggle[aria-pressed="true"] {
   color: var(--mb-brass);
   border-color: rgba(201, 160, 58, 0.28);
   background: rgba(201, 160, 58, 0.06);
@@ -1304,8 +1483,18 @@ html[data-signal-theme="papyrus-dawn"] {
 .pane-mode-switcher {
   border-color: var(--sl-border-soft);
   background:
-    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--sl-decision) 8%, transparent), transparent 28%),
-    color-mix(in srgb, var(--sl-stage) 68%, transparent);
+    linear-gradient(90deg, color-mix(in srgb, var(--sl-stage) 76%, transparent), color-mix(in srgb, var(--sl-shell) 82%, transparent));
+}
+
+.pane-mode-switcher-quiet {
+  min-height: 2.35rem;
+}
+
+.pane-layout-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  width: min(15rem, calc(100vw - 1.5rem));
 }
 
 .view-mode-button {
