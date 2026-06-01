@@ -3661,9 +3661,9 @@ html[data-signal-rhythm="terminal"] .message-copy {
   }
 
   .composer-options-panel {
-    max-height: 4.25rem;
+    max-height: 3.75rem;
     overflow-y: auto !important;
-    padding: 0.45rem !important;
+    padding: 0.35rem !important;
   }
 
   .composer-options-panel > div:first-child {
@@ -3683,7 +3683,7 @@ html[data-signal-rhythm="terminal"] .message-copy {
 
   .composer-shortcuts button {
     flex: 0 0 auto;
-    min-height: 2.5rem;
+    min-height: 2.25rem;
   }
 
   .transcript-scroll {
@@ -3718,7 +3718,7 @@ html[data-signal-rhythm="terminal"] .message-copy {
   .composer-flat-input textarea {
     min-width: 0;
     max-width: 100%;
-    min-height: 2.15rem !important;
+    min-height: 2rem !important;
   }
 
   .composer-flat-input .composer-icon-button {
