@@ -31,12 +31,17 @@ It is built as a Next.js App Router application and is designed for a local Herm
 - Detects whether Hermes is installed, configured, API-reachable, and storing sessions.
 - Streams live Hermes state changes into the UI so CLI/TUI/API sessions refresh without manual reloads.
 - Provides a Hermes command/settings panel for safe diagnostics, selected config edits, and approval-gated update checks.
-- Supports theme switching with persisted, accessible swatches:
+- Supports theme switching with persisted, accessible operating-mode swatches:
   - Midnight Broadcast
-  - Nero Ember
+  - Operator Ember
   - Oracle Teal
   - Papyrus Dawn
-  - Sentry Contrast
+  - Sentry High Contrast
+  - Monoline Terminal
+  - Glass Command
+  - Greenroom Grid
+  - Ivory Map
+  - Violet Wiretap
 - Collapses dense side rails into mobile drawers on compact screens.
 
 ## Current design direction
@@ -186,8 +191,11 @@ Use these before committing or pushing:
 ```bash
 npm run typecheck
 npm run lint
+npm run test
 npm run build
 ```
+
+GitHub Actions runs the same gates on pushes and pull requests to `main`.
 
 The current build may emit a Turbopack/NFT warning traced through `next.config.ts` and `app/api/openclaw/live/route.ts`. It does not currently fail compilation, but it is still worth cleaning in a future pass.
 
@@ -250,6 +258,7 @@ The repo intentionally excludes local agent/runtime artifacts:
 - `.hermes/`
 - `output/`
 - `.verification-screenshots/`
+- `.qa-artifacts/`
 - `.next/`
 - environment files
 - TypeScript build info
