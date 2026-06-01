@@ -30,15 +30,49 @@ async function collectShellMetrics(page: Page) {
       'template[data-next-error-message]',
     ].some((selector) => document.querySelector(selector));
 
+    const visibleControls = [...document.querySelectorAll('button, [role="button"], input, textarea, select')].filter((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    });
+    const unnamedVisibleControls = visibleControls.filter((element) => {
+      const label =
+        element.getAttribute('aria-label') ||
+        element.getAttribute('title') ||
+        element.getAttribute('placeholder') ||
+        element.textContent ||
+        '';
+      return !label.trim();
+    }).length;
+    const ids = [...document.querySelectorAll('[id]')].map((element) => element.id).filter(Boolean);
+    const duplicateIds = ids.filter((id, index) => ids.indexOf(id) !== index);
+
     return {
       overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       overlayPresent,
       failTextPresent: failText.some((text) => bodyText.includes(text)),
+      duplicateIds,
+      unnamedVisibleControls,
       composerShell: box('.composer-shell'),
       composerFrame: box('.composer-input-frame'),
       transcript: box('.transcript-scroll'),
     };
   }, FAIL_TEXT);
+}
+
+async function expectShellClean(page: Page, testInfo: { attach: (name: string, options: { body: string; contentType: string }) => Promise<void> }, attachmentName: string) {
+  const metrics = await collectShellMetrics(page);
+  await testInfo.attach(attachmentName, {
+    body: JSON.stringify(metrics, null, 2),
+    contentType: 'application/json',
+  });
+
+  expect(metrics.overflowX).toBe(0);
+  expect(metrics.overlayPresent).toBe(false);
+  expect(metrics.failTextPresent).toBe(false);
+  expect(metrics.duplicateIds).toEqual([]);
+  expect(metrics.unnamedVisibleControls).toBe(0);
+  return metrics;
 }
 
 test.describe('Signal Loom cockpit smoke', () => {
@@ -54,17 +88,30 @@ test.describe('Signal Loom cockpit smoke', () => {
     await expect(page.getByText('Signal Loom').first()).toBeVisible();
     await expect(page.getByRole('textbox', { name: /Message (Hermes Agent|Nero)/i })).toBeVisible();
 
-    const metrics = await collectShellMetrics(page);
-    await testInfo.attach('shell-metrics', {
-      body: JSON.stringify(metrics, null, 2),
-      contentType: 'application/json',
-    });
-
-    expect(metrics.overflowX).toBe(0);
-    expect(metrics.overlayPresent).toBe(false);
-    expect(metrics.failTextPresent).toBe(false);
+    await expectShellClean(page, testInfo, 'shell-metrics');
     expect(consoleErrors).toEqual([]);
     expect(pageErrors).toEqual([]);
+  });
+
+  test('persists a dark and light theme across reloads', async ({ page }, testInfo) => {
+    await page.goto('/');
+    await expect(page.getByRole('textbox', { name: /Message (Hermes Agent|Nero)/i })).toBeVisible();
+
+    await page.locator('.layout-menu-summary').click();
+    await page.getByRole('radio', { name: /^Operator Ember:/ }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-signal-theme', 'operator-ember');
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-signal-theme', 'operator-ember');
+    await expect(page.getByText('Ember').first()).toBeVisible();
+
+    await page.locator('.layout-menu-summary').click();
+    await page.getByRole('radio', { name: /^Papyrus Dawn:/ }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-signal-theme', 'papyrus-dawn');
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-signal-theme', 'papyrus-dawn');
+    await expect(page.getByText('Dawn').first()).toBeVisible();
+
+    await expectShellClean(page, testInfo, 'theme-persistence-metrics');
   });
 
   test('keeps the mobile composer usable when options are open', async ({ browser }, testInfo) => {
