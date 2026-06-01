@@ -6,6 +6,23 @@ import type { OpenClawMessage } from '@/lib/openclaw/adapter/types';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function emptyHistoryPayload(error?: unknown, limit = 80) {
+  return {
+    ok: true,
+    data: {
+      messages: [],
+      truncated: false,
+      contentTruncated: false,
+      droppedMessages: false,
+      totalBytes: 0,
+      degraded: true,
+      error: error instanceof Error ? error.message : 'Hermes session history unavailable',
+      requestedLimit: limit,
+    },
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
 /**
  * GET /api/openclaw/sessions/history?sessionKey=<key>&limit=<n>
  *
@@ -56,13 +73,13 @@ export async function GET(request: NextRequest) {
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
     });
   } catch (error) {
-    return new Response(JSON.stringify({
-      ok: false,
-      error: error instanceof Error ? error.message : 'Failed to load Hermes session history',
-      retryable: true,
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    return new Response(JSON.stringify(emptyHistoryPayload(error, limit)), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        'X-Signal-Loom-Degraded': 'session-history',
+      },
     });
   }
 }

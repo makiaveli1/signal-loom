@@ -10,7 +10,7 @@ import type { Pane } from '@/lib/types';
 
 function EmptyState({ loading }: { loading?: boolean }) {
   return (
-    <main
+    <div
       className="flex flex-col flex-1 items-center justify-center relative"
       style={{ background: 'var(--mb-carbon)' }}
     >
@@ -18,7 +18,7 @@ function EmptyState({ loading }: { loading?: boolean }) {
         {loading ? (
           <>
             <div
-              className="w-16 h-16 rounded-full flex items-center justify-center mb-4 mx-auto"
+              className="mb-4 mx-auto flex h-16 w-16 items-center justify-center rounded-[var(--sl-radius-card)]"
               style={{ background: 'var(--mb-elevated)' }}
             >
               <div
@@ -52,7 +52,7 @@ function EmptyState({ loading }: { loading?: boolean }) {
           </>
         )}
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -82,9 +82,16 @@ export function NeroWorkspace() {
     return () => clearTimeout(timer);
   }, [pendingCloseId, closePane]);
 
-  // Keyboard handling: Tab cycles active pane, Escape closes monitor pane
+  // Keyboard handling: keep normal Tab navigation intact. Pane cycling is a
+  // power shortcut, not a focus trap.
   useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      return !!target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]');
+    };
+
     const handler = (e: KeyboardEvent) => {
+      if (isEditableTarget(e.target)) return;
       if (e.key === 'Escape') {
         if (workspace.panes.some((p) => p.role === 'monitor')) {
           const monitor = workspace.panes.find((p) => p.role === 'monitor');
@@ -92,7 +99,8 @@ export function NeroWorkspace() {
         }
         return;
       }
-      if (e.key === 'Tab' || e.key === '`') {
+      const wantsPaneCycle = (e.key === '`' && (e.metaKey || e.ctrlKey)) || (e.key === 'Tab' && (e.metaKey || e.ctrlKey));
+      if (wantsPaneCycle) {
         e.preventDefault();
         const panes = workspace.panes;
         const idx = panes.findIndex((p) => p.id === workspace.activePaneId);

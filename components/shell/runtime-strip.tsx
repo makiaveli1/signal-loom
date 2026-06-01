@@ -21,12 +21,7 @@ export function RuntimeStrip() {
       {/* Left — one calm system readout; details live in the title tooltip. */}
       <div className="runtime-health flex min-w-0 flex-shrink-0 items-center gap-2">
         <span
-          className="inline-flex items-center gap-2 rounded-full border px-2 py-0.5"
-          style={{
-            borderColor: systemHealthy ? 'color-mix(in srgb, var(--sl-success) 28%, transparent)' : 'color-mix(in srgb, var(--sl-danger) 34%, transparent)',
-            background: systemHealthy ? 'color-mix(in srgb, var(--sl-success) 7%, transparent)' : 'color-mix(in srgb, var(--sl-danger) 11%, transparent)',
-            color: systemHealthy ? 'var(--sl-success)' : 'var(--sl-danger)',
-          }}
+          className={`runtime-health-pill inline-flex items-center gap-2 px-2 py-0.5 ${systemHealthy ? 'is-healthy' : 'is-degraded'}`}
           title={`Gateway ${runtime.gateway} · queue ${runtime.queue} · heartbeat ${runtime.heartbeatFreshness}`}
         >
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: systemHealthy ? 'var(--sl-success)' : 'var(--sl-danger)' }} />
@@ -42,8 +37,7 @@ export function RuntimeStrip() {
         {runtime.issueCount > 0 ? (
           <div className="flex items-center gap-2">
             <span
-              className="flex items-center gap-1.5 px-2 py-0.5 rounded text-xs"
-              style={{ background: 'rgba(196,90,58,0.15)', color: 'var(--mb-rust)' }}
+              className="runtime-issue-pill flex items-center gap-1.5 px-2 py-0.5 text-xs"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
                 <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1.5" />
@@ -54,7 +48,7 @@ export function RuntimeStrip() {
             </span>
             {runtime.issueDescription && (
               <span
-                className="text-ash-muted text-xs"
+                className="runtime-issue-description text-ash-muted text-xs"
                 style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
               >
                 {runtime.issueDescription}

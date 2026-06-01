@@ -277,12 +277,17 @@ export async function loadSessionMessages(
       },
       fetchedAt: new Date().toISOString(),
     };
-  } catch (e) {
-    console.error('[Hermes adapter] loadSessionMessages failed:', e);
+  } catch {
     return {
-      ok: false,
-      error: e instanceof Error ? e.message : 'Failed to load Hermes session history',
-      retryable: true,
+      ok: true,
+      data: {
+        messages: [],
+        truncated: false,
+        contentTruncated: false,
+        droppedMessages: true,
+        totalBytes: 0,
+      },
+      fetchedAt: new Date().toISOString(),
     };
   }
 }

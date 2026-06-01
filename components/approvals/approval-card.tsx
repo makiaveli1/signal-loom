@@ -77,11 +77,12 @@ export function ApprovalCard({
 
   return (
     <div
-      className="approval-card rounded-xl border p-4 transition-all duration-150"
+      className="approval-card rounded-[var(--sl-radius-card)] border p-4 transition-all duration-150"
       style={{
-        background: 'var(--mb-elevated)',
+        background: isDecided ? 'var(--sl-surface-flat)' : 'var(--sl-surface-raised)',
         borderColor: cfg.border,
-        borderLeftWidth: '3px',
+        borderLeft: `3px solid ${cfg.color}`,
+        boxShadow: 'none',
         opacity: isDecided ? '0.75' : '1',
       }}
       data-automation-id={`approval-card-${approval.id}`}
@@ -130,7 +131,7 @@ export function ApprovalCard({
       </p>
 
       {source === 'mock' && (
-        <p className="mb-3 rounded-md border border-white/10 px-2 py-1.5 text-xs text-ash-muted">
+        <p className="mb-3 rounded-md border px-2 py-1.5 text-xs text-ash-muted" style={{ borderColor: 'var(--sl-rule-hairline)', background: 'var(--sl-surface-flat)' }}>
           Demo approval — not from a live gateway request.
         </p>
       )}
@@ -143,9 +144,9 @@ export function ApprovalCard({
       {/* Decision note */}
       {approval.decisionNote && (
         <div
-          className="text-xs p-2 rounded mb-3"
+          className="mb-3 rounded border p-2 text-xs"
           style={{
-            background: 'rgba(0,0,0,0.15)',
+            background: 'var(--sl-surface-flat)',
             border: `1px solid ${statusCfg.border}`,
             color: 'var(--mb-ivory-dim)',
           }}
@@ -168,10 +169,10 @@ export function ApprovalCard({
       {/* Next-step cue for denied items */}
       {status === 'denied' && (
         <div
-          className="text-xs p-2 rounded mb-3"
+          className="mb-3 rounded border p-2 text-xs"
           style={{
-            background: 'rgba(201,160,58,0.06)',
-            border: '1px solid rgba(201,160,58,0.18)',
+            background: 'color-mix(in srgb, var(--sl-surface-flat) 92%, var(--sl-decision) 8%)',
+            border: '1px solid var(--sl-decision-edge)',
             color: 'var(--mb-ivory-dim)',
           }}
         >
@@ -188,8 +189,8 @@ export function ApprovalCard({
             onChange={(e) => setNote(e.target.value)}
             rows={2}
             placeholder="Note for the agent (optional)"
-            className="w-full text-xs px-2 py-1.5 rounded border bg-transparent text-ivory resize-none"
-            style={{ borderColor: 'rgba(255,255,255,0.1)', outline: 'none' }}
+            className="w-full resize-none rounded border bg-transparent px-2 py-1.5 text-xs text-ivory"
+            style={{ borderColor: 'var(--sl-rule-visible)', outline: 'none', background: 'var(--sl-surface-flat)' }}
           />
           <div className="flex gap-2">
             <button
@@ -214,8 +215,8 @@ export function ApprovalCard({
         <div className="flex items-center gap-2">
           <button
             onClick={() => onApprove?.(approval, note || undefined)}
-            className="flex-1 text-xs font-semibold py-1.5 rounded-md transition-all duration-150 hover:opacity-90 disabled:opacity-40"
-            style={{ background: 'var(--mb-jade)', color: 'var(--mb-carbon)' }}
+            className="flex-1 rounded-md border py-1.5 text-xs font-semibold transition-all duration-150 hover:opacity-90 disabled:opacity-40"
+            style={{ background: 'color-mix(in srgb, var(--sl-success) 14%, transparent)', color: 'var(--mb-jade)', borderColor: 'color-mix(in srgb, var(--sl-success) 38%, var(--sl-rule-hairline))' }}
             data-automation-id="approve-button"
           >
             ✓ Approve
@@ -226,7 +227,7 @@ export function ApprovalCard({
             style={{
               background: 'transparent',
               color: 'var(--mb-ivory-dim)',
-              border: '1px solid rgba(255,255,255,0.1)',
+              border: '1px solid var(--sl-rule-hairline)',
             }}
             data-automation-id="deny-button"
           >
@@ -239,7 +240,7 @@ export function ApprovalCard({
             style={{
               background: 'transparent',
               color: 'var(--mb-brass)',
-              border: '1px solid rgba(201,160,58,0.3)',
+              border: '1px solid var(--sl-decision-edge)',
             }}
             title="Jump to linked thread"
             data-automation-id="review-thread-button"
@@ -259,7 +260,7 @@ export function ApprovalCard({
             style={{
               background: 'transparent',
               color: 'var(--mb-brass)',
-              border: '1px solid rgba(201,160,58,0.3)',
+              border: '1px solid var(--sl-decision-edge)',
             }}
             title="Jump to linked thread"
           >

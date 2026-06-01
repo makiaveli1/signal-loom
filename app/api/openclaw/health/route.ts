@@ -17,6 +17,16 @@ function healthySnapshot() {
   };
 }
 
+function degradedSnapshot(message: string) {
+  return {
+    gateway: { reachable: false, error: message },
+    queue: { healthy: false, depth: 0 },
+    heartbeat: { fresh: false, lastSeen: new Date().toISOString() },
+    canvas: { enabled: false },
+    browser: { lanesActive: 0, lanesTotal: 1 },
+  };
+}
+
 export async function GET() {
   try {
     await listHermesSessions(1);
@@ -28,19 +38,12 @@ export async function GET() {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Hermes runtime unavailable';
-    return NextResponse.json(
-      {
-        error: message,
-        retryable: true,
-        data: {
-          gateway: { reachable: false, error: message },
-          queue: { healthy: false },
-          heartbeat: { fresh: false },
-          canvas: { enabled: false },
-          browser: { lanesActive: 0, lanesTotal: 4 },
-        },
+    return NextResponse.json(degradedSnapshot(message), {
+      headers: {
+        'Cache-Control': 'no-store',
+        'X-Adapter-Fetched-At': new Date().toISOString(),
+        'X-Signal-Loom-Degraded': 'health',
       },
-      { status: 502 },
-    );
+    });
   }
 }

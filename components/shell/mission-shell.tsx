@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { TopBar } from './top-bar';
 import { RuntimeStrip } from './runtime-strip';
@@ -278,8 +278,33 @@ function LayoutUtilityBar({
   onToggleLanes: () => void;
   onReset: () => void;
 }) {
+  const menuRef = useRef<HTMLDetailsElement | null>(null);
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const selectedTheme = SIGNAL_THEMES.find((theme) => theme.id === themeId) ?? SIGNAL_THEMES[0];
   const selectedThemeIndex = Math.max(0, SIGNAL_THEMES.findIndex((theme) => theme.id === themeId));
+
+  useEffect(() => {
+    if (!themeMenuOpen) return;
+
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setThemeMenuOpen(false);
+      }
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && menuRef.current?.contains(target)) return;
+      setThemeMenuOpen(false);
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [themeMenuOpen]);
 
   const moveThemeSelection = (direction: 1 | -1) => {
     const nextIndex = (selectedThemeIndex + direction + SIGNAL_THEMES.length) % SIGNAL_THEMES.length;
@@ -310,11 +335,11 @@ function LayoutUtilityBar({
   };
 
   return (
-    <div className="layout-utility-bar calm-workbench-bar flex items-center justify-between gap-3 border-b px-3 py-2 sm:px-4">
+    <div className="layout-utility-bar calm-workbench-bar flex items-center justify-between gap-3 border-b px-3 py-2 sm:px-4" role="toolbar" aria-label="Workspace layout controls">
       <div className="layout-workbench-title min-w-0">
-        <span className="layout-drag-dot" aria-hidden="true" />
+        <span className="layout-signal-dot" aria-hidden="true" />
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-ash-muted">
+          <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.16em] text-ash-muted">
             <span>Workspace</span>
             <span className="theme-current-chip" title={selectedTheme.intent}>{selectedTheme.shortLabel}</span>
           </div>
@@ -325,67 +350,79 @@ function LayoutUtilityBar({
       </div>
 
       <div className="layout-workbench-actions flex flex-shrink-0 items-center justify-end gap-1.5">
-        <button type="button" onClick={onToggleSignals} className="layout-pill rail-toggle" aria-pressed={signalsOpen}>
+        <button type="button" onClick={onToggleSignals} className="layout-pill rail-toggle" aria-pressed={signalsOpen} aria-label={`${signalsOpen ? 'Hide' : 'Show'} Loom rail`}>
           <span className="rail-toggle-dot" aria-hidden="true" />
           Loom
         </button>
-        <button type="button" onClick={onToggleLanes} className="layout-pill rail-toggle" aria-pressed={lanesOpen}>
+        <button type="button" onClick={onToggleLanes} className="layout-pill rail-toggle" aria-pressed={lanesOpen} aria-label={`${lanesOpen ? 'Hide' : 'Show'} Live Lanes rail`}>
           <span className="rail-toggle-dot" aria-hidden="true" />
           Lanes
         </button>
 
-        <details className="layout-menu">
+        <details ref={menuRef} className="layout-menu" open={themeMenuOpen} onToggle={(event) => setThemeMenuOpen(event.currentTarget.open)}>
           <summary className="layout-pill layout-menu-summary">
             View
             <span className="hidden sm:inline">· {selectedTheme.shortLabel}</span>
           </summary>
           <div className="layout-menu-panel" role="group" aria-label="View and theme controls">
             <div className="layout-menu-section">
-              <span className="layout-menu-label">Theme</span>
-              <div className="theme-swatch-group desktop-theme-swatch-group" role="radiogroup" aria-label="Signal Loom theme">
+              <div className="theme-board-header">
+                <span className="layout-menu-label">Theme board</span>
+                <span className="theme-board-current">{selectedTheme.label}</span>
+              </div>
+              <div className="theme-board" role="radiogroup" aria-label="Signal Loom theme">
                 {SIGNAL_THEMES.map((theme, themeIndex) => {
                   const isSelected = theme.id === themeId;
+                  const previewStyle = {
+                    '--theme-canvas': theme.preview.canvas,
+                    '--theme-surface': theme.preview.surface,
+                    '--theme-accent': theme.preview.accent,
+                    '--theme-decision': theme.preview.decision,
+                    '--theme-danger': theme.preview.danger,
+                  } as CSSProperties;
+
                   return (
                     <button
                       key={theme.id}
                       type="button"
                       role="radio"
                       aria-checked={isSelected}
-                      aria-label={`${theme.label}: ${theme.intent} ${theme.description}`}
+                      aria-label={`${theme.label}: ${theme.intent} Control ${theme.control}, depth ${theme.depth}, rhythm ${theme.rhythm}. ${theme.description}`}
                       title={`${theme.intent} ${theme.description}`}
                       tabIndex={isSelected ? 0 : -1}
                       onClick={() => onThemeChange(theme.id)}
                       onKeyDown={(event) => handleThemeKeyDown(event, themeIndex)}
-                      className="theme-swatch-pill"
+                      className="theme-card theme-calibration boxed-corner-mark"
+                      data-theme-texture={theme.texture}
+                      data-theme-control={theme.control}
+                      data-theme-depth={theme.depth}
+                      data-theme-tone={theme.tone}
+                      style={previewStyle}
                     >
-                      <span className="theme-swatch-stack" aria-hidden="true">
-                        {theme.preview.map((color) => (
-                          <span key={color} className="theme-swatch-dot" style={{ background: color }} />
-                        ))}
+                      <span className="theme-card-preview" aria-hidden="true">
+                        <span className="theme-card-canvas" />
+                        <span className="theme-card-panel theme-card-panel-main" />
+                        <span className="theme-card-panel theme-card-panel-side" />
+                        <span className="theme-card-route" />
+                        <span className="theme-card-alert" />
                       </span>
-                      <span className="theme-swatch-label">{theme.shortLabel}</span>
-                      <span className="theme-swatch-tone">{theme.tone}</span>
+                      <span className="theme-card-copy">
+                        <span className="theme-card-title">{theme.shortLabel}</span>
+                        <span className="theme-card-intent">{theme.intent}</span>
+                      </span>
+                      <span className="theme-card-meta" aria-hidden="true">
+                        <span>{theme.control}</span>
+                        <span>{theme.depth}</span>
+                        <span>{theme.rhythm}</span>
+                      </span>
                     </button>
                   );
                 })}
               </div>
-              <label className="mobile-theme-select">
-                <span>Theme</span>
-                <select
-                  aria-label="Signal Loom theme"
-                  value={themeId}
-                  onChange={(event) => onThemeChange(event.currentTarget.value as SignalThemeId)}
-                >
-                  {SIGNAL_THEMES.map((theme) => (
-                    <option key={theme.id} value={theme.id}>{theme.shortLabel}</option>
-                  ))}
-                </select>
-                <strong>{selectedTheme.label}</strong>
-              </label>
             </div>
             <div className="layout-menu-footer">
               <span>{selectedTheme.intent}</span>
-              <button type="button" onClick={onReset} className="layout-pill subdued" aria-label="Reset layout">
+              <button type="button" onClick={() => { onReset(); setThemeMenuOpen(false); }} className="layout-pill subdued" aria-label="Reset layout">
                 Reset layout
               </button>
             </div>
@@ -411,7 +448,7 @@ function CollapsedRailTab({
     <button
       type="button"
       onClick={onClick}
-      className={`collapsed-rail-tab collapsed-rail-tab-${side} flex h-full w-10 flex-shrink-0 items-center justify-center border-x text-[10px] font-semibold uppercase tracking-[0.22em] text-ash transition-colors hover:text-ivory`}
+      className={`collapsed-rail-tab collapsed-rail-tab-${side} flex h-full w-11 flex-shrink-0 items-center justify-center border-x text-[11px] font-semibold uppercase tracking-[0.18em] text-ash transition-colors hover:text-ivory`}
       title={`Show ${label} rail`}
       aria-label={`Show ${label} rail`}
     >

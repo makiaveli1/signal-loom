@@ -54,10 +54,11 @@ export function ApprovalsPanel() {
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: '100%' }}
           transition={{ type: 'spring', stiffness: 380, damping: 32, mass: 0.8 }}
-          className="approval-panel-shell flex flex-col h-full border-l"
+          className="approval-panel-shell flex h-full flex-col border-l"
           style={{
-            background: 'var(--mb-shell)',
-            borderColor: 'rgba(255,255,255,0.05)',
+            background: 'var(--sl-surface)',
+            borderColor: 'var(--sl-rule-hairline)',
+            boxShadow: 'none',
             width: '300px',
             minWidth: '300px',
           }}
@@ -65,7 +66,7 @@ export function ApprovalsPanel() {
           {/* Panel header */}
           <div
             className="flex items-center justify-between px-4 py-3 border-b"
-            style={{ borderColor: 'rgba(255,255,255,0.05)' }}
+            style={{ borderColor: 'var(--sl-rule-hairline)', background: 'var(--sl-surface-raised)' }}
           >
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold uppercase tracking-widest text-brass">
@@ -96,9 +97,9 @@ export function ApprovalsPanel() {
           <div
             className="approval-source-summary px-4 py-3 border-b text-xs"
             style={{
-              borderColor: 'rgba(255,255,255,0.04)',
+              borderColor: 'var(--sl-rule-hairline)',
               color: 'var(--mb-ash)',
-              background: 'rgba(201,160,58,0.04)',
+              background: 'color-mix(in srgb, var(--sl-surface-flat) 94%, var(--sl-decision) 6%)',
             }}
           >
             <p>Pending Hermes decisions surface first. Local decisions are clearly marked when they are inferred rather than synced.</p>

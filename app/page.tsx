@@ -6,7 +6,9 @@ import { LiveEventsProvider } from '../components/providers/live-events-provider
 export default function HomePage() {
   return (
     <LiveEventsProvider>
-      <MissionShell />
+      <main id="signal-loom-main" className="h-dvh" aria-label="Signal Loom cockpit">
+        <MissionShell />
+      </main>
     </LiveEventsProvider>
   );
 }

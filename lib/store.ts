@@ -53,8 +53,25 @@ type RuntimeActivity = {
 };
 
 const HIDDEN_THREADS_STORAGE_KEY = 'signal-loom-hidden-conversations-v1';
+const LOCAL_SESSION_PREFIX = 'signal-loom:local:';
 
 type ThreadDockMode = 'focus' | 'all' | 'hidden';
+
+function createLocalSessionId(): string {
+  const timestamp = Date.now().toString(36);
+  const suffix = Math.random().toString(36).slice(2, 8);
+  return `${LOCAL_SESSION_PREFIX}${timestamp}-${suffix}`;
+}
+
+function isLocalSessionThread(threadId: string): boolean {
+  return threadId.startsWith(LOCAL_SESSION_PREFIX);
+}
+
+function titleFromMessage(content: string): string {
+  const firstLine = content.split('\n').find((line) => line.trim())?.trim() ?? '';
+  if (!firstLine) return 'New Hermes session';
+  return firstLine.length > 54 ? `${firstLine.slice(0, 51)}…` : firstLine;
+}
 
 function readHiddenThreadIds(): string[] {
   if (typeof window === 'undefined') return [];
@@ -279,6 +296,7 @@ interface SignalLoomStore {
   closeHermesSettings: () => void;
   setComposerDraft: (draft: string) => void;
   clearComposerDraft: () => void;
+  startNewSession: () => string;
 
   // Sprint 3: Data loading via OpenClaw adapter
   loadSessions: () => Promise<void>;
@@ -533,6 +551,41 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   clearComposerDraft: () =>
     set({ composerDraft: null }),
 
+  startNewSession: () => {
+    const now = new Date().toISOString();
+    const threadId = createLocalSessionId();
+    const newThread: Thread = {
+      id: threadId,
+      title: 'New Hermes session',
+      status: 'active',
+      lastActive: now,
+      unreadCount: 0,
+      hasApproval: false,
+      linkedAgents: [],
+      messages: [],
+      pinned: true,
+    };
+
+    set((state) => ({
+      threads: [newThread, ...state.threads.filter((thread) => thread.id !== threadId)],
+      selectedThreadId: threadId,
+      threadDockMode: 'focus',
+      composerDraft: null,
+      highlightedMessageId: null,
+      workspace: {
+        ...state.workspace,
+        activePaneId: state.workspace.activePaneId || state.workspace.panes[0]?.id || 'pane-center',
+        panes: state.workspace.panes.map((pane, index) =>
+          pane.id === state.workspace.activePaneId || (!state.workspace.activePaneId && index === 0)
+            ? { ...pane, threadId, active: true }
+            : { ...pane, active: false }
+        ),
+      },
+    }));
+
+    return threadId;
+  },
+
   // ---- Sprint 3: OpenClaw adapter data loading ----
 
   loadSessions: async () => {
@@ -747,9 +800,12 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
     set((state) => ({
       threads: (() => {
         const newSessions = result.data;
+        const localThreads = state.threads.filter((thread) =>
+          isLocalSessionThread(thread.id) && !adaptedThreads.some((adaptedThread) => adaptedThread.id === thread.id)
+        );
         if (adaptedThreads.length > 0) {
           // Backfill session metadata + Sprint 8 linkedChildren into adapted threads.
-          return adaptedThreads.map((t) => {
+          const sessionThreads = adaptedThreads.map((t) => {
             const sess = newSessions.find((s) => s.title === t.title);
             return {
               ...t,
@@ -758,12 +814,13 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
               linkedChildren: childSessionIds[t.id] ?? [],
             } as Thread;
           });
+          return [...localThreads, ...sessionThreads];
         }
         // adaptedThreads is empty (likely all sessions filtered as subagent).
         // Add the first real session as a thread so the workspace can display it.
         if (newSessions.length > 0) {
           const first = newSessions[0];
-          return [{
+          return [...localThreads, {
             id: first.id,
             title: first.title,
             status: (first.status === 'done' || first.status === 'idle' ? 'done' : 'active') as Thread['status'],
@@ -773,7 +830,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
             linkedChildren: childSessionIds[first.id] ?? [],
           }] as Thread[];
         }
-        return state.threads;
+        return localThreads.length > 0 ? localThreads : state.threads;
       })(),
       sessions: result.data,  // store raw sessions for thread creation on select
       sessionsLoading: false,
@@ -791,8 +848,8 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
           childIds.map((childId) => [childId, parentId])
         )
       ),
-      selectedThreadId: firstRealSession?.id ?? state.selectedThreadId,
-      workspace: firstRealSession
+      selectedThreadId: isLocalSessionThread(state.selectedThreadId) ? state.selectedThreadId : firstRealSession?.id ?? state.selectedThreadId,
+      workspace: firstRealSession && !isLocalSessionThread(state.selectedThreadId)
         ? {
             ...state.workspace,
             panes: state.workspace.panes.map((p) =>
@@ -932,10 +989,15 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
           followed: existing?.followed ?? t.followed,
         } satisfies Thread;
       });
-
+      const localThreads = state.threads.filter((thread) =>
+        isLocalSessionThread(thread.id) && !refreshedThreads.some((refreshedThread) => refreshedThread.id === thread.id)
+      );
+      const nextSelectedThreadId = isLocalSessionThread(state.selectedThreadId)
+        ? state.selectedThreadId
+        : firstRealSession?.id ?? state.selectedThreadId;
 
       return {
-        threads: refreshedThreads,
+        threads: [...localThreads, ...refreshedThreads],
         sessions: result.data,
         sessionsFetchedAt: result.fetchedAt,
         agents: derivedAgents,
@@ -944,7 +1006,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
         childToParentMap: Object.fromEntries(
           Object.entries(childSessionIds).flatMap(([parentId, childIds]) => childIds.map((childId) => [childId, parentId]))
         ),
-        selectedThreadId: firstRealSession?.id ?? state.selectedThreadId,
+        selectedThreadId: nextSelectedThreadId,
       };
     });
   },
@@ -999,17 +1061,30 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
         runtime: {
           ...state.runtime,
           gateway: 'down' as const,
+          issueCount: 1,
+          issueDescription: result.error,
         },
       }));
       return;
     }
-    const { gateway, queue, heartbeat } = result.data;
+    const { gateway, queue, heartbeat, canvas, browser } = result.data;
+    const issueDescription = gateway.reachable
+      ? (!queue.healthy
+          ? 'Hermes queue is backed up'
+          : !heartbeat.fresh
+            ? 'Hermes runtime heartbeat is stale'
+            : undefined)
+      : gateway.error ?? 'Hermes runtime unavailable';
     set((state) => ({
       runtime: {
         ...state.runtime,
         gateway: gateway.reachable ? 'healthy' as const : 'down' as const,
         queue: queue.healthy ? 'healthy' as const : 'backed_up' as const,
         heartbeatFreshness: heartbeat.fresh ? 'fresh' as const : 'stale' as const,
+        browserLanes: browser.lanesActive,
+        canvasEnabled: canvas.enabled,
+        issueCount: issueDescription ? 1 : 0,
+        issueDescription,
       },
     }));
   },
@@ -1410,7 +1485,12 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
     set((state) => ({
       threads: state.threads.map((t) =>
         t.id === threadId
-          ? { ...t, messages: [...t.messages, userMessage], lastActive: new Date().toISOString() }
+          ? {
+              ...t,
+              title: isLocalSessionThread(t.id) && t.messages.length === 0 ? titleFromMessage(content) : t.title,
+              messages: [...t.messages, userMessage],
+              lastActive: new Date().toISOString(),
+            }
           : t
       ),
     }));
@@ -1503,7 +1583,12 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
       return {
         threads: state.threads.map((t) =>
           t.id === threadId
-            ? { ...t, messages: [...t.messages, userMessage, emptyAssistant] as Thread['messages'], lastActive: startedAt }
+            ? {
+                ...t,
+                title: isLocalSessionThread(t.id) && t.messages.length === 0 ? titleFromMessage(content) : t.title,
+                messages: [...t.messages, userMessage, emptyAssistant] as Thread['messages'],
+                lastActive: startedAt,
+              }
             : t
         ),
         sessionMessages: {

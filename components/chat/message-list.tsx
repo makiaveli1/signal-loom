@@ -70,7 +70,8 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
     if (!bottomRef.current || !scrollRef.current) return;
     if (force || isAtBottom) {
       isAutoScrolling.current = true;
-      bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      bottomRef.current.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth' });
       setTimeout(() => { isAutoScrolling.current = false; }, 300);
     }
   }, [isAtBottom]);
@@ -124,7 +125,8 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
       const el = messageRefs.current.get(highlightedMessageId);
       if (el) {
         isAutoScrolling.current = true;
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        el.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'center' });
         const timer = setTimeout(() => {
           isAutoScrolling.current = false;
           useSignalLoomStore.getState().highlightMessage(null);
@@ -145,18 +147,19 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
     <div className="flex flex-col flex-1 min-h-0 relative">
       <ScrollArea
         ref={scrollRef}
-        className="flex-1 px-5 py-6 transcript-scroll"
+        className="signal-chat-canvas flex-1 px-5 py-6 transcript-scroll"
         onScroll={handleScroll}
       >
-        <div className="space-y-4">
+        <div className="transcript-stack space-y-4">
           {conversationBundle && conversationBundle.threads.length > 1 && (
             <motion.div
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="mx-auto flex max-w-3xl items-center gap-2 rounded-full border border-brass/14 bg-white/[0.018] px-3 py-1.5 text-[11px] text-ash shadow-sm shadow-black/10"
+              className="mx-auto flex max-w-3xl items-center gap-2 rounded-[var(--sl-radius-control)] border px-3 py-1.5 text-[11px] text-ash"
+              style={{ background: 'var(--sl-surface-flat)', borderColor: 'var(--sl-rule-hairline)', boxShadow: 'none' }}
             >
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-brass/18 bg-brass/5 text-[10px] text-brass" aria-hidden="true">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--sl-radius-control)] border border-brass/18 bg-brass/5 text-[10px] text-brass" aria-hidden="true">
                 {conversationBundle.reason === 'delegated' ? '↱' : '∿'}
               </span>
               <span className="font-mono uppercase tracking-[0.18em] text-brass/80">Continuous chat</span>
@@ -171,13 +174,16 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
             </motion.div>
           )}
           {messages.length === 0 && (
-            <div className="empty-thread-card mx-auto max-w-lg rounded-3xl border border-white/10 bg-white/[0.025] px-6 py-6 text-center shadow-2xl shadow-black/20">
+            <div
+              className="empty-thread-card mx-auto max-w-lg rounded-[var(--sl-radius-card)] border px-6 py-6 text-center"
+              style={{ background: 'var(--sl-surface-flat)', borderColor: 'var(--sl-rule-hairline)', boxShadow: 'none' }}
+            >
               <div className="flat-rest-orbit" aria-hidden="true">
                 <span />
                 <span />
                 <span />
               </div>
-              <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full border border-brass/25 bg-brass/10 text-brass">
+              <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-[var(--sl-radius-control)] border border-brass/25 bg-brass/10 text-brass">
                 {agentIdentity.initials}
               </div>
               <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-ivory">Ready when you are</h2>
@@ -230,7 +236,7 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
             exit={{ opacity: 0, y: 8, scale: 0.95 }}
             transition={{ type: 'spring', stiffness: 400, damping: 30, mass: 0.6 }}
             onClick={() => { scrollToBottom(true); setNewMessageCount(0); }}
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full text-xs font-mono cursor-pointer hover:scale-105 active:scale-95 shadow-lg"
+            className="absolute bottom-4 left-1/2 flex -translate-x-1/2 cursor-pointer items-center gap-2 rounded-[var(--sl-radius-control)] px-4 py-2 text-xs font-mono shadow-lg hover:scale-105 active:scale-95"
             style={{
               background: 'var(--mb-teal)',
               color: 'var(--mb-carbon)',
@@ -262,10 +268,27 @@ function ThinkingCard({ status, agentName, agentInitials }: { status: string; ag
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 6, scale: 0.985 }}
       transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-      className="thinking-card mx-auto flex max-w-3xl items-center gap-3 rounded-2xl border px-4 py-3"
+      className="mx-auto flex max-w-3xl items-center gap-3 rounded-[var(--sl-radius-card)] border px-4 py-3"
+      style={{
+        background: 'color-mix(in srgb, var(--sl-surface-flat) 94%, var(--sl-decision) 6%)',
+        borderColor: 'var(--sl-decision-edge)',
+        borderLeft: '3px solid var(--sl-decision-edge)',
+        boxShadow: 'none',
+      }}
       aria-live="polite"
     >
-      <div className="message-avatar message-avatar-nero flex-shrink-0" aria-hidden="true">{agentInitials}</div>
+      <div
+        className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[var(--sl-radius-control)] text-[0.7rem] font-extrabold tracking-[0.04em]"
+        style={{
+          background: 'color-mix(in srgb, var(--sl-danger) 12%, transparent)',
+          color: 'var(--sl-danger)',
+          border: '1px solid var(--sl-rule-visible)',
+          boxShadow: 'none',
+        }}
+        aria-hidden="true"
+      >
+        {agentInitials}
+      </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-nero-brass">
           {label}
@@ -290,9 +313,16 @@ function SourceDivider({ message }: { message: LoomMessage }) {
       : 'var(--mb-teal)';
 
   return (
-    <div className="message-source-divider mx-auto mb-3 flex max-w-3xl items-center gap-3 px-1" style={{ color: accent }}>
+    <div className="message-source-divider signal-route-draw mx-auto mb-3 flex max-w-3xl items-center gap-3 px-1" style={{ color: accent }}>
       <div className="h-px flex-1 bg-current opacity-15" />
-      <div className="message-source-chip min-w-0 rounded-full border px-3 py-1.5 text-[10px] shadow-lg shadow-black/10" style={{ borderColor: 'color-mix(in srgb, currentColor 28%, transparent)' }}>
+      <div
+        className="message-source-chip min-w-0 rounded-[var(--sl-radius-control)] border px-3 py-1.5 text-[10px]"
+        style={{
+          borderColor: 'color-mix(in srgb, currentColor 28%, transparent)',
+          background: 'var(--sl-surface-flat)',
+          boxShadow: 'none',
+        }}
+      >
         <span className="mr-2 font-semibold uppercase tracking-[0.2em]">{label}</span>
         <PretextSmartTitle
           text={`${message.sourceThreadTitle ?? 'Untitled Hermes session'}${message.sourceSessionShortId ? ` · ${message.sourceSessionShortId}` : ''}`}

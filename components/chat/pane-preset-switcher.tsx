@@ -1,7 +1,6 @@
 'use client';
 
 import { useSignalLoomStore } from '@/lib/store';
-import { cn } from '@/lib/utils';
 import type { WorkspacePreset } from '@/lib/types';
 
 const PRESETS: { id: WorkspacePreset; label: string; description: string; icon: React.ReactNode }[] = [
@@ -54,9 +53,21 @@ const PRESETS: { id: WorkspacePreset; label: string; description: string; icon: 
 export function PanePresetSwitcher() {
   const { workspace, setPreset } = useSignalLoomStore();
   const activePreset = PRESETS.find((preset) => preset.id === workspace.preset) ?? PRESETS[0];
+  const buttonStyle = (active: boolean) => ({
+    background: active ? 'color-mix(in srgb, var(--sl-surface-raised) 88%, var(--sl-decision) 12%)' : 'transparent',
+    borderColor: active ? 'var(--sl-decision-edge)' : 'var(--sl-rule-hairline)',
+    color: active ? 'var(--sl-decision)' : 'var(--sl-text-subtle)',
+    boxShadow: 'none',
+  });
 
   return (
-    <div className="pane-mode-switcher pane-mode-switcher-quiet border-b px-4 py-1.5">
+    <div
+      className="pane-mode-switcher pane-mode-switcher-quiet border-b px-4 py-1.5"
+      style={{
+        background: 'var(--sl-surface-flat)',
+        borderColor: 'var(--sl-rule-hairline)',
+      }}
+    >
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -65,7 +76,10 @@ export function PanePresetSwitcher() {
           </div>
         </div>
         <details className="layout-menu pane-layout-menu">
-          <summary className="view-mode-button is-active inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-mono transition-all duration-150">
+          <summary
+            className="view-mode-button inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-mono transition-all duration-150"
+            style={buttonStyle(true)}
+          >
             {activePreset.icon}
             <span>{activePreset.label}</span>
           </summary>
@@ -76,10 +90,8 @@ export function PanePresetSwitcher() {
                 onClick={() => setPreset(preset.id)}
                 title={`${preset.label}: ${preset.description}`}
                 aria-pressed={workspace.preset === preset.id}
-                className={cn(
-                  'view-mode-button inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-mono transition-all duration-150',
-                  workspace.preset === preset.id && 'is-active'
-                )}
+                className="view-mode-button inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-mono transition-all duration-150"
+                style={buttonStyle(workspace.preset === preset.id)}
               >
                 {preset.icon}
                 <span>{preset.label}</span>

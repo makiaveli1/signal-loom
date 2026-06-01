@@ -45,12 +45,15 @@ function StreamingIndicator({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 8, scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.7 }}
-      className="streaming-hud mb-2 overflow-hidden rounded-2xl border px-3.5 py-3 text-xs"
+      className="streaming-hud mb-2 overflow-hidden rounded-[var(--sl-radius-card)] border px-3.5 py-3 text-xs"
       style={{
-        background: 'linear-gradient(135deg, rgba(61,201,196,0.10), rgba(201,160,58,0.055), rgba(0,0,0,0.18))',
-        borderColor: status === 'error' ? 'rgba(232,96,58,0.28)' : 'rgba(61,201,196,0.24)',
-        boxShadow: '0 18px 45px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.05)',
-        color: 'var(--mb-ivory-dim)',
+        background: status === 'error'
+          ? 'color-mix(in srgb, var(--sl-surface-flat) 92%, var(--sl-danger) 8%)'
+          : 'color-mix(in srgb, var(--sl-surface-flat) 94%, var(--sl-accent) 6%)',
+        borderColor: status === 'error' ? 'var(--sl-danger-edge)' : 'var(--sl-active-edge)',
+        borderLeft: `3px solid ${status === 'error' ? 'var(--sl-danger-edge)' : 'var(--sl-active-edge)'}`,
+        boxShadow: 'none',
+        color: 'var(--sl-text-muted)',
       }}
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -62,14 +65,14 @@ function StreamingIndicator({
           {statusLabel}
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-1.5 font-mono text-[10px] text-ash">
-          <span className="rounded-full border border-white/10 bg-black/15 px-2 py-0.5">{chunks} frames</span>
-          <span className="rounded-full border border-white/10 bg-black/15 px-2 py-0.5">{text.length} chars</span>
-          <span className="rounded-full border border-white/10 bg-black/15 px-2 py-0.5">{charsPerSecond}/s</span>
-          <span className="rounded-full border border-white/10 bg-black/15 px-2 py-0.5">last {freshness}</span>
+          <span className="rounded-[var(--sl-radius-control)] border border-white/10 bg-black/15 px-2 py-0.5">{chunks} frames</span>
+          <span className="rounded-[var(--sl-radius-control)] border border-white/10 bg-black/15 px-2 py-0.5">{text.length} chars</span>
+          <span className="rounded-[var(--sl-radius-control)] border border-white/10 bg-black/15 px-2 py-0.5">{charsPerSecond}/s</span>
+          <span className="rounded-[var(--sl-radius-control)] border border-white/10 bg-black/15 px-2 py-0.5">last {freshness}</span>
         </div>
       </div>
 
-      <div className="relative mt-2.5 overflow-hidden rounded-xl border border-white/10 bg-black/20 p-3">
+      <div className="relative mt-2.5 overflow-hidden rounded-[var(--sl-radius-card)] border border-white/10 bg-black/20 p-3">
         <motion.div
           className="absolute left-0 top-0 h-px bg-signal-teal"
           initial={{ width: '0%' }}
@@ -144,6 +147,11 @@ export function Composer({ threadId }: ComposerProps) {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape' && shortcutsOpen) {
+      e.preventDefault();
+      setShortcutsOpen(false);
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -156,6 +164,19 @@ export function Composer({ threadId }: ComposerProps) {
       textareaRef.current.focus();
     }
   }, [isSending]);
+
+  useEffect(() => {
+    if (!shortcutsOpen) return;
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setShortcutsOpen(false);
+        queueMicrotask(() => textareaRef.current?.focus());
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [shortcutsOpen]);
 
   // Global command center can safely pre-fill the composer without auto-sending.
   useEffect(() => {
@@ -184,7 +205,7 @@ export function Composer({ threadId }: ComposerProps) {
   ];
 
   const applyChip = (prompt: string) => {
-    setValue(prompt);
+    setValue((current) => current.trim() ? `${current.trimEnd()}\n\n${prompt}` : prompt);
     queueMicrotask(() => textareaRef.current?.focus());
   };
 
@@ -192,9 +213,9 @@ export function Composer({ threadId }: ComposerProps) {
     <div
       className="composer-shell border-t px-4 py-3 sm:px-5"
       style={{
-        background: 'linear-gradient(180deg, color-mix(in srgb, var(--sl-shell) 92%, transparent), color-mix(in srgb, var(--sl-bg) 98%, transparent))',
-        borderColor: 'var(--sl-border-soft)',
-        boxShadow: '0 -18px 42px color-mix(in srgb, var(--sl-bg) 22%, transparent)',
+        background: 'var(--sl-surface)',
+        borderColor: 'var(--sl-rule-hairline)',
+        boxShadow: 'none',
       }}
     >
       {/* Streaming indicator — shows progressive response */}
@@ -224,7 +245,7 @@ export function Composer({ threadId }: ComposerProps) {
       {/* Error banner */}
       {error && (
         <div
-          className="flex items-center justify-between mb-2 px-3 py-2 rounded-lg text-xs"
+          className="flex items-center justify-between mb-2 rounded-[var(--sl-radius-card)] px-3 py-2 text-xs"
           style={{
             background: 'rgba(232,96,58,0.10)',
             border: '1px solid rgba(232,96,58,0.25)',
@@ -245,21 +266,33 @@ export function Composer({ threadId }: ComposerProps) {
         <div
           role={connectionGate.blocked ? 'alert' : 'status'}
           className={cn(
-            'mb-2 flex flex-wrap items-center justify-between gap-2 rounded-2xl border px-3 py-2 text-xs leading-5',
-            connectionGate.tone === 'danger' && 'border-signal-red/25 bg-signal-red/10 text-signal-red',
-            connectionGate.tone === 'warn' && 'border-brass/25 bg-brass/10 text-brass',
-            connectionGate.tone === 'neutral' && 'border-white/10 bg-white/[0.03] text-ash'
+            'mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[var(--sl-radius-card)] border px-3 py-2 text-xs leading-5',
+            connectionGate.tone === 'danger' && 'text-signal-red',
+            connectionGate.tone === 'warn' && 'text-brass',
+            connectionGate.tone === 'neutral' && 'text-ash'
           )}
+          style={{
+            background: connectionGate.tone === 'danger'
+              ? 'color-mix(in srgb, var(--sl-surface-flat) 92%, var(--sl-danger) 8%)'
+              : connectionGate.tone === 'warn'
+                ? 'color-mix(in srgb, var(--sl-surface-flat) 92%, var(--sl-decision) 8%)'
+                : 'var(--sl-surface-flat)',
+            borderColor: connectionGate.tone === 'danger'
+              ? 'var(--sl-danger-edge)'
+              : connectionGate.tone === 'warn'
+                ? 'var(--sl-decision-edge)'
+                : 'var(--sl-rule-hairline)',
+          }}
         >
           <div className="min-w-0 flex-1">
             <div className="font-semibold text-ivory-dim">{connectionGate.reason}</div>
             <div className="mt-0.5 text-ash">{connectionGate.detail}</div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <button type="button" onClick={refreshDetection} className="min-h-9 rounded-full border border-white/10 bg-black/15 px-3 text-[11px] font-semibold text-ivory-dim transition hover:border-signal-teal/30 hover:text-signal-teal">
+            <button type="button" onClick={refreshDetection} className="min-h-9 rounded-[var(--sl-radius-control)] border border-white/10 bg-black/15 px-3 text-[11px] font-semibold text-ivory-dim transition hover:border-signal-teal/30 hover:text-signal-teal">
               Re-check
             </button>
-            <button type="button" onClick={openHermesSettings} disabled={detectionLoading} className="min-h-9 rounded-full border border-brass/30 bg-brass-dim px-3 text-[11px] font-semibold text-brass transition hover:border-brass/50 disabled:cursor-wait disabled:opacity-55">
+            <button type="button" onClick={openHermesSettings} disabled={detectionLoading} className="min-h-9 rounded-[var(--sl-radius-control)] border border-brass/30 bg-brass-dim px-3 text-[11px] font-semibold text-brass transition hover:border-brass/50 disabled:cursor-wait disabled:opacity-55">
               {connectionGate.actionLabel}
             </button>
           </div>
@@ -271,75 +304,97 @@ export function Composer({ threadId }: ComposerProps) {
         <button
           type="button"
           onClick={() => setShortcutsOpen((v) => !v)}
-          className="composer-options-trigger rounded-full border border-white/10 bg-black/15 px-3 py-1.5 text-[11px] font-mono text-ivory-dim transition-all duration-150 hover:border-brass/30 hover:text-brass"
+          className={cn(
+            'composer-options-trigger rounded-[var(--sl-radius-control)] border border-white/10 bg-black/15 px-3 py-1.5 text-[11px] font-mono text-ivory-dim transition-all duration-150 hover:border-brass/30 hover:text-brass',
+            shortcutsOpen && 'is-open'
+          )}
           aria-expanded={shortcutsOpen}
         >
-          Options
+          {shortcutsOpen ? 'Close options' : 'Options'}
         </button>
         <span className="hidden truncate sm:inline">
           {streamingMode ? 'Streaming replies · Enter sends' : 'Direct send · Enter sends'}
         </span>
       </div>
 
-      {shortcutsOpen && (
-        <div className="composer-options-panel mb-2 rounded-2xl border border-white/10 bg-black/15 p-2.5">
-          <div className="mb-2 flex items-center justify-between gap-3 border-b border-white/5 pb-2">
-            <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-ash-muted">Reply mode</span>
-            <button
-              type="button"
-              onClick={() => setStreamingMode((v) => !v)}
-              title={streamingMode ? 'Disable streaming mode' : 'Enable streaming mode — streams response in real time'}
-              className="layout-pill rail-toggle"
-              disabled={isSending}
-              aria-pressed={streamingMode}
-              aria-label={streamingMode ? 'Streaming mode on — click to disable' : 'Streaming mode off — click to enable'}
-            >
-              <span className="rail-toggle-dot" aria-hidden="true" />
-              {streamingMode ? 'Streaming on' : 'Streaming off'}
-            </button>
-          </div>
-          <div className="composer-shortcuts flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-ash">
-            {commandChips.map((chip) => (
+      <AnimatePresence initial={false}>
+        {shortcutsOpen && (
+          <motion.div
+            key="composer-options-panel"
+            initial={{ opacity: 0, y: 6, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: 4, height: 0 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            className="composer-options-panel mb-2 overflow-hidden rounded-[var(--sl-radius-card)] border p-2.5"
+            style={{
+              background: 'var(--sl-surface-flat)',
+              borderColor: 'var(--sl-rule-hairline)',
+              boxShadow: 'none',
+            }}
+          >
+            <div className="mb-2 flex items-center justify-between gap-3 border-b border-white/5 pb-2">
+              <div>
+                <span className="block text-[10px] font-mono uppercase tracking-[0.2em] text-ash-muted">Reply mode</span>
+                <span className="mt-0.5 hidden text-[10px] text-ash-muted sm:block">Esc closes this panel · Shift+Enter adds a line</span>
+              </div>
               <button
                 type="button"
-                key={chip.label}
-                onClick={() => {
-                  applyChip(chip.prompt);
-                  setShortcutsOpen(false);
-                }}
+                onClick={() => setStreamingMode((v) => !v)}
+                title={streamingMode ? 'Disable streaming mode' : 'Enable streaming mode — streams response in real time'}
+                className="layout-pill rail-toggle"
                 disabled={isSending}
-                className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1.5 transition-all duration-150 hover:-translate-y-0.5 hover:border-brass/30 hover:bg-brass/10 disabled:opacity-40"
-                style={{ color: chip.label === 'Synthesize' ? 'var(--mb-brass)' : 'var(--mb-ivory-dim)' }}
+                aria-pressed={streamingMode}
+                aria-label={streamingMode ? 'Streaming mode on — click to disable' : 'Streaming mode off — click to enable'}
               >
-                {chip.label}
+                <span className="rail-toggle-dot" aria-hidden="true" />
+                {streamingMode ? 'Streaming on' : 'Streaming off'}
               </button>
-            ))}
-          </div>
-        </div>
-      )}
+            </div>
+            <div className="composer-shortcuts flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-ash">
+              {commandChips.map((chip, index) => (
+                <motion.button
+                  type="button"
+                  key={chip.label}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(index * 0.018, 0.09), duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                  onClick={() => {
+                    applyChip(chip.prompt);
+                    setShortcutsOpen(false);
+                  }}
+                  disabled={isSending}
+                  className="rounded-[var(--sl-radius-control)] border border-white/10 bg-black/20 px-2.5 py-1.5 transition-all duration-150 hover:-translate-y-0.5 hover:border-brass/30 hover:bg-brass/10 disabled:opacity-40"
+                  style={{ color: chip.label === 'Synthesize' ? 'var(--mb-brass)' : 'var(--mb-ivory-dim)' }}
+                >
+                  {chip.label}
+                </motion.button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Composer input row */}
       <div className="flex items-end gap-2">
         {/* Input area */}
         <div
-          className="composer-input-frame composer-flat-input flex-1 flex items-end gap-2 rounded-2xl border px-3.5 py-2.5 transition-all"
+          className={cn(
+            'composer-input-frame composer-flat-input boxed-corner-mark flex flex-1 items-end gap-2 rounded-[var(--sl-radius-card)] border px-3.5 py-2.5 transition-all',
+            canSend && 'is-ready',
+            streamingMode && 'composer-streaming'
+          )}
           style={{
-            background: 'linear-gradient(135deg, color-mix(in srgb, var(--sl-panel-raised) 96%, transparent), color-mix(in srgb, var(--sl-stage) 96%, transparent))',
+            background: 'var(--sl-surface-raised)',
             borderColor: canSend
               ? streamingMode
-                ? 'color-mix(in srgb, var(--sl-success) 32%, transparent)'
-                : 'color-mix(in srgb, var(--sl-danger) 32%, transparent)'
+                ? 'var(--sl-active-edge)'
+                : 'var(--sl-danger-edge)'
               : error
-              ? 'color-mix(in srgb, var(--sl-danger) 36%, transparent)'
-              : 'var(--sl-border-soft)',
-            boxShadow: canSend
-              ? streamingMode
-                ? '0 0 0 1px color-mix(in srgb, var(--sl-success) 14%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--sl-success) 8%, transparent)'
-                : '0 0 0 1px color-mix(in srgb, var(--sl-danger) 14%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--sl-danger) 8%, transparent)'
-              : error
-              ? '0 0 0 1px color-mix(in srgb, var(--sl-danger) 18%, transparent)'
-              : 'none',
-            transitionProperty: 'border-color, box-shadow',
+              ? 'var(--sl-danger-edge)'
+              : 'var(--sl-rule-visible)',
+            borderLeft: `3px solid ${canSend ? (streamingMode ? 'var(--sl-active-edge)' : 'var(--sl-danger-edge)') : error ? 'var(--sl-danger-edge)' : 'var(--sl-rule-hairline)'}`,
+            boxShadow: 'none',
+            transitionProperty: 'border-color',
             transitionDuration: '200ms',
             transitionTimingFunction: 'ease',
           }}
@@ -363,8 +418,8 @@ export function Composer({ threadId }: ComposerProps) {
             type="button"
             onClick={connectionGate.blocked ? openHermesSettings : handleSend}
             className={cn(
-              'composer-icon-button flex h-9 flex-shrink-0 items-center justify-center rounded-xl transition-all duration-150',
-              connectionGate.blocked ? 'w-auto px-3 text-[11px] font-semibold' : 'w-9',
+              'composer-icon-button flex h-11 flex-shrink-0 items-center justify-center rounded-[var(--sl-radius-control)] transition-all duration-150',
+              connectionGate.blocked ? 'w-auto px-3 text-[11px] font-semibold' : 'w-11',
               sendButtonDisabled ? 'cursor-not-allowed' : 'cursor-pointer',
               sendPulse && !connectionGate.blocked && 'composer-send-ready'
             )}

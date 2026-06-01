@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import Image from 'next/image';
 import { PretextSmartTitle } from '@/components/ui/pretext-smart-title';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSignalLoomStore } from '@/lib/store';
@@ -31,6 +32,7 @@ export function ThreadDock({ width = 260, onCollapse }: { width?: number; onColl
     hideThread,
     hideThreads,
     unhideThread,
+    startNewSession,
   } = useSignalLoomStore();
 
   const [collapsed, setCollapsed] = useState<CollapseState>(() => new Map([
@@ -117,6 +119,18 @@ export function ThreadDock({ width = 260, onCollapse }: { width?: number; onColl
         })}
       </div>
 
+      <div className="thread-dock-new-session-wrap border-b px-2 py-2" style={{ borderColor: 'var(--sl-divider)' }}>
+        <button
+          type="button"
+          className="thread-dock-new-session w-full"
+          onClick={() => startNewSession()}
+          aria-label="Start a new Hermes session"
+        >
+          <span aria-hidden="true">+</span>
+          <span>New session</span>
+        </button>
+      </div>
+
       {/* Loading */}
       {sessionsLoading && (
         <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 py-8">
@@ -142,9 +156,22 @@ export function ThreadDock({ width = 260, onCollapse }: { width?: number; onColl
       {/* Empty */}
       {!sessionsLoading && dockThreads.length === 0 && !sessionsError && (
         <div className="flat-rest-state flex-1 flex flex-col items-center justify-center gap-2 px-4 py-8">
+          <figure className="flat-rest-figure" aria-hidden="true">
+            <Image className="flat-rest-image" src="/generated/empty-states/quiet-loom.webp" alt="" width={640} height={480} sizes="160px" />
+          </figure>
           <span className="flat-rest-mark" aria-hidden="true">⌁</span>
           <p className="text-xs text-ivory-dim text-center">{threadDockMode === 'hidden' ? 'No hidden conversations' : 'The loom is quiet'}</p>
           <p className="text-xs text-ash text-center">{threadDockMode === 'focus' ? 'Open All to browse quieter history.' : 'Start or restore a conversation to begin.'}</p>
+          {threadDockMode !== 'hidden' && (
+            <button
+              type="button"
+              className="thread-dock-new-session mt-2"
+              onClick={() => startNewSession()}
+            >
+              <span aria-hidden="true">+</span>
+              <span>New session</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -231,7 +258,7 @@ function DockGroupSection({
   return (
     <div
       className={cn(
-        'rounded-xl transition-all duration-200',
+        'rounded-[var(--sl-radius-card)] transition-all duration-200',
         group.kind === 'conversation' && 'my-1 border',
         group.kind === 'conversation' && isGroupSelected && 'bg-white/[0.025]'
       )}
@@ -243,7 +270,7 @@ function DockGroupSection({
       <button
         onClick={isCollapsible ? onToggle : undefined}
         className={cn(
-          'thread-group-toggle flex items-center gap-2 w-full px-3 py-2 rounded-xl text-left text-xs font-semibold uppercase tracking-[0.18em] transition-all',
+          'thread-group-toggle flex w-full items-center gap-2 rounded-[var(--sl-radius-card)] px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.18em] transition-all',
           isCollapsible ? 'hover:bg-white/[0.025] cursor-pointer' : 'cursor-default'
         )}
         style={{ color: headerColor }}
@@ -254,7 +281,7 @@ function DockGroupSection({
         )}
         {group.kind === 'conversation' && (
           <span
-            className="flex h-5 w-5 items-center justify-center rounded-full border text-[10px]"
+            className="flex h-5 w-5 items-center justify-center rounded-[var(--sl-radius-control)] border text-[10px]"
             style={{ borderColor: 'rgba(201,160,58,0.24)', background: 'rgba(201,160,58,0.075)' }}
           >
             {group.icon}
@@ -272,7 +299,7 @@ function DockGroupSection({
           )}
         </span>
         <span
-          className="rounded-full border px-2 py-0.5 text-[10px] font-mono tracking-normal"
+          className="rounded-[var(--sl-radius-control)] border px-2 py-0.5 text-[10px] font-mono tracking-normal"
           style={{ borderColor: 'rgba(255,255,255,0.08)', color: 'var(--mb-ivory-dim)', background: 'rgba(0,0,0,0.16)' }}
         >
           {group.threads.length}

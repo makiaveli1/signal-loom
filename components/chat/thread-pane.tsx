@@ -93,9 +93,10 @@ function TranscriptBlock({ thread }: { thread: Thread }) {
     <div
       className="mx-4 my-3 rounded-lg border px-4 py-3 text-xs"
       style={{
-        background: 'rgba(255,255,255,0.02)',
-        borderColor: 'rgba(255,255,255,0.08)',
+        background: 'var(--sl-surface-flat)',
+        borderColor: 'var(--sl-rule-hairline)',
         color: 'var(--mb-ash)',
+        boxShadow: 'none',
       }}
     >
       {/* Header row */}
@@ -320,6 +321,7 @@ export function ThreadPane({
   // continuous chat instead of forcing the operator to jump between fragments.
   useEffect(() => {
     for (const bundleThread of bundleThreads) {
+      if (bundleThread.id.startsWith('signal-loom:local:') && !bundleThread.session) continue;
       const sessionKey = bundleThread.session?.id ?? bundleThread.id;
       if (!bundleThread.session && !sessionMessages[bundleThread.id] && !sessionMessagesLoading[bundleThread.id]) {
         loadMessagesForThread(bundleThread.id);
@@ -351,7 +353,7 @@ export function ThreadPane({
         isSplit
           ? {
               borderLeft: isActive ? `2px solid ${STATUS_COLORS[thread.status] ?? 'var(--mb-teal)'}` : '2px solid rgba(255,255,255,0.04)',
-              background: isActive ? 'var(--mb-carbon)' : 'rgba(0,0,0,0.12)',
+              background: isActive ? 'var(--sl-surface)' : 'var(--sl-surface-flat)',
             }
           : undefined
       }
@@ -362,8 +364,8 @@ export function ThreadPane({
         <div
           className="flex items-center justify-between px-4 py-2.5 border-b gap-2 flex-shrink-0"
           style={{
-            borderColor: isActive ? `${STATUS_COLORS[thread.status]}30` : 'rgba(255,255,255,0.04)',
-            background: isActive ? 'rgba(255,255,255,0.03)' : 'transparent',
+            borderColor: isActive ? `${STATUS_COLORS[thread.status]}30` : 'var(--sl-rule-hairline)',
+            background: isActive ? 'var(--sl-surface-raised)' : 'transparent',
             borderLeft: isActive ? `3px solid ${STATUS_COLORS[thread.status] ?? 'var(--mb-teal)'}` : '3px solid transparent',
             cursor: !isActive ? 'pointer' : 'default',
             transition: 'background 0.15s ease, border-color 0.15s ease',
@@ -505,8 +507,8 @@ export function ThreadPane({
             transition={{ type: 'spring', stiffness: 400, damping: 26, mass: 0.7 }}
             className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
             style={{
-              background: 'rgba(201,160,58,0.06)',
-              borderColor: 'rgba(201,160,58,0.20)',
+              background: 'color-mix(in srgb, var(--sl-surface-flat) 92%, var(--sl-decision) 8%)',
+              borderColor: 'var(--sl-decision-edge)',
               color: 'var(--mb-brass)',
             }}
           >
@@ -562,16 +564,18 @@ function SessionInfoPanel({
     return (
       <button
         onClick={onToggleCollapse}
-        className="w-full group flex items-center gap-2 px-5 py-1 border-b cursor-pointer transition-all duration-200 hover:bg-white/[0.03]"
+        className="receipts-toggle receipts-toggle-collapsed w-full group flex items-center gap-2 px-5 py-1 border-b cursor-pointer transition-all duration-200 hover:bg-white/[0.03]"
         style={{
-          background: 'color-mix(in srgb, var(--sl-stage) 74%, transparent)',
-          borderColor: 'rgba(255,255,255,0.045)',
-          minHeight: '34px',
+          background: 'var(--sl-surface-flat)',
+          borderColor: 'var(--sl-rule-hairline)',
+          minHeight: '44px',
         }}
+        aria-expanded={false}
+        aria-label="Open folded routing, delegated work, and session receipts"
         title="Open folded routing, delegated work, and session receipts"
       >
         <span
-          className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border text-[10px] transition-transform duration-200 group-hover:translate-x-0.5"
+          className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[var(--sl-radius-control)] border text-[10px] transition-transform duration-200 group-hover:translate-x-0.5"
           style={{
             borderColor: 'rgba(201,160,58,0.20)',
             color: 'var(--mb-brass)',
@@ -588,13 +592,13 @@ function SessionInfoPanel({
               Receipts
             </span>
             <span className="hidden text-[11px] text-ash xl:inline">
-              routing folded
+              routing folded · {Number(hasDelegatedChildren) + Number(hasSession)} source{Number(hasDelegatedChildren) + Number(hasSession) === 1 ? '' : 's'} ready
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0 text-[10px] font-mono text-ash-muted">
-          <span>open</span>
+        <div className="receipts-toggle-action flex items-center gap-2 flex-shrink-0 text-[10px] font-mono text-ash-muted">
+          <span>Open receipts</span>
         </div>
       </button>
     );
@@ -606,12 +610,14 @@ function SessionInfoPanel({
       {/* Section header with collapse toggle */}
       <button
         onClick={onToggleCollapse}
-        className="w-full flex items-center gap-3 px-5 py-2 cursor-pointer transition-all duration-200 hover:bg-white/[0.025]"
-        style={{ background: 'linear-gradient(90deg, rgba(201,160,58,0.05), rgba(255,255,255,0.012))', minHeight: '44px' }}
+        className="receipts-toggle receipts-toggle-open w-full flex items-center gap-3 px-5 py-2 cursor-pointer transition-all duration-200 hover:bg-white/[0.025]"
+        style={{ background: 'color-mix(in srgb, var(--sl-surface-flat) 94%, var(--sl-decision) 6%)', minHeight: '44px' }}
+        aria-expanded={true}
+        aria-label="Fold routing, delegated work, and session receipts"
         title="Fold receipts — give more room to the chat"
       >
         <span
-          className="flex h-5 w-5 items-center justify-center rounded-full border"
+          className="flex h-5 w-5 items-center justify-center rounded-[var(--sl-radius-control)] border"
           style={{ borderColor: 'rgba(201,160,58,0.24)', color: 'var(--mb-brass)', background: 'rgba(201,160,58,0.08)' }}
           aria-hidden="true"
         >
@@ -625,7 +631,7 @@ function SessionInfoPanel({
             delegated helper work, routing events, and Hermes session receipts
           </span>
         </div>
-        <span className="text-[10px] text-ash-muted">
+        <span className="receipts-toggle-action text-[10px] text-ash-muted">
           fold context
         </span>
       </button>
@@ -710,8 +716,8 @@ function DelegationStrip({
             key={childId}
             className="flex items-center gap-2 px-2 py-1 rounded border transition-all duration-100 cursor-pointer hover:bg-white/5"
             style={{
-              borderColor: 'rgba(155,141,200,0.15)',
-              background: 'rgba(155,141,200,0.05)',
+              borderColor: 'color-mix(in srgb, var(--mb-violet) 22%, var(--sl-rule-hairline))',
+              background: 'var(--sl-surface)',
             }}
             onClick={() => onOpenChildSession(childId)}
           >
@@ -796,8 +802,8 @@ function ContextEnrichmentBlock({ thread }: { thread: Thread }) {
     <div
       className="flex items-center gap-2 px-4 py-2 border-b text-xs"
       style={{
-        background: `${ctx.color}08`,
-        borderColor: `${ctx.color}20`,
+        background: `color-mix(in srgb, var(--sl-surface-flat) 92%, ${ctx.color} 8%)`,
+        borderColor: `color-mix(in srgb, ${ctx.color} 28%, var(--sl-rule-hairline))`,
         color: ctx.color,
       }}
     >

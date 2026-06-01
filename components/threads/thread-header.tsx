@@ -74,13 +74,14 @@ export function ThreadHeader({
         <button
           type="button"
           onClick={() => setDetailsOpen((v) => !v)}
-          className="thread-details-button flex h-8 flex-shrink-0 items-center gap-2 rounded-full border px-3 text-[11px] font-mono text-ash transition-colors hover:text-ivory"
+          className="thread-details-button flex min-h-11 flex-shrink-0 items-center gap-2 rounded-[var(--sl-radius-control)] border px-3 text-[11px] font-mono text-ash transition-colors hover:text-ivory"
           style={{ borderColor: 'var(--sl-border-soft)', background: 'var(--sl-control)' }}
           aria-expanded={detailsOpen}
           aria-label={detailsOpen ? 'Hide thread details' : 'Show thread details'}
         >
-          Details
-          {detailCount > 0 && <span className="text-brass">{detailCount}</span>}
+          <span className="thread-details-label">Details</span>
+          <span className="thread-details-mark" aria-hidden="true">i</span>
+          {detailCount > 0 && <span className="thread-details-count text-brass">{detailCount}</span>}
         </button>
       </div>
 
@@ -111,7 +112,7 @@ export function ThreadHeader({
                   if (firstChildId) onOpenChildSession(firstChildId);
                 }}
                 title="Open first child session"
-                className="text-xs font-mono px-2 py-1 rounded-full border cursor-pointer transition-all duration-100 hover:opacity-80 active:scale-95"
+                className="cursor-pointer rounded-[var(--sl-radius-control)] border px-2 py-1 text-xs font-mono transition-all duration-100 hover:opacity-80 active:scale-95"
                 style={{
                   borderColor: 'rgba(155,141,200,0.3)',
                   color: '#9b8dc8',
@@ -122,7 +123,7 @@ export function ThreadHeader({
               </button>
             ) : (
               <span
-                className="text-xs font-mono px-2 py-1 rounded-full border"
+                className="rounded-[var(--sl-radius-control)] border px-2 py-1 text-xs font-mono"
                 style={{
                   borderColor: 'rgba(155,141,200,0.3)',
                   color: '#9b8dc8',
@@ -136,7 +137,7 @@ export function ThreadHeader({
 
           {hasParent && (
             <span
-              className="text-xs font-mono px-2 py-1 rounded-full border"
+              className="rounded-[var(--sl-radius-control)] border px-2 py-1 text-xs font-mono"
               style={{
                 borderColor: 'rgba(58,184,200,0.3)',
                 color: '#3ab8c8',
@@ -175,7 +176,7 @@ function AgentChip({ agentId }: { agentId: string }) {
 
   return (
     <span
-      className="text-xs font-mono px-2 py-0.5 rounded-full border"
+      className="rounded-[var(--sl-radius-control)] border px-2 py-0.5 text-xs font-mono"
       style={{
         borderColor: `${color}40`,
         color: color,

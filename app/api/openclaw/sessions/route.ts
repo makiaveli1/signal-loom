@@ -13,6 +13,41 @@ import type { OpenClawSession, SessionStatus } from '@/lib/openclaw/adapter/type
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function headerSafe(value: unknown) {
+  return String(value instanceof Error ? value.message : value ?? 'Hermes sessions unavailable')
+    .replace(/[\r\n]+/g, ' ')
+    .slice(0, 240);
+}
+
+function degradedSessionsResponse(error: unknown) {
+  const now = new Date().toISOString();
+  const reason = headerSafe(error);
+  const identity = resolveAgentIdentity();
+  const fallbackSession: OpenClawSession = {
+    id: `${identity.id}:fallback`,
+    shortId: 'fallback',
+    title: `${identity.name} — Hermes runtime unavailable`,
+    agentId: identity.id,
+    agentName: identity.name,
+    messageCount: 0,
+    toolCallCount: 0,
+    lastMessageAt: now,
+    status: 'unknown',
+    tags: ['hermes', 'fallback', 'degraded'],
+    preview: `Hermes session store unavailable: ${reason}`,
+    childSessionIds: [],
+  };
+
+  return NextResponse.json([fallbackSession], {
+    headers: {
+      'Cache-Control': 'no-store',
+      'X-Adapter-Fetched-At': now,
+      'X-Signal-Loom-Degraded': 'sessions',
+      'X-Signal-Loom-Degraded-Reason': reason,
+    },
+  });
+}
+
 function shortId(id: string): string {
   const tail = id.split(/[:/_-]/).filter(Boolean).pop() ?? id;
   return tail.length > 12 ? tail.slice(0, 8) : tail;
@@ -123,9 +158,6 @@ export async function GET() {
       },
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to load Hermes sessions', retryable: true },
-      { status: 502 },
-    );
+    return degradedSessionsResponse(error);
   }
 }

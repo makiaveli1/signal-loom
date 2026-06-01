@@ -23,6 +23,63 @@ const RUNTIME_EVENT_LIMIT = 120;
 
 type SseController = ReadableStreamDefaultController<Uint8Array>;
 
+function sseHeaders() {
+  return {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  };
+}
+
+function degradedLiveStream(reason: string) {
+  const encoder = new TextEncoder();
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let closed = false;
+
+  const stream = new ReadableStream({
+    start(controller: SseController) {
+      const send = (event: string, data: unknown) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`retry: 30000\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          closed = true;
+        }
+      };
+
+      send('connected', {
+        source: 'degraded',
+        degraded: true,
+        path: HERMES_STATE_DB,
+        error: reason,
+        pollMs: null,
+      });
+      send('gateway', {
+        type: 'runtime.error',
+        data: { source: 'degraded', error: reason, at: new Date().toISOString() },
+      });
+
+      heartbeat = setInterval(() => {
+        if (closed) return;
+        try { controller.enqueue(encoder.encode(': heartbeat\n\n')); }
+        catch { closed = true; }
+      }, HEARTBEAT_MS);
+    },
+    cancel() {
+      closed = true;
+      if (heartbeat) clearInterval(heartbeat);
+    },
+  });
+
+  return new NextResponse(stream, {
+    headers: {
+      ...sseHeaders(),
+      'X-Signal-Loom-Degraded': 'live-events',
+    },
+  });
+}
+
 function eventIdFor(prefix: string, id: string | number): string {
   return `${prefix}:${id}`;
 }
@@ -31,10 +88,7 @@ export async function GET() {
   try {
     await stat(/* turbopackIgnore: true */ HERMES_STATE_DB);
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : `Hermes state DB unavailable: ${HERMES_STATE_DB}` },
-      { status: 500 },
-    );
+    return degradedLiveStream(e instanceof Error ? e.message : `Hermes state DB unavailable: ${HERMES_STATE_DB}`);
   }
 
   let initialCursor;
@@ -42,10 +96,7 @@ export async function GET() {
   try {
     initialCursor = await getHermesStateCursor();
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'Failed to read Hermes state cursor' },
-      { status: 500 },
-    );
+    return degradedLiveStream(e instanceof Error ? e.message : 'Failed to read Hermes state cursor');
   }
 
   const encoder = new TextEncoder();
@@ -179,11 +230,6 @@ export async function GET() {
   });
 
   return new NextResponse(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      'Connection': 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    },
+    headers: sseHeaders(),
   });
 }

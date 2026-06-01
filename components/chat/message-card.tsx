@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { agentIdentityFromDetection } from '@/lib/agent-identity';
 import { cn } from '@/lib/utils';
@@ -54,7 +54,7 @@ function MotionText({
       {words.map((word, i) => (
         <span
           key={i}
-          className="word-animated"
+          className={isStreaming ? 'word-animated' : undefined}
           style={{ '--word-delay': isStreaming ? `${Math.min(i * 18, 420)}ms` : '0ms', display: 'inline' } as React.CSSProperties}
         >
           {word}
@@ -200,6 +200,7 @@ function StandardMessageCard({ message, isHighlighted, isStreaming, isNew, isChi
   const runtimeRole = message.role as RuntimeRole;
   const display = useMemo(() => buildMessageDisplay(message.content, runtimeRole), [message.content, runtimeRole]);
   const [traceExpanded, setTraceExpanded] = useState(false);
+  const tracePanelId = useId();
 
   const isUser = runtimeRole === 'user';
   const isAssistant = runtimeRole === 'nero' || runtimeRole === 'assistant';
@@ -207,6 +208,38 @@ function StandardMessageCard({ message, isHighlighted, isStreaming, isNew, isChi
   const isSystem = runtimeRole === 'system' || isTool;
   const hasTrace = display.traceSections.length > 0;
   const traceWordCount = display.traceSections.reduce((acc, section) => acc + section.text.split(/\s+/).filter(Boolean).length, 0);
+  const cardStyle = {
+    background: isUser
+      ? 'color-mix(in srgb, var(--sl-surface-raised) 92%, var(--sl-accent) 8%)'
+      : display.operationalOnly || isSystem
+        ? 'linear-gradient(135deg, color-mix(in srgb, var(--sl-decision) 8%, transparent), transparent 42%), color-mix(in srgb, var(--sl-surface-flat) 94%, var(--sl-decision) 6%)'
+        : isAssistant
+          ? 'linear-gradient(135deg, color-mix(in srgb, var(--sl-danger) 5%, transparent), transparent 34%), var(--sl-surface-raised)'
+          : 'var(--sl-surface-flat)',
+    borderColor: isStreaming
+      ? 'var(--sl-active-edge)'
+      : display.operationalOnly || isSystem
+        ? 'var(--sl-decision-edge)'
+        : isUser
+          ? 'var(--sl-active-edge)'
+          : 'var(--sl-rule-hairline)',
+    borderLeft: !isUser
+      ? `3px solid ${display.operationalOnly || isSystem ? 'var(--sl-decision-edge)' : isChildSession ? 'var(--sl-active-edge)' : 'var(--sl-danger-edge)'}`
+      : undefined,
+    borderRight: isUser ? '3px solid var(--sl-active-edge)' : undefined,
+    boxShadow: isStreaming ? 'inset 3px 0 0 var(--sl-accent)' : 'none',
+    backdropFilter: 'none',
+  };
+  const avatarStyle = {
+    background: isUser
+      ? 'color-mix(in srgb, var(--sl-accent) 12%, transparent)'
+      : isAssistant
+        ? 'color-mix(in srgb, var(--sl-danger) 12%, transparent)'
+        : 'var(--sl-surface-hover)',
+    color: isUser ? 'var(--sl-accent)' : isAssistant ? 'var(--sl-danger)' : 'var(--sl-text-muted)',
+    border: '1px solid var(--sl-rule-visible)',
+    boxShadow: 'none',
+  };
 
   const streamingCursor = isStreaming ? (
     <motion.span
@@ -239,16 +272,19 @@ function StandardMessageCard({ message, isHighlighted, isStreaming, isNew, isChi
 
       <div
         className={cn(
-          'message-card-premium flex gap-3 rounded-2xl border px-4 py-3.5',
-          isUser && 'message-card-user ml-auto flex-row-reverse',
-          isAssistant && 'message-card-nero',
-          isSystem && 'message-card-system',
-          isStreaming && 'message-card-streaming',
-          isChildSession && !isUser && 'message-card-child',
-          display.operationalOnly && 'message-card-folded'
+          'message-card-shell boxed-corner-mark relative flex w-full gap-3 rounded-[var(--sl-radius-card)] border px-4 py-3.5 sm:max-w-[52rem] sm:w-[78%]',
+          isAssistant && 'message-card-agent',
+          display.operationalOnly && 'message-card-operational',
+          isUser && 'ml-auto flex-row-reverse sm:max-w-[42rem] sm:w-[72%]',
+          isNew && 'packet-arrival'
         )}
+        style={cardStyle}
       >
-        <div className={cn('message-avatar flex-shrink-0', isUser ? 'message-avatar-user' : isAssistant ? 'message-avatar-nero' : 'message-avatar-system')} aria-hidden="true">
+        <div
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[var(--sl-radius-control)] text-[0.7rem] font-extrabold tracking-[0.04em]"
+          style={avatarStyle}
+          aria-hidden="true"
+        >
           {isUser ? 'G' : isAssistant ? agentIdentity.initials : isTool ? 'T' : '•'}
         </div>
 
@@ -258,7 +294,7 @@ function StandardMessageCard({ message, isHighlighted, isStreaming, isNew, isChi
               {isUser ? 'Gbemi' : isAssistant ? agentIdentity.name : isTool ? 'Tool' : 'System'}
             </span>
             {display.operationalOnly && (
-              <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[9px] uppercase tracking-[0.16em] text-ash">
+              <span className="rounded-[var(--sl-radius-control)] border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[9px] uppercase tracking-[0.16em] text-ash">
                 folded
               </span>
             )}
@@ -286,10 +322,17 @@ function StandardMessageCard({ message, isHighlighted, isStreaming, isNew, isChi
                   type="button"
                   onClick={() => setTraceExpanded((v) => !v)}
                   className={cn(
-                    'work-trace-toggle inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.16em] transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0',
+                    'work-trace-toggle inline-flex min-h-11 items-center gap-2 rounded-[var(--sl-radius-control)] border px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.16em] transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0',
                     traceExpanded && 'is-open'
                   )}
+                  style={{
+                    background: traceExpanded ? 'var(--sl-surface-raised)' : 'var(--sl-surface-flat)',
+                    borderColor: traceExpanded ? 'var(--sl-decision-edge)' : 'var(--sl-rule-hairline)',
+                    color: traceExpanded ? 'var(--sl-text)' : 'var(--sl-text-muted)',
+                    boxShadow: 'none',
+                  }}
                   aria-expanded={traceExpanded}
+                  aria-controls={tracePanelId}
                 >
                   <span className="work-trace-dot" aria-hidden="true" />
                   <span>{traceExpanded ? 'Hide receipts' : 'Receipts'}</span>
@@ -313,9 +356,30 @@ function StandardMessageCard({ message, isHighlighted, isStreaming, isNew, isChi
                   style={{ overflow: 'hidden' }}
                   className="w-full"
                 >
-                  <div className="work-trace-panel">
+                  <div
+                    id={tracePanelId}
+                    className="work-trace-panel"
+                    role="region"
+                    aria-label="Scrollable work receipts"
+                    tabIndex={traceExpanded ? 0 : -1}
+                    style={{
+                      background: 'var(--sl-surface-flat)',
+                      borderColor: 'var(--sl-rule-hairline)',
+                      boxShadow: 'none',
+                    }}
+                  >
                     {display.traceSections.map((section, idx) => (
-                      <section key={`${section.label}-${idx}`} className={cn('work-trace-section', `trace-${section.tone}`)}>
+                      <section
+                        key={`${section.label}-${idx}`}
+                        className={cn('work-trace-section', `trace-${section.tone}`)}
+                        style={{
+                          background: 'var(--sl-surface)',
+                          borderColor: section.tone === 'reasoning'
+                            ? 'color-mix(in srgb, var(--sl-decision) 22%, var(--sl-rule-hairline))'
+                            : 'color-mix(in srgb, var(--sl-accent) 18%, var(--sl-rule-hairline))',
+                          boxShadow: 'none',
+                        }}
+                      >
                         <div className="mb-1.5 flex items-center justify-between gap-3">
                           <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-ash">
                             {section.label}
@@ -346,13 +410,16 @@ function ActionSummaryCard({ message, isHighlighted, isNew }: MessageCardProps) 
       className={cn('flex justify-center px-6 py-2 transition-all duration-300', isNew && 'msg-enter')}
     >
       <div
-        className="action-summary-premium rounded-2xl border px-4 py-3"
+        className="w-full rounded-[var(--sl-radius-card)] border px-4 py-3 sm:w-[76%] sm:max-w-[48rem]"
         style={{
-          boxShadow: isHighlighted ? '0 0 0 2px rgba(201,160,58,0.25)' : undefined,
+          background: 'color-mix(in srgb, var(--sl-surface-flat) 94%, var(--mb-violet) 6%)',
+          borderColor: isHighlighted ? 'var(--sl-decision-edge)' : 'color-mix(in srgb, var(--mb-violet) 24%, var(--sl-rule-hairline))',
+          borderLeft: '3px solid color-mix(in srgb, var(--mb-violet) 62%, transparent)',
+          boxShadow: isHighlighted ? '0 0 0 2px color-mix(in srgb, var(--sl-decision) 26%, transparent)' : 'none',
         }}
       >
         <div className="mb-1 flex items-center gap-2">
-          <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-signal-violet">
+          <span className="rounded-[var(--sl-radius-control)] border border-violet-300/20 bg-violet-300/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-signal-violet">
             Action summary
           </span>
           <span className="text-[10px] font-mono text-ash-muted">

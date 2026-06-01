@@ -17,6 +17,7 @@
 /.hermes/
 /output/
 /.verification-screenshots/
+/.qa-artifacts/
 
 # next.js
 /.next/

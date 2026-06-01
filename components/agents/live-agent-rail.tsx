@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Image from 'next/image';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSignalLoomStore } from '@/lib/store';
 import { AgentCard } from './agent-card';
@@ -84,7 +85,10 @@ export function LiveAgentRail({ width = 280, onCollapse }: { width?: number; onC
         <ScrollArea className="flex-1">
           <div className="p-2.5 space-y-2">
             {agents.length === 0 && childSessionTotal === 0 && (
-              <div className="flat-rest-state py-7 px-3 text-center rounded-xl border border-white/5 bg-black/10">
+              <div className="flat-rest-state rounded-[var(--sl-radius-card)] border border-white/5 bg-black/10 px-3 py-7 text-center">
+                <figure className="flat-rest-figure is-sigil" aria-hidden="true">
+                  <Image className="flat-rest-image" src="/generated/agents/operator-sigil.webp" alt="" width={512} height={512} sizes="120px" />
+                </figure>
                 <span className="flat-rest-mark" aria-hidden="true">∿</span>
                 <p className="text-xs text-ivory-dim font-medium">No helper agents active.</p>
                 <p className="text-xs text-ash mt-1 leading-relaxed">
@@ -124,7 +128,7 @@ export function LiveAgentRail({ width = 280, onCollapse }: { width?: number; onC
                   onOpen={(session) => openChildSession(session.id)}
                 />
                 {delegated.stale.length > 0 && (
-                  <div className="lane-note-card rounded-xl border border-white/5 bg-black/10 px-3 py-2 text-[10px] leading-4 text-ash">
+                  <div className="lane-note-card rounded-[var(--sl-radius-card)] border border-white/5 bg-black/10 px-3 py-2 text-[10px] leading-4 text-ash">
                     {delegated.stale.length} stale delegated lane{delegated.stale.length === 1 ? '' : 's'} tucked away because no fresh heartbeat was found.
                   </div>
                 )}
@@ -204,7 +208,7 @@ function SubagentSessionCard({ session, state, onOpen }: { session: OpenClawSess
     <button
       type="button"
       onClick={onOpen}
-      className={cn('subagent-session-card group w-full rounded-xl border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0', active && 'is-active')}
+      className={cn('subagent-session-card boxed-corner-mark group w-full rounded-[var(--sl-radius-card)] border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0', active && 'is-active')}
       title={`Open delegated session ${session.shortId}`}
     >
       <div className="mb-2 flex items-start justify-between gap-2">
@@ -215,7 +219,7 @@ function SubagentSessionCard({ session, state, onOpen }: { session: OpenClawSess
           </div>
           <p className="mt-1 truncate text-xs font-semibold text-ivory-dim">{session.title}</p>
         </div>
-        <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[9px] font-mono text-ash">{session.shortId}</span>
+        <span className="rounded-[var(--sl-radius-control)] border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[9px] font-mono text-ash">{session.shortId}</span>
       </div>
       <p className="line-clamp-2 text-xs leading-snug text-ash">{session.preview || (created ? 'Created, but no useful breadcrumb has landed yet.' : 'No preview captured for this delegated lane.')}</p>
       <div className="mt-2 flex items-center justify-between border-t border-white/5 pt-2 text-[10px] font-mono text-ash-muted">

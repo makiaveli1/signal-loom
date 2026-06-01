@@ -13,6 +13,8 @@ import { useSignalLoomStore } from '@/lib/store';
 
 let _lastSessionsReload = 0;
 const SESSIONS_RELOAD_COOLDOWN_MS = 1200;
+const INITIAL_RECONNECT_DELAY_MS = 3000;
+const MAX_RECONNECT_DELAY_MS = 30000;
 
 function safeReload(reloadSessions: () => Promise<void>) {
   const now = Date.now();
@@ -45,6 +47,7 @@ export function useLiveEvents() {
   const { setLiveConnected, silentReloadSessions, ingestRuntimeEvent } = useSignalLoomStore();
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY_MS);
 
   useEffect(() => {
     let mounted = true;
@@ -57,6 +60,7 @@ export function useLiveEvents() {
 
       es.addEventListener('connected', () => {
         if (!mounted) return;
+        reconnectDelayRef.current = INITIAL_RECONNECT_DELAY_MS;
         setLiveConnected(true);
         safeReload(silentReloadSessions);
       }, { once: true });
@@ -116,9 +120,12 @@ export function useLiveEvents() {
         setLiveConnected(false);
         es.close();
         esRef.current = null;
+        if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+        const delay = reconnectDelayRef.current;
+        reconnectDelayRef.current = Math.min(MAX_RECONNECT_DELAY_MS, Math.round(delay * 1.8));
         reconnectTimeoutRef.current = setTimeout(() => {
           if (mounted) connect();
-        }, 3000);
+        }, delay);
       };
     }
 
