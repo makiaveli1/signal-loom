@@ -3653,7 +3653,37 @@ html[data-signal-rhythm="terminal"] .message-copy {
     width: 100%;
     max-width: 100%;
     overflow-x: hidden;
-    padding-inline: 0.75rem !important;
+    padding: 0.2rem 0.75rem !important;
+  }
+
+  .composer-quiet-row {
+    margin-bottom: 0.4rem;
+  }
+
+  .composer-options-panel {
+    max-height: 4.25rem;
+    overflow-y: auto !important;
+    padding: 0.45rem !important;
+  }
+
+  .composer-options-panel > div:first-child {
+    display: none !important;
+  }
+
+  .composer-shortcuts {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    padding-bottom: 0.15rem;
+    scrollbar-width: none;
+  }
+
+  .composer-shortcuts::-webkit-scrollbar {
+    display: none;
+  }
+
+  .composer-shortcuts button {
+    flex: 0 0 auto;
+    min-height: 2.5rem;
   }
 
   .transcript-scroll {
@@ -3682,11 +3712,13 @@ html[data-signal-rhythm="terminal"] .message-copy {
 
   .composer-flat-input {
     min-width: 0;
+    padding: 0.35rem 0.6rem !important;
   }
 
   .composer-flat-input textarea {
     min-width: 0;
     max-width: 100%;
+    min-height: 2.15rem !important;
   }
 
   .composer-flat-input .composer-icon-button {
@@ -3748,28 +3780,60 @@ html[data-signal-rhythm="terminal"] .message-copy {
     font-size: 0.72rem;
   }
 
+  .composer-shell [role="status"] {
+    display: none;
+  }
+
   .composer-shell [role="alert"],
   .composer-shell [role="status"] {
-    align-items: flex-start;
+    align-items: center;
+    flex-wrap: nowrap !important;
+    gap: 0.45rem;
+    padding: 0.45rem 0.55rem !important;
+  }
+
+  .composer-shell [role="alert"] > div:first-child,
+  .composer-shell [role="status"] > div:first-child {
+    min-width: 0;
+  }
+
+  .composer-shell [role="alert"] > div:first-child > div:first-child,
+  .composer-shell [role="status"] > div:first-child > div:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .composer-shell [role="alert"] > div:first-child > div:last-child,
+  .composer-shell [role="status"] > div:first-child > div:last-child {
+    display: none;
   }
 
   .composer-shell [role="alert"] > .shrink-0,
   .composer-shell [role="status"] > .shrink-0 {
-    width: 100%;
+    width: auto;
     min-width: 0;
-    flex: 1 1 100%;
-    flex-direction: column;
+    flex: 0 1 auto;
+    flex-direction: row;
     flex-wrap: nowrap;
-    align-items: stretch;
-    justify-content: flex-start;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .composer-shell [role="alert"] > .shrink-0 button:first-child,
+  .composer-shell [role="status"] > .shrink-0 button:first-child {
+    display: none;
   }
 
   .composer-shell [role="alert"] > .shrink-0 button,
   .composer-shell [role="status"] > .shrink-0 button {
-    width: 100%;
-    min-width: 0;
-    flex: 1 1 auto;
+    width: auto;
+    max-width: 5rem;
+    min-width: 2.5rem;
+    min-height: 2.25rem;
+    flex: 0 1 auto;
     overflow: hidden;
+    padding-inline: 0.55rem;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
