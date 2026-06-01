@@ -3,13 +3,14 @@ import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { promisify } from 'node:util';
+import { resolveAgentIdentity } from '@/lib/hermes/agent-identity-server';
+import { resolveHermesGatewayConfig } from '@/lib/hermes-server-gate';
 
 export const dynamic = 'force-dynamic';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_HOME = homedir();
 const HERMES_HOME = process.env.HERMES_HOME ?? `${DEFAULT_HOME}/.hermes`;
-const DEFAULT_API_URL = process.env.HERMES_API_URL ?? process.env.NEXT_PUBLIC_HERMES_API_URL ?? 'http://127.0.0.1:8642';
 
 type DetectionStatus =
   | 'ready'
@@ -38,15 +39,15 @@ async function run(command: string, args: string[], timeout = 5_000): Promise<{ 
   }
 }
 
-async function detectApi(url: string): Promise<{ reachable: boolean; authenticated?: boolean; error?: string }> {
+async function detectApi(url: string, token: string): Promise<{ reachable: boolean; authenticated?: boolean; error?: string }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 2_500);
   try {
     const res = await fetch(`${url.replace(/\/$/, '')}/v1/models`, {
       cache: 'no-store',
       signal: controller.signal,
-      headers: process.env.HERMES_API_KEY || process.env.API_SERVER_KEY
-        ? { Authorization: `Bearer ${process.env.HERMES_API_KEY ?? process.env.API_SERVER_KEY}` }
+      headers: token
+        ? { Authorization: `Bearer ${token}` }
         : undefined,
     });
     if (res.status === 401 || res.status === 403) {
@@ -111,6 +112,8 @@ function buildNextSteps(status: DetectionStatus, apiUrl: string): NextStep[] {
 }
 
 export async function GET() {
+  const gatewayConfig = resolveHermesGatewayConfig();
+  const identity = resolveAgentIdentity();
   try {
     const which = await run('which', ['hermes']);
     const binaryFound = which.ok && Boolean(which.output);
@@ -127,7 +130,7 @@ export async function GET() {
     const configExists = existsSync(/* turbopackIgnore: true */ configPath);
     const envExists = existsSync(/* turbopackIgnore: true */ envPath);
     const stateDbExists = existsSync(/* turbopackIgnore: true */ stateDbPath);
-    const api = await detectApi(DEFAULT_API_URL);
+    const api = await detectApi(gatewayConfig.apiUrl, gatewayConfig.token);
 
     let status: DetectionStatus = 'ready';
     if (!binaryFound) status = 'missing_binary';
@@ -155,13 +158,14 @@ export async function GET() {
         stateDbPath,
         stateDbExists,
       },
+      identity,
       api: {
-        url: DEFAULT_API_URL,
+        url: gatewayConfig.apiUrl,
         reachable: api.reachable,
         authenticated: api.authenticated,
         error: api.error,
       },
-      nextSteps: buildNextSteps(status, DEFAULT_API_URL),
+      nextSteps: buildNextSteps(status, gatewayConfig.apiUrl),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -170,7 +174,8 @@ export async function GET() {
       status: 'unknown_error' satisfies DetectionStatus,
       fetchedAt: new Date().toISOString(),
       error: message,
-      nextSteps: buildNextSteps('unknown_error', DEFAULT_API_URL),
+      identity,
+      nextSteps: buildNextSteps('unknown_error', gatewayConfig.apiUrl),
     }, { status: 500 });
   }
 }

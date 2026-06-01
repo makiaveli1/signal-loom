@@ -69,11 +69,11 @@ export function ThreadDock({ width = 260, onCollapse }: { width?: number; onColl
 
   return (
     <aside
-      className="flex flex-col h-full border-r"
-      style={{ background: 'var(--mb-shell)', borderColor: 'rgba(255,255,255,0.05)', width: `${width}px`, minWidth: '220px', maxWidth: '420px' }}
+      className="thread-dock-shell flex flex-col h-full border-r"
+      style={{ background: 'var(--sl-chrome)', borderColor: 'var(--sl-divider)', width: `${width}px`, minWidth: '220px', maxWidth: '420px' }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--sl-divider)' }}>
         <div>
           <span className="text-xs font-semibold uppercase tracking-[0.22em] text-brass">Loom</span>
           <p className="mt-0.5 text-[10px] text-ash">Focus, restore, or tuck chats away</p>
@@ -98,7 +98,7 @@ export function ThreadDock({ width = 260, onCollapse }: { width?: number; onColl
         </div>
       </div>
 
-      <div className="loom-mode-tabs border-b px-2 py-2" style={{ borderColor: 'rgba(255,255,255,0.045)' }}>
+      <div className="loom-mode-tabs border-b px-2 py-2" style={{ borderColor: 'var(--sl-divider)' }}>
         {(['focus', 'all', 'hidden'] as const).map((mode) => {
           const count = mode === 'hidden' ? hiddenThreads.length : mode === 'focus' ? focusThreads.length : visibleThreads.length;
           const label = mode === 'focus' ? 'Focus' : mode === 'all' ? 'All' : 'Hidden';
@@ -141,7 +141,8 @@ export function ThreadDock({ width = 260, onCollapse }: { width?: number; onColl
 
       {/* Empty */}
       {!sessionsLoading && dockThreads.length === 0 && !sessionsError && (
-        <div className="flex-1 flex flex-col items-center justify-center gap-2 px-4 py-8">
+        <div className="flat-rest-state flex-1 flex flex-col items-center justify-center gap-2 px-4 py-8">
+          <span className="flat-rest-mark" aria-hidden="true">⌁</span>
           <p className="text-xs text-ivory-dim text-center">{threadDockMode === 'hidden' ? 'No hidden conversations' : 'The loom is quiet'}</p>
           <p className="text-xs text-ash text-center">{threadDockMode === 'focus' ? 'Open All to browse quieter history.' : 'Start or restore a conversation to begin.'}</p>
         </div>

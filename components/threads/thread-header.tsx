@@ -7,7 +7,7 @@ import { useSignalLoomStore } from '@/lib/store';
 
 const STATUS_LABELS: Record<Thread['status'], string> = {
   active: 'Active',
-  waiting_on_nero: 'Waiting on Nero',
+  waiting_on_nero: 'Waiting on Agent',
   waiting_on_specialist: 'Waiting on Specialist',
   waiting_on_user: 'Waiting on You',
   blocked: 'Blocked',

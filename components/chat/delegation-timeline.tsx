@@ -11,6 +11,7 @@ const AGENT_COLORS: Record<string, string> = {
   ariadne: '#9b8dc8',
   orion: '#3ab8c8',
   hermes: '#e8a04a',
+  operator: '#e8603a',
   nero: '#e8603a',
   user: '#c0c0b0',
 };
@@ -134,7 +135,7 @@ function TimelineEvent({
           >
             {event.actor}
           </span>
-          {/* Sprint 8: Delegation reason chip — why Nero delegated to this agent */}
+          {/* Sprint 8: Delegation reason chip — why this was delegated to the target agent */}
           {event.type === 'delegated' && event.targetAgentId && (
             <span
               className="text-xs font-mono px-1.5 py-0.5 rounded-full"
@@ -329,7 +330,7 @@ export function DelegationTimeline({
       <div className="relative">
         {visible.length === 0 ? (
           <p className="text-xs text-ash-muted italic py-1">
-            No routing events yet — ask Nero to synthesize, delegate, or decide.
+            No routing events yet — ask your agent to synthesize, delegate, or decide.
           </p>
         ) : (
           <div className="space-y-0">

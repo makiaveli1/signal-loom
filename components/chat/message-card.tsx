@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { agentIdentityFromDetection } from '@/lib/agent-identity';
 import { cn } from '@/lib/utils';
 import type { Message, MessageRole } from '@/lib/types';
+import { useHermesDetection } from '@/lib/use-hermes-detection';
 
 function formatLocalTime(isoString: string): string {
   const d = new Date(isoString);
@@ -193,12 +195,14 @@ export function MessageCard(props: MessageCardProps) {
 }
 
 function StandardMessageCard({ message, isHighlighted, isStreaming, isNew, isChildSession }: MessageCardProps) {
+  const { detection } = useHermesDetection({ pollMs: 60_000 });
+  const agentIdentity = agentIdentityFromDetection(detection?.identity);
   const runtimeRole = message.role as RuntimeRole;
   const display = useMemo(() => buildMessageDisplay(message.content, runtimeRole), [message.content, runtimeRole]);
   const [traceExpanded, setTraceExpanded] = useState(false);
 
   const isUser = runtimeRole === 'user';
-  const isNero = runtimeRole === 'nero' || runtimeRole === 'assistant';
+  const isAssistant = runtimeRole === 'nero' || runtimeRole === 'assistant';
   const isTool = runtimeRole === 'tool';
   const isSystem = runtimeRole === 'system' || isTool;
   const hasTrace = display.traceSections.length > 0;
@@ -237,21 +241,21 @@ function StandardMessageCard({ message, isHighlighted, isStreaming, isNew, isChi
         className={cn(
           'message-card-premium flex gap-3 rounded-2xl border px-4 py-3.5',
           isUser && 'message-card-user ml-auto flex-row-reverse',
-          isNero && 'message-card-nero',
+          isAssistant && 'message-card-nero',
           isSystem && 'message-card-system',
           isStreaming && 'message-card-streaming',
           isChildSession && !isUser && 'message-card-child',
           display.operationalOnly && 'message-card-folded'
         )}
       >
-        <div className={cn('message-avatar flex-shrink-0', isUser ? 'message-avatar-user' : isNero ? 'message-avatar-nero' : 'message-avatar-system')} aria-hidden="true">
-          {isUser ? 'G' : isNero ? 'N' : isTool ? 'T' : '•'}
+        <div className={cn('message-avatar flex-shrink-0', isUser ? 'message-avatar-user' : isAssistant ? 'message-avatar-nero' : 'message-avatar-system')} aria-hidden="true">
+          {isUser ? 'G' : isAssistant ? agentIdentity.initials : isTool ? 'T' : '•'}
         </div>
 
         <div className={cn('min-w-0 flex-1', isUser && 'text-right')}>
           <div className={cn('mb-1.5 flex items-center gap-2', isUser ? 'justify-end' : 'justify-start')}>
-            <span className={cn('text-[10px] font-semibold uppercase tracking-[0.22em]', isUser ? 'text-signal-teal' : isNero ? 'text-nero-brass' : 'text-ash')}>
-              {isUser ? 'Gbemi' : isNero ? 'Nero' : isTool ? 'Tool' : 'System'}
+            <span className={cn('text-[10px] font-semibold uppercase tracking-[0.22em]', isUser ? 'text-signal-teal' : isAssistant ? 'text-nero-brass' : 'text-ash')}>
+              {isUser ? 'Gbemi' : isAssistant ? agentIdentity.name : isTool ? 'Tool' : 'System'}
             </span>
             {display.operationalOnly && (
               <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[9px] uppercase tracking-[0.16em] text-ash">

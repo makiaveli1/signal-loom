@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Signal Loom — Nero Chair for Hermes",
+  title: "Signal Loom — Hermes Agent Workspace",
   description: "Workspace for Hermes chats, tools, settings, and approval review",
 };
 

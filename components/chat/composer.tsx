@@ -3,6 +3,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSignalLoomStore } from '@/lib/store';
+import { addressAgentPrompt, agentIdentityFromDetection } from '@/lib/agent-identity';
+import { getComposerConnectionGate } from '@/lib/status-truth';
+import { useHermesDetection } from '@/lib/use-hermes-detection';
 import { cn } from '@/lib/utils';
 
 interface ComposerProps {
@@ -88,7 +91,16 @@ function StreamingIndicator({
 }
 
 export function Composer({ threadId }: ComposerProps) {
-  const { composerState, sendMessage, sendStreamingMessage, composerDraft, clearComposerDraft } = useSignalLoomStore();
+  const {
+    composerState,
+    sendMessage,
+    sendStreamingMessage,
+    composerDraft,
+    clearComposerDraft,
+    hermesSettingsOpen,
+    toggleHermesSettings,
+  } = useSignalLoomStore();
+  const { detection, loading: detectionLoading, refresh: refreshDetection } = useHermesDetection({ pollMs: 60_000 });
   const [value, setValue] = useState('');
   const [streamingMode, setStreamingMode] = useState(true);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -96,6 +108,13 @@ export function Composer({ threadId }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { isSending, isStreaming, streamingResponse, streamingStatus, streamingTokenCount, streamingCharsPerSecond, streamingLastChunkAt, error, lastSentAt } = composerState;
+  const connectionGate = getComposerConnectionGate({ detection, loading: detectionLoading });
+  const agentIdentity = agentIdentityFromDetection(detection?.identity);
+  const showConnectionGate = connectionGate.blocked || connectionGate.tone === 'warn';
+
+  const openHermesSettings = () => {
+    if (!hermesSettingsOpen) toggleHermesSettings();
+  };
 
   // Auto-resize textarea
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -112,7 +131,7 @@ export function Composer({ threadId }: ComposerProps) {
 
   const handleSend = async () => {
     const trimmed = value.trim();
-    if (!trimmed || isSending) return;
+    if (!trimmed || isSending || connectionGate.blocked) return;
     setValue('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -152,9 +171,11 @@ export function Composer({ threadId }: ComposerProps) {
     });
   }, [clearComposerDraft, composerDraft]);
 
-  const canSend = value.trim().length > 0 && !isSending;
+  const canSend = value.trim().length > 0 && !isSending && !connectionGate.blocked;
+  const sendButtonDisabled = connectionGate.blocked ? detectionLoading || isSending : !canSend;
+  const sendButtonLabel = connectionGate.blocked ? connectionGate.actionLabel : 'Send message';
   const commandChips = [
-    { label: 'Decision', prompt: 'Nero: give me the decision, risks, tradeoffs, and exact next move for this thread.' },
+    { label: 'Decision', prompt: addressAgentPrompt(agentIdentity, 'give me the decision, risks, tradeoffs, and exact next move for this thread.') },
     { label: 'Split task', prompt: 'Split this into the right Hermes helper tasks and tell me what each helper should do before acting.' },
     { label: 'Recall', prompt: 'Search prior Hermes sessions for relevant context, then continue from the useful facts only.' },
     { label: 'Watcher', prompt: 'Design a safe Hermes cron/watch job for this need. Do not create it until I approve schedule and delivery.' },
@@ -220,6 +241,31 @@ export function Composer({ threadId }: ComposerProps) {
         </div>
       )}
 
+      {showConnectionGate && (
+        <div
+          role={connectionGate.blocked ? 'alert' : 'status'}
+          className={cn(
+            'mb-2 flex flex-wrap items-center justify-between gap-2 rounded-2xl border px-3 py-2 text-xs leading-5',
+            connectionGate.tone === 'danger' && 'border-signal-red/25 bg-signal-red/10 text-signal-red',
+            connectionGate.tone === 'warn' && 'border-brass/25 bg-brass/10 text-brass',
+            connectionGate.tone === 'neutral' && 'border-white/10 bg-white/[0.03] text-ash'
+          )}
+        >
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold text-ivory-dim">{connectionGate.reason}</div>
+            <div className="mt-0.5 text-ash">{connectionGate.detail}</div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button type="button" onClick={refreshDetection} className="min-h-9 rounded-full border border-white/10 bg-black/15 px-3 text-[11px] font-semibold text-ivory-dim transition hover:border-signal-teal/30 hover:text-signal-teal">
+              Re-check
+            </button>
+            <button type="button" onClick={openHermesSettings} disabled={detectionLoading} className="min-h-9 rounded-full border border-brass/30 bg-brass-dim px-3 text-[11px] font-semibold text-brass transition hover:border-brass/50 disabled:cursor-wait disabled:opacity-55">
+              {connectionGate.actionLabel}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Composer options — one quiet affordance instead of a row of tiny always-visible controls */}
       <div className="composer-quiet-row mb-2 flex items-center justify-between gap-3 text-[11px] text-ash">
         <button
@@ -276,7 +322,7 @@ export function Composer({ threadId }: ComposerProps) {
       <div className="flex items-end gap-2">
         {/* Input area */}
         <div
-          className="composer-input-frame flex-1 flex items-end gap-2 rounded-2xl border px-3.5 py-2.5 transition-all"
+          className="composer-input-frame composer-flat-input flex-1 flex items-end gap-2 rounded-2xl border px-3.5 py-2.5 transition-all"
           style={{
             background: 'linear-gradient(135deg, color-mix(in srgb, var(--sl-panel-raised) 96%, transparent), color-mix(in srgb, var(--sl-stage) 96%, transparent))',
             borderColor: canSend
@@ -303,8 +349,8 @@ export function Composer({ threadId }: ComposerProps) {
             value={value}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder="Ask Nero to synthesize, route, or decide…"
-            aria-label="Message Nero"
+            placeholder={`Ask ${agentIdentity.name} to synthesize, route, or decide…`}
+            aria-label={`Message ${agentIdentity.name}`}
             rows={1}
             disabled={isSending}
             className={cn(
@@ -314,29 +360,37 @@ export function Composer({ threadId }: ComposerProps) {
             style={{ minHeight: '2.5rem', maxHeight: '120px' }}
           />
           <button
-            onClick={handleSend}
+            type="button"
+            onClick={connectionGate.blocked ? openHermesSettings : handleSend}
             className={cn(
-              'composer-icon-button flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl transition-all duration-150',
-              canSend ? 'cursor-pointer' : 'cursor-not-allowed',
-              sendPulse && 'composer-send-ready'
+              'composer-icon-button flex h-9 flex-shrink-0 items-center justify-center rounded-xl transition-all duration-150',
+              connectionGate.blocked ? 'w-auto px-3 text-[11px] font-semibold' : 'w-9',
+              sendButtonDisabled ? 'cursor-not-allowed' : 'cursor-pointer',
+              sendPulse && !connectionGate.blocked && 'composer-send-ready'
             )}
             style={{
               background: canSend
                 ? streamingMode
                   ? 'var(--mb-teal)'
                   : 'var(--mb-red)'
-                : 'var(--mb-graphite)',
+                : connectionGate.blocked && !detectionLoading
+                  ? 'var(--mb-brass-dim)'
+                  : 'var(--mb-graphite)',
               color: canSend
                 ? 'var(--mb-ivory)'
-                : 'var(--mb-ash-muted)',
-              transform: canSend ? 'scale(1)' : 'scale(0.95)',
-              opacity: canSend || isSending ? 1 : 0.6,
+                : connectionGate.blocked && !detectionLoading
+                  ? 'var(--mb-brass)'
+                  : 'var(--mb-ash-muted)',
+              transform: canSend || connectionGate.blocked ? 'scale(1)' : 'scale(0.95)',
+              opacity: canSend || isSending || connectionGate.blocked ? 1 : 0.6,
             }}
-            disabled={!canSend}
-            aria-label="Send message"
+            disabled={sendButtonDisabled}
+            aria-label={sendButtonLabel}
           >
-            {isSending ? (
+            {isSending || detectionLoading ? (
               <span className="animate-spin" style={{ fontSize: '10px' }}>◷</span>
+            ) : connectionGate.blocked ? (
+              <span>{connectionGate.actionLabel}</span>
             ) : (
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                 <path d="M1 6L11 1L6 11L5 7L1 6Z" fill="currentColor" />

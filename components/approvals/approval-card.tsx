@@ -77,7 +77,7 @@ export function ApprovalCard({
 
   return (
     <div
-      className="approval-card rounded-lg border p-4 transition-all duration-150"
+      className="approval-card rounded-xl border p-4 transition-all duration-150"
       style={{
         background: 'var(--mb-elevated)',
         borderColor: cfg.border,

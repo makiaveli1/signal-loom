@@ -8,6 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { chatGateErrorPayload, probeHermesChatGate } from '@/lib/hermes-server-gate';
 import { sendMessage } from '@/lib/openclaw/adapter';
 
 export async function POST(request: NextRequest) {
@@ -32,6 +33,14 @@ export async function POST(request: NextRequest) {
   }
   if (content.length > 10000) {
     return NextResponse.json({ error: 'Message too long (max 10000 chars)' }, { status: 400 });
+  }
+
+  const connectionGate = await probeHermesChatGate();
+  if (!connectionGate.allowed) {
+    return NextResponse.json(
+      chatGateErrorPayload(connectionGate),
+      { status: connectionGate.httpStatus },
+    );
   }
 
   const result = await sendMessage({

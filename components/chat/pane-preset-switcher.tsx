@@ -7,8 +7,8 @@ import type { WorkspacePreset } from '@/lib/types';
 const PRESETS: { id: WorkspacePreset; label: string; description: string; icon: React.ReactNode }[] = [
   {
     id: 'focus',
-    label: 'Chair',
-    description: 'one clean Nero conversation',
+    label: 'Focus',
+    description: 'one clean agent conversation',
     icon: (
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
         <rect x="1" y="1" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.2" />

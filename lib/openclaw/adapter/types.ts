@@ -130,11 +130,11 @@ export interface DelegationEvent {
   id: string;
   threadId?: string;         // associated thread/session
   type: DelegationEventType;
-  actor?: AgentId | 'user';
+  actor?: string;
   fromAgent?: string;        // display name for sender
   toAgent?: string;          // display name for recipient
   title?: string;            // human-readable phrasing
-  targetAgentId?: AgentId;  // delegate target if applicable
+  targetAgentId?: string;    // delegate target if applicable
   createdAt?: string;        // ISO timestamp
   timestamp?: string;         // ISO timestamp (used in some contexts)
   taskSummary?: string;      // short description of delegated task

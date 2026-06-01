@@ -608,7 +608,7 @@ function SessionInfoPanel({
         onClick={onToggleCollapse}
         className="w-full flex items-center gap-3 px-5 py-2 cursor-pointer transition-all duration-200 hover:bg-white/[0.025]"
         style={{ background: 'linear-gradient(90deg, rgba(201,160,58,0.05), rgba(255,255,255,0.012))', minHeight: '44px' }}
-        title="Fold receipts — give more room to Nero chat"
+        title="Fold receipts — give more room to the chat"
       >
         <span
           className="flex h-5 w-5 items-center justify-center rounded-full border"
@@ -759,7 +759,7 @@ function ContextEnrichmentBlock({ thread }: { thread: Thread }) {
     { label: string; color: string; icon: string }
   > = {
     waiting_on_nero: {
-      label: 'Nero is thinking through this',
+      label: 'Agent is thinking through this',
       color: 'var(--mb-red)',
       icon: '◷',
     },

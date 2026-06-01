@@ -701,8 +701,8 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
           id: `evt-delegated-${session.shortId}`,
           threadId: session.id,
           type: 'delegated',
-          actor: 'nero',
-          title: `Nero delegated ${children.length} helper session${children.length > 1 ? 's' : ''}`,
+          actor: session.agentId,
+          title: `${session.agentName} delegated ${children.length} helper session${children.length > 1 ? 's' : ''}`,
           createdAt: session.lastMessageAt,
           childSessionIds: children,
         });
@@ -713,7 +713,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
           id: `evt-child-${session.shortId}`,
           threadId: session.parentSessionId,
           type: session.status === 'active' && ageMs < FIVE_MINS ? 'agent_active' : 'agent_returned',
-          actor: 'nero',
+          actor: session.agentId,
           title: `${session.status === 'active' && ageMs < FIVE_MINS ? 'Helper active' : 'Helper updated'} · ${session.title}`,
           detail: `${session.messageCount} message${session.messageCount !== 1 ? 's' : ''}${session.toolCallCount ? ` · ${session.toolCallCount} tool${session.toolCallCount !== 1 ? 's' : ''}` : ''}`,
           createdAt: session.lastMessageAt,
@@ -726,8 +726,8 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
           id: `evt-active-${session.shortId}`,
           threadId: session.id,
           type: 'agent_active',
-          actor: 'nero',
-          title: 'Live Hermes session active',
+          actor: session.agentId,
+          title: `Live ${session.agentName} session active`,
           createdAt: session.lastMessageAt,
         });
       }
@@ -1483,7 +1483,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
     };
     const emptyAssistant = {
       id: assistantMessageId,
-      role: 'nero' as const,
+      role: 'assistant' as const,
       content: '',
       timestamp: startedAt,
     };

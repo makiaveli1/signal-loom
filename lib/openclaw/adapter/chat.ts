@@ -1,5 +1,5 @@
 /**
- * Chat adapter — sends messages to Nero via the Hermes API server.
+ * Chat adapter — sends messages to the configured Hermes agent via the Hermes API server.
  *
  * Uses the OpenAI-compatible /v1/chat/completions endpoint.
  * Hermes translates these to the internal agent chat protocol.
@@ -84,7 +84,7 @@ export async function sendMessage(
         role: 'assistant',
         content: choice.message.content ?? '',
         timestamp: new Date().toISOString(),
-        agentId: model.split('/').pop() ?? 'nero',
+        agentId: model.split('/').pop() ?? 'hermes-agent',
       },
       fetchedAt: new Date().toISOString(),
     };

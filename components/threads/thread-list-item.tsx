@@ -8,7 +8,7 @@ import { motion } from 'motion/react';
 
 const STATUS_LABELS: Record<Thread['status'], string> = {
   active:               'active',
-  waiting_on_nero:      'waiting on Nero',
+  waiting_on_nero:      'waiting on agent',
   waiting_on_specialist:'waiting on helper',
   waiting_on_user:      'waiting on you',
   blocked:              'blocked',
@@ -61,9 +61,10 @@ export function ThreadListItem({ thread, isSelected, onSelect, childCount, isHid
         type="button"
         onClick={onSelect}
         className={cn(
-          "w-full text-left px-3 py-3 rounded-lg transition-all duration-150 relative",
+          "thread-row-flat w-full text-left px-3 py-3 rounded-lg transition-all duration-150 relative",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset",
           isSelected ? "bg-elevated/80" : "bg-transparent",
+          isSelected && "is-selected",
           isHidden && "opacity-70"
         )}
         style={isSelected ? {

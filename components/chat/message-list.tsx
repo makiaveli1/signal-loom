@@ -7,6 +7,8 @@ import { MessageCard } from './message-card';
 import type { Message, Thread } from '@/lib/types';
 import type { ConversationGroup } from '@/lib/conversation-groups';
 import { PretextSmartTitle } from '@/components/ui/pretext-smart-title';
+import { agentIdentityFromDetection } from '@/lib/agent-identity';
+import { useHermesDetection } from '@/lib/use-hermes-detection';
 import { useSignalLoomStore } from '@/lib/store';
 
 // Sprint 10.7: messages prop lets ThreadPane pass loaded transcript directly
@@ -27,7 +29,7 @@ type LoomMessage = Message & {
 
 const BOTTOM_THRESHOLD = 150;
 
-function isPlaceholderNeroMessage(content: string): boolean {
+function isPlaceholderAssistantMessage(content: string): boolean {
   const compact = content.replace(/[\s\u200b\u200c\u200d]+/g, '');
   return compact === '' || /^[.…\.]+$/.test(compact);
 }
@@ -35,6 +37,8 @@ function isPlaceholderNeroMessage(content: string): boolean {
 export function MessageList({ thread, messages: messagesOverride, conversationBundle }: MessageListProps) {
   // Sprint 10.7: Use loaded transcript messages if provided (from sessionMessages store),
   // otherwise fall back to thread.messages (which is empty for session-derived threads).
+  const { detection } = useHermesDetection({ pollMs: 60_000 });
+  const agentIdentity = agentIdentityFromDetection(detection?.identity);
   const rawMessages: LoomMessage[] = messagesOverride ?? thread.messages;
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -56,7 +60,7 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
       streamingContent != null &&
       message.content === streamingContent;
 
-    if ((message.role === 'nero' || (message.role as string) === 'assistant') && isPlaceholderNeroMessage(message.content) && !isLiveStreamingPlaceholder) {
+    if ((message.role === 'nero' || (message.role as string) === 'assistant') && isPlaceholderAssistantMessage(message.content) && !isLiveStreamingPlaceholder) {
       return false;
     }
     return true;
@@ -133,7 +137,7 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
   const lastMsg = messages[messages.length - 1];
   const isLastMsgStreaming =
     isStreaming &&
-    lastMsg?.role === 'nero' &&
+    ((lastMsg?.role === 'nero' || (lastMsg?.role as string | undefined) === 'assistant')) &&
     streamingContent != null &&
     lastMsg.content === streamingContent;
 
@@ -168,12 +172,17 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
           )}
           {messages.length === 0 && (
             <div className="empty-thread-card mx-auto max-w-lg rounded-3xl border border-white/10 bg-white/[0.025] px-6 py-6 text-center shadow-2xl shadow-black/20">
+              <div className="flat-rest-orbit" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </div>
               <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full border border-brass/25 bg-brass/10 text-brass">
-                N
+                {agentIdentity.initials}
               </div>
               <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-ivory">Ready when you are</h2>
               <p className="mt-2 text-sm leading-6 text-ivory-dim">
-                Ask Nero for the decision, summary, or next move. Tool noise and routing details will stay folded unless you open them.
+                Ask {agentIdentity.name} for the decision, summary, or next move. Tool noise and routing details will stay folded unless you open them.
               </p>
             </div>
           )}
@@ -205,7 +214,7 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
           })}
           <AnimatePresence>
             {showThinkingCard && (
-              <ThinkingCard status={composerState.streamingStatus} />
+              <ThinkingCard status={composerState.streamingStatus} agentName={agentIdentity.name} agentInitials={agentIdentity.initials} />
             )}
           </AnimatePresence>
           <div ref={bottomRef} />
@@ -244,8 +253,8 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
   );
 }
 
-function ThinkingCard({ status }: { status: string }) {
-  const label = status === 'connecting' ? 'Opening stream' : status === 'finalizing' ? 'Finalizing' : 'Nero is thinking';
+function ThinkingCard({ status, agentName, agentInitials }: { status: string; agentName: string; agentInitials: string }) {
+  const label = status === 'connecting' ? 'Opening stream' : status === 'finalizing' ? 'Finalizing' : `${agentName} is thinking`;
   return (
     <motion.div
       key="thinking-card"
@@ -256,7 +265,7 @@ function ThinkingCard({ status }: { status: string }) {
       className="thinking-card mx-auto flex max-w-3xl items-center gap-3 rounded-2xl border px-4 py-3"
       aria-live="polite"
     >
-      <div className="message-avatar message-avatar-nero flex-shrink-0" aria-hidden="true">N</div>
+      <div className="message-avatar message-avatar-nero flex-shrink-0" aria-hidden="true">{agentInitials}</div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-nero-brass">
           {label}

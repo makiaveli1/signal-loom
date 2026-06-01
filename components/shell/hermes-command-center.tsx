@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef } from 'react';
+import { addressAgentPrompt, agentIdentityFromDetection } from '@/lib/agent-identity';
 import { useSignalLoomStore } from '@/lib/store';
+import { classifyDelegatedSessions } from '@/lib/status-truth';
+import { useHermesDetection } from '@/lib/use-hermes-detection';
 import { cn } from '@/lib/utils';
 
 type Capability = {
@@ -18,11 +21,11 @@ const CAPABILITIES: Capability[] = [
   {
     id: 'decision',
     label: 'Summarise decision',
-    lane: 'Nero',
+    lane: 'Operator',
     accent: 'red',
     description: 'Pull out the decision, risks, and next step from the current chat.',
     helper: 'Use this when the chat is long and you need the point, not every detail.',
-    prompt: 'Nero: synthesize the current thread into: 1) the actual decision, 2) risks/tradeoffs, 3) what you recommend I do next, and 4) what can be ignored.',
+    prompt: '{agent}: synthesize the current thread into: 1) the actual decision, 2) risks/tradeoffs, 3) what you recommend I do next, and 4) what can be ignored.',
   },
   {
     id: 'delegate',
@@ -31,7 +34,7 @@ const CAPABILITIES: Capability[] = [
     accent: 'teal',
     description: 'Break a larger task into coding, research, design, QA, or business work.',
     helper: 'Use this when several parts can move at the same time.',
-    prompt: 'Nero: split this task into the right work lanes. Say who owns what, what evidence each part needs, and give me a compact execution plan before acting.',
+    prompt: '{agent}: split this task into the right work lanes. Say who owns what, what evidence each part needs, and give me a compact execution plan before acting.',
   },
   {
     id: 'session-recall',
@@ -108,6 +111,8 @@ const accentClass: Record<Capability['accent'], string> = {
 
 export function HermesCommandCenter() {
   const panelRef = useRef<HTMLElement>(null);
+  const { detection } = useHermesDetection({ pollMs: 60_000 });
+  const agentIdentity = agentIdentityFromDetection(detection?.identity);
 
   const {
     hermesCommandCenterOpen,
@@ -118,13 +123,17 @@ export function HermesCommandCenter() {
     runtime,
     agents,
     approvals,
+    sessions,
+    runtimeActivities,
   } = useSignalLoomStore();
 
   const stats = useMemo(() => {
-    const active = agents.filter((agent) => agent.status === 'active').length;
+    const delegated = classifyDelegatedSessions({ sessions, runtimeActivities });
+    const active = agents.filter((agent) => agent.status === 'active').length + delegated.runningNow.length;
+    const watching = delegated.createdEmpty.length + delegated.recentlyDelegated.length;
     const pendingApprovals = approvals.filter((approval) => approval.status === undefined || approval.status === 'pending').length;
-    return { active, pendingApprovals };
-  }, [agents, approvals]);
+    return { active, watching, pendingApprovals };
+  }, [agents, approvals, sessions, runtimeActivities]);
 
   useEffect(() => {
     if (!hermesCommandCenterOpen) return;
@@ -185,7 +194,10 @@ export function HermesCommandCenter() {
   if (!hermesCommandCenterOpen) return null;
 
   const applyPrompt = (prompt: string) => {
-    setComposerDraft(prompt);
+    const personalizedPrompt = prompt.startsWith('{agent}:')
+      ? addressAgentPrompt(agentIdentity, prompt.replace('{agent}:', '').trim())
+      : prompt;
+    setComposerDraft(personalizedPrompt);
     closeHermesCommandCenter();
   };
 
@@ -220,7 +232,8 @@ export function HermesCommandCenter() {
           <StatusPill label="Gateway" value={runtime.gateway} good={runtime.gateway === 'healthy'} />
           <StatusPill label="Queue" value={runtime.queue} good={runtime.queue === 'healthy'} />
           <StatusPill label="Heartbeat" value={runtime.heartbeatFreshness} good={runtime.heartbeatFreshness === 'fresh'} />
-          <StatusPill label="Active agents" value={`${stats.active}`} good={stats.active > 0} />
+          <StatusPill label="Running lanes" value={`${stats.active}`} good={stats.active > 0} />
+          <StatusPill label="Watching lanes" value={`${stats.watching}`} good={stats.watching === 0} />
           <StatusPill label="Needs review" value={`${stats.pendingApprovals}`} good={stats.pendingApprovals === 0} />
         </div>
 

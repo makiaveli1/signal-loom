@@ -6,6 +6,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { resolveAgentIdentity } from '@/lib/hermes/agent-identity-server';
 import { listHermesSessions, unixToIso, type HermesStateSession } from '@/lib/hermes/state-db';
 import type { OpenClawSession, SessionStatus } from '@/lib/openclaw/adapter/types';
 
@@ -25,17 +26,17 @@ function normalizeStatus(raw: HermesStateSession): SessionStatus {
   return 'done';
 }
 
-function deriveAgentId(raw: HermesStateSession): string {
+function deriveAgentId(raw: HermesStateSession, defaultAgentId: string): string {
   const haystack = `${raw.id} ${raw.source} ${raw.title ?? ''} ${raw.preview ?? ''} ${raw.model ?? ''}`.toLowerCase();
   if (haystack.includes('hephaestus') || haystack.includes('forge')) return 'hephaestus';
   if (haystack.includes('argus') || haystack.includes('sentinel')) return 'argus';
   if (haystack.includes('ariadne') || haystack.includes('studio')) return 'ariadne';
   if (haystack.includes('orion') || haystack.includes('scout')) return 'orion';
   if (haystack.includes('mercury')) return 'hermes';
-  return 'nero';
+  return defaultAgentId;
 }
 
-function agentNameFromId(id: string): string {
+function agentNameFromId(id: string, defaultAgent: { id: string; name: string }): string {
   const map: Record<string, string> = {
     nero: 'Nero',
     hephaestus: 'Hephaestus',
@@ -44,7 +45,7 @@ function agentNameFromId(id: string): string {
     orion: 'Orion',
     hermes: 'Hermes',
   };
-  return map[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
+  return map[id] ?? (id === defaultAgent.id ? defaultAgent.name : id.charAt(0).toUpperCase() + id.slice(1));
 }
 
 function deriveTitle(raw: HermesStateSession): string {
@@ -56,8 +57,8 @@ function deriveTitle(raw: HermesStateSession): string {
   return `${source} session ${shortId(raw.id)}`;
 }
 
-function normalizeSession(raw: HermesStateSession): OpenClawSession {
-  const agentId = deriveAgentId(raw);
+function normalizeSession(raw: HermesStateSession, defaultAgent: { id: string; name: string }): OpenClawSession {
+  const agentId = deriveAgentId(raw, defaultAgent.id);
   const tags = ['hermes'];
   if (raw.source) tags.push(raw.source);
   if (raw.parent_session_id) tags.push('child');
@@ -69,7 +70,7 @@ function normalizeSession(raw: HermesStateSession): OpenClawSession {
     shortId: shortId(raw.id),
     title: deriveTitle(raw),
     agentId,
-    agentName: agentNameFromId(agentId),
+    agentName: agentNameFromId(agentId, defaultAgent),
     messageCount: raw.message_count ?? 0,
     toolCallCount: raw.tool_call_count ?? 0,
     source: raw.source,
@@ -106,7 +107,8 @@ function attachSessionRelationships(sessions: OpenClawSession[]): OpenClawSessio
 export async function GET() {
   try {
     const raw = await listHermesSessions(200);
-    const sessions = attachSessionRelationships(raw.map(normalizeSession))
+    const identity = resolveAgentIdentity();
+    const sessions = attachSessionRelationships(raw.map((session) => normalizeSession(session, identity)))
       .filter((s) => {
         if (!s.lastMessageAt) return true;
         if (s.status !== 'done') return true;

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useSignalLoomStore } from '@/lib/store';
+import { getStatusRowState } from '@/lib/status-truth';
 import { cn } from '@/lib/utils';
 
 type HighlightLine = { line: number; text: string };
@@ -154,17 +155,58 @@ function connectionLabel(status: string) {
   return labels[status] ?? status.replace(/_/g, ' ');
 }
 
-function StatusRow({ label, ok, detail }: { label: string; ok: boolean; detail?: string }) {
+function StatusRow({
+  label,
+  ok,
+  detail,
+  loading = false,
+  loadingDetail,
+}: {
+  label: string;
+  ok: boolean;
+  detail?: string;
+  loading?: boolean;
+  loadingDetail?: string;
+}) {
+  const row = getStatusRowState({ label, ok, detail, loading, loadingDetail });
   return (
     <div className="flex items-start justify-between gap-3 rounded-2xl border border-white/10 bg-black/15 px-3 py-2 text-sm">
       <div className="min-w-0">
-        <div className="font-semibold text-ivory-dim">{label}</div>
-        {detail && <div className="mt-0.5 break-all font-mono text-[11px] leading-5 text-ash">{detail}</div>}
+        <div className="font-semibold text-ivory-dim">{row.label}</div>
+        {row.detail && <div className="mt-0.5 break-all font-mono text-[11px] leading-5 text-ash">{row.detail}</div>}
       </div>
-      <span className={cn('shrink-0 rounded-full border px-2 py-0.5 font-mono text-[10px]', ok ? 'border-signal-teal/30 text-signal-teal' : 'border-brass/30 text-brass')}>
-        {ok ? 'ok' : 'needs work'}
+      <span className={cn(
+        'shrink-0 rounded-full border px-2 py-0.5 font-mono text-[10px]',
+        row.tone === 'ok' && 'border-signal-teal/30 text-signal-teal',
+        row.tone === 'warn' && 'border-brass/30 text-brass',
+        row.tone === 'danger' && 'border-signal-red/30 text-signal-red',
+        row.tone === 'neutral' && 'border-white/10 text-ash'
+      )}>
+        {row.badge}
       </span>
     </div>
+  );
+}
+
+function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold text-ivory-dim transition hover:border-signal-teal/30 hover:text-signal-teal"
+    >
+      {copied ? 'Copied' : label}
+    </button>
   );
 }
 
@@ -190,10 +232,10 @@ function HermesConnectOverview({ detection, loading, onRefresh }: { detection: H
       </div>
 
       <div className="mt-5 grid gap-2 lg:grid-cols-2">
-        <StatusRow label="Hermes CLI" ok={Boolean(detection?.binary?.found)} detail={detection?.binary?.version ?? detection?.binary?.path ?? 'Run the install command below if this is missing.'} />
-        <StatusRow label="Config file" ok={Boolean(detection?.home?.configExists)} detail={detection?.home?.configPath ?? 'No config path detected yet.'} />
-        <StatusRow label="API server" ok={Boolean(detection?.api?.reachable && detection?.api?.authenticated !== false)} detail={detection?.api?.error ? `${detection.api.url} — ${detection.api.error}` : detection?.api?.url} />
-        <StatusRow label="Session database" ok={Boolean(detection?.home?.stateDbExists)} detail={detection?.home?.stateDbPath ?? 'A state DB appears after Hermes has stored sessions.'} />
+        <StatusRow label="Hermes CLI" loading={loading} ok={Boolean(detection?.binary?.found)} loadingDetail="Checking binary…" detail={detection?.binary?.version ?? detection?.binary?.path ?? 'Run the install command below if this is missing.'} />
+        <StatusRow label="Config file" loading={loading} ok={Boolean(detection?.home?.configExists)} loadingDetail="Checking config path…" detail={detection?.home?.configPath ?? 'No config path detected yet.'} />
+        <StatusRow label="API server" loading={loading} ok={Boolean(detection?.api?.reachable && detection?.api?.authenticated !== false)} loadingDetail="Checking local API auth…" detail={detection?.api?.error ? `${detection.api.url} — ${detection.api.error}` : detection?.api?.url} />
+        <StatusRow label="Session database" loading={loading} ok={Boolean(detection?.home?.stateDbExists)} loadingDetail="Checking state DB…" detail={detection?.home?.stateDbPath ?? 'A state DB appears after Hermes has stored sessions.'} />
       </div>
 
       {detection?.nextSteps && detection.nextSteps.length > 0 && (
@@ -209,7 +251,12 @@ function HermesConnectOverview({ detection, loading, onRefresh }: { detection: H
                   <span className="text-sm font-semibold text-ivory-dim">{step.label}</span>
                   <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-ash">{step.risk.replace(/_/g, ' ')}</span>
                 </div>
-                {step.command && <pre className="mt-2 overflow-x-auto rounded-lg border border-white/5 bg-black/25 px-3 py-2 font-mono text-[11px] leading-5 text-signal-teal">{step.command}</pre>}
+                {step.command && (
+                  <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                    <pre className="overflow-x-auto rounded-lg border border-white/5 bg-black/25 px-3 py-2 font-mono text-[11px] leading-5 text-signal-teal">{step.command}</pre>
+                    <CopyButton text={step.command} label="Copy command" />
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -670,9 +717,10 @@ export function HermesSettingsPanel() {
                           <p className="mt-1 text-sm leading-6 text-ash">Signal Loom reads these paths so you do not have to remember them.</p>
                           <div className="mt-3 grid gap-2">
                             {Object.entries(settings.paths).map(([key, value]) => (
-                              <div key={key} className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-xl border border-white/5 bg-black/15 px-3 py-2 text-xs">
+                              <div key={key} className="grid grid-cols-[120px_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-white/5 bg-black/15 px-3 py-2 text-xs">
                                 <span className="font-semibold uppercase tracking-[0.16em] text-ash">{key}</span>
                                 <span className="break-all font-mono text-ivory-dim">{value}</span>
+                                <CopyButton text={value} label="Copy path" />
                               </div>
                             ))}
                           </div>

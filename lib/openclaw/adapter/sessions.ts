@@ -7,6 +7,7 @@
  * /tools/invoke endpoints.
  */
 
+import { DEFAULT_AGENT_IDENTITY, type AgentIdentity } from '@/lib/agent-identity';
 import type { AdapterResult, OpenClawMessage, OpenClawSession, SessionStatus } from './types';
 
 interface HermesStateSession {
@@ -39,7 +40,23 @@ interface HermesStateDbModule {
   loadHermesMessages(sessionId: string, limit?: number): Promise<HermesStateMessage[]>;
 }
 
+interface AgentIdentityServerModule {
+  resolveAgentIdentity(): AgentIdentity;
+}
+
 const STATE_DB_MODULE = '@/lib/hermes/' + 'state-db';
+const AGENT_IDENTITY_MODULE = '@/lib/hermes/' + 'agent-identity-server';
+
+async function loadAgentIdentity(): Promise<AgentIdentity> {
+  if (typeof window !== 'undefined') return DEFAULT_AGENT_IDENTITY;
+  try {
+    // Constant specifier; new Function prevents Next from bundling the server-only identity module into client chunks.
+    const identityModule = await (new Function('specifier', 'return import(specifier)'))(AGENT_IDENTITY_MODULE) as AgentIdentityServerModule;
+    return identityModule.resolveAgentIdentity();
+  } catch {
+    return DEFAULT_AGENT_IDENTITY;
+  }
+}
 
 async function loadStateDbModule(): Promise<HermesStateDbModule> {
   // Hide the server-only module from the client bundle. This adapter facade is
@@ -63,21 +80,21 @@ function unixToIso(ts?: number | null): string | null {
   return new Date(millis).toISOString();
 }
 
-const MOCK_FALLBACK_SESSIONS: OpenClawSession[] = [
-  {
-    id: 'hermes:main',
+function fallbackSession(identity: AgentIdentity = DEFAULT_AGENT_IDENTITY): OpenClawSession {
+  return {
+    id: `${identity.id}:main`,
     shortId: 'main',
-    title: 'Nero — Hermes main session',
-    agentId: 'nero',
-    agentName: 'Nero',
+    title: `${identity.name} — Hermes main session`,
+    agentId: identity.id,
+    agentName: identity.name,
     messageCount: 0,
     lastMessageAt: new Date().toISOString(),
     status: 'active',
     tags: ['hermes', 'fallback'],
     childSessionIds: [],
     preview: 'Hermes state database unavailable — showing fallback shell.',
-  },
-];
+  };
+}
 
 function shortId(id: string): string {
   const tail = id.split(/[:/_-]/).filter(Boolean).pop() ?? id;
@@ -92,18 +109,17 @@ function normalizeStatus(raw: HermesStateSession): SessionStatus {
   return 'done';
 }
 
-function deriveAgentId(raw: HermesStateSession): string {
+function deriveAgentId(raw: HermesStateSession, defaultAgentId: string): string {
   const haystack = `${raw.id} ${raw.source} ${raw.title ?? ''} ${raw.preview ?? ''} ${raw.model ?? ''}`.toLowerCase();
   if (haystack.includes('hephaestus') || haystack.includes('forge')) return 'hephaestus';
   if (haystack.includes('argus') || haystack.includes('sentinel')) return 'argus';
   if (haystack.includes('ariadne') || haystack.includes('studio')) return 'ariadne';
   if (haystack.includes('orion') || haystack.includes('scout')) return 'orion';
   if (haystack.includes('mercury')) return 'hermes';
-  // In Nero's Hermes setup, API/TUI/CLI/Telegram roots are chaired by Nero.
-  return 'nero';
+  return defaultAgentId;
 }
 
-function agentNameFromId(id: string): string {
+function agentNameFromId(id: string, defaultAgent: AgentIdentity): string {
   const map: Record<string, string> = {
     nero: 'Nero',
     hephaestus: 'Hephaestus',
@@ -112,7 +128,7 @@ function agentNameFromId(id: string): string {
     orion: 'Orion',
     hermes: 'Hermes',
   };
-  return map[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
+  return map[id] ?? (id === defaultAgent.id ? defaultAgent.name : id.charAt(0).toUpperCase() + id.slice(1));
 }
 
 function deriveTitle(raw: HermesStateSession): string {
@@ -124,8 +140,8 @@ function deriveTitle(raw: HermesStateSession): string {
   return `${source} session ${shortId(raw.id)}`;
 }
 
-function normalizeSession(raw: HermesStateSession): OpenClawSession {
-  const agentId = deriveAgentId(raw);
+function normalizeSession(raw: HermesStateSession, defaultAgent: AgentIdentity): OpenClawSession {
+  const agentId = deriveAgentId(raw, defaultAgent.id);
   const tags = ['hermes'];
   if (raw.source) tags.push(raw.source);
   if (raw.parent_session_id) tags.push('child');
@@ -137,7 +153,7 @@ function normalizeSession(raw: HermesStateSession): OpenClawSession {
     shortId: shortId(raw.id),
     title: deriveTitle(raw),
     agentId,
-    agentName: agentNameFromId(agentId),
+    agentName: agentNameFromId(agentId, defaultAgent),
     messageCount: raw.message_count ?? 0,
     toolCallCount: raw.tool_call_count ?? 0,
     source: raw.source,
@@ -185,8 +201,9 @@ export async function loadSessionsReal(): Promise<AdapterResult<OpenClawSession[
 
   _sessionsInFlight = (async () => {
     const { listHermesSessions } = await loadStateDbModule();
+    const identity = await loadAgentIdentity();
     const raw = await listHermesSessions(200);
-    const normalized = attachSessionRelationships(raw.map(normalizeSession))
+    const normalized = attachSessionRelationships(raw.map((session) => normalizeSession(session, identity)))
       .filter((s) => {
         if (!s.lastMessageAt) return true;
         if (s.status !== 'done') return true;
@@ -205,7 +222,8 @@ export async function loadSessionsReal(): Promise<AdapterResult<OpenClawSession[
       return { ok: true, data: _sessionsCache.data, fetchedAt: new Date(_sessionsCache.fetchedAt).toISOString() };
     }
     console.warn('[Hermes adapter] loadSessionsReal fallback:', e instanceof Error ? e.message : e);
-    return { ok: true, data: MOCK_FALLBACK_SESSIONS, fetchedAt: new Date().toISOString() };
+    const identity = await loadAgentIdentity();
+    return { ok: true, data: [fallbackSession(identity)], fetchedAt: new Date().toISOString() };
   } finally {
     _sessionsInFlight = null;
   }
@@ -237,13 +255,14 @@ export async function loadSessionMessages(
     }
 
     const { loadHermesMessages } = await loadStateDbModule();
+    const identity = await loadAgentIdentity();
     const raw = await loadHermesMessages(sessionKey, limit);
     const messages: OpenClawMessage[] = raw.map((m) => ({
       id: String(m.id),
       role: normalizeMessageRole(m.role),
       content: m.content,
       timestamp: unixToIso(m.timestamp) ?? new Date().toISOString(),
-      agentId: m.role === 'assistant' ? 'nero' : undefined,
+      agentId: m.role === 'assistant' ? identity.id : undefined,
     }));
 
     const totalBytes = messages.reduce((sum, m) => sum + m.content.length, 0);

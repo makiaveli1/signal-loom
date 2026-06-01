@@ -13,9 +13,9 @@ export function RuntimeStrip() {
       aria-label="Runtime health status"
       className="runtime-strip flex min-w-0 items-center justify-between gap-3 border-t px-4 py-1 text-xs font-mono"
       style={{
-        background: 'var(--mb-shell)',
-        borderColor: 'rgba(255,255,255,0.05)',
-        color: 'var(--mb-ash)',
+        background: 'var(--sl-chrome)',
+        borderColor: 'var(--sl-divider)',
+        color: 'var(--sl-text-subtle)',
       }}
     >
       {/* Left — one calm system readout; details live in the title tooltip. */}
@@ -23,13 +23,13 @@ export function RuntimeStrip() {
         <span
           className="inline-flex items-center gap-2 rounded-full border px-2 py-0.5"
           style={{
-            borderColor: systemHealthy ? 'rgba(74,184,138,0.18)' : 'rgba(196,90,58,0.24)',
-            background: systemHealthy ? 'rgba(74,184,138,0.045)' : 'rgba(196,90,58,0.09)',
-            color: systemHealthy ? 'var(--mb-jade)' : 'var(--mb-rust)',
+            borderColor: systemHealthy ? 'color-mix(in srgb, var(--sl-success) 28%, transparent)' : 'color-mix(in srgb, var(--sl-danger) 34%, transparent)',
+            background: systemHealthy ? 'color-mix(in srgb, var(--sl-success) 7%, transparent)' : 'color-mix(in srgb, var(--sl-danger) 11%, transparent)',
+            color: systemHealthy ? 'var(--sl-success)' : 'var(--sl-danger)',
           }}
           title={`Gateway ${runtime.gateway} · queue ${runtime.queue} · heartbeat ${runtime.heartbeatFreshness}`}
         >
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: systemHealthy ? 'var(--mb-jade)' : 'var(--mb-rust)' }} />
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: systemHealthy ? 'var(--sl-success)' : 'var(--sl-danger)' }} />
           {healthLoading ? 'Checking' : systemHealthy ? 'Healthy' : 'Degraded'}
         </span>
       </div>

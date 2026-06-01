@@ -9,7 +9,8 @@
  * Uses a 25-second AbortSignal timeout to prevent gateway hangs.
  */
 
-const GATEWAY_URL = process.env.NEXT_PUBLIC_HERMES_API_URL
+const GATEWAY_URL = process.env.HERMES_API_URL
+  ?? process.env.NEXT_PUBLIC_HERMES_API_URL
   ?? process.env.NEXT_PUBLIC_OPENCLAW_GATEWAY_URL
   ?? 'http://127.0.0.1:8642';
 // Server-side only — never exposed to the browser bundle.

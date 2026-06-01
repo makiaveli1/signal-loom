@@ -23,8 +23,8 @@ export const SIGNAL_THEMES = [
     preview: ['#0c0e12', '#3dc9c4', '#c9a03a'],
   },
   {
-    id: 'nero-ember',
-    label: 'Nero Ember',
+    id: 'operator-ember',
+    label: 'Operator Ember',
     shortLabel: 'Ember',
     tone: 'warm',
     intent: 'Warmer night mode for decisive triage and review sessions.',

@@ -1,5 +1,5 @@
 /**
- * Hermes adapter — legacy OpenClaw-shaped facade over Nero/Hermes runtime data.
+ * Hermes adapter — legacy OpenClaw-shaped facade over Hermes runtime data.
  *
  * The UI still imports OpenClaw-shaped types/routes while we migrate the product.
  * This adapter keeps that surface stable but sources sessions, health, and chat
@@ -158,7 +158,7 @@ export type { Approval };
  * approval requests are session-bound (requireApproval hook).
  *
  * We derive approval candidates from:
- * 1. Recent delegation events where an agent returned a result to Nero
+ * 1. Recent delegation events where a specialist returned a result
  * 2. Sessions that ended recently with task-completion language
  * 3. Items that look like they need a human decision
  *
@@ -211,7 +211,8 @@ export async function loadApprovals(): Promise<AdapterResult<Approval[]>> {
         session.preview?.toLowerCase().includes('needs approval') ||
         session.preview?.toLowerCase().includes('approve');
 
-      if (isDelegateReturn || agentName !== 'Nero') {
+      const isSpecialistSession = ['hephaestus', 'argus', 'ariadne', 'orion'].includes(session.agentId);
+      if (isDelegateReturn || isSpecialistSession) {
         // Derive urgency from agent + how recent
         const urgency: Approval['urgency'] =
           agentName === 'Hephaestus' || agentName === 'Argus'
@@ -399,7 +400,7 @@ export async function loadDelegationEvents(): Promise<AdapterResult<DelegationEv
   // characteristics — not from native delegation events.
   //
   // What we CAN infer from session metadata:
-  // - A session with childSessions → Nero delegated work to a subagent
+  // - A session with childSessions → the primary agent delegated work to a subagent
   // - A running session with high message count → active specialist work
   // - A done/idle session → completed work
   // - Channel (webchat, telegram) → where the interaction originated
@@ -417,6 +418,9 @@ export async function loadDelegationEvents(): Promise<AdapterResult<DelegationEv
     }
 
     const sessions = sessionsResult.data;
+    const primaryAgent = sessions.find((session) => !['hephaestus', 'argus', 'ariadne', 'orion', 'hermes'].includes(session.agentId));
+    const primaryAgentId = primaryAgent?.agentId ?? 'operator';
+    const primaryAgentName = primaryAgent?.agentName ?? 'Agent';
     const now = Date.now();
     const THREE_HRS = 3 * 60 * 60 * 1000;
 
@@ -430,14 +434,14 @@ export async function loadDelegationEvents(): Promise<AdapterResult<DelegationEv
       const childTag = session.tags.find((t) => t.startsWith('delegated:'));
       const childCount = childTag ? parseInt(childTag.split(':')[1]) : 0;
 
-      // Type: session with child sessions → Nero delegated work
+      // Type: session with child sessions → primary agent delegated work
       if (childCount > 0) {
         events.push({
           id: `evt-delegated-${session.shortId}`,
           threadId: session.id,
           type: 'delegated',
-          actor: 'nero',
-          title: `Nero delegated to specialist (${childCount} sub-sessions)`,
+          actor: primaryAgentId,
+          title: `${primaryAgentName} delegated to specialist (${childCount} sub-sessions)`,
           createdAt: session.lastMessageAt,
           status: session.status === 'active' ? 'in_progress' : 'completed',
           tags: session.tags,
@@ -451,7 +455,7 @@ export async function loadDelegationEvents(): Promise<AdapterResult<DelegationEv
           id: `evt-active-${session.shortId}`,
           threadId: session.id,
           type: 'agent_active',
-          actor: 'nero',
+          actor: primaryAgentId,
           title: isRecent
             ? `Active specialist session (${session.messageCount} messages)`
             : `Session was active (${session.messageCount} messages)`,
@@ -467,7 +471,7 @@ export async function loadDelegationEvents(): Promise<AdapterResult<DelegationEv
           id: `evt-returned-${session.shortId}`,
           threadId: session.id,
           type: 'agent_returned',
-          actor: 'nero',
+          actor: primaryAgentId,
           title: session.tags.includes('telegram') ? 'Telegram session completed' : 'Session completed',
           createdAt: session.lastMessageAt,
           status: 'completed',

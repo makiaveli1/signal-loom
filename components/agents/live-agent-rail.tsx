@@ -5,36 +5,38 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useSignalLoomStore } from '@/lib/store';
 import { AgentCard } from './agent-card';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { classifyDelegatedSessions, type ClassifiedDelegatedSession } from '@/lib/status-truth';
 import { cn } from '@/lib/utils';
 import type { Agent } from '@/lib/types';
 import type { OpenClawSession } from '@/lib/openclaw/adapter/types';
 
 export function LiveAgentRail({ width = 280, onCollapse }: { width?: number; onCollapse?: () => void }) {
-  const { agents, sessions, openChildSession } = useSignalLoomStore();
-  const [idleExpanded, setIdleExpanded] = useState(true);
+  const { agents, sessions, runtimeActivities, openChildSession } = useSignalLoomStore();
+  const [idleExpanded, setIdleExpanded] = useState(false);
 
-  const childSessions = useMemo(() => sessions
-    .filter((session) => session.parentSessionId)
-    .sort((a, b) => {
-      const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
-      const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
-      return bTime - aTime;
-    })
-    .slice(0, 6), [sessions]);
+  const delegated = useMemo(
+    () => classifyDelegatedSessions({ sessions, runtimeActivities }),
+    [sessions, runtimeActivities]
+  );
+  const childSessionTotal = delegated.runningNow.length
+    + delegated.createdEmpty.length
+    + delegated.recentlyDelegated.length
+    + delegated.completed.length
+    + delegated.stale.length;
 
   const visible = agents.filter(
     (a) => a.status === 'active' || a.status === 'waiting' || a.status === 'blocked'
   );
   const idleAgents = agents.filter((a) => a.status === 'idle' || a.status === 'done');
-  const activeCount = agents.filter((a) => a.status === 'active').length + childSessions.filter((s) => s.status === 'active').length;
-  const waitingCount = agents.filter((a) => a.status === 'waiting' || a.status === 'blocked').length;
+  const activeCount = agents.filter((a) => a.status === 'active').length + delegated.runningNow.length;
+  const waitingCount = agents.filter((a) => a.status === 'waiting' || a.status === 'blocked').length + delegated.createdEmpty.length + delegated.recentlyDelegated.length;
 
   return (
     <aside
-      className="flex flex-col h-full border-l"
+      className="live-agent-rail-shell agent-rail-shell flex flex-col h-full border-l"
       style={{
-        background: 'linear-gradient(180deg, var(--mb-shell) 0%, rgba(12,14,18,0.96) 100%)',
-        borderColor: 'rgba(255,255,255,0.05)',
+        background: 'linear-gradient(180deg, var(--sl-chrome) 0%, color-mix(in srgb, var(--sl-chrome) 92%, black 8%) 100%)',
+        borderColor: 'var(--sl-divider)',
         width: `${width}px`,
         minWidth: '220px',
         maxWidth: '440px',
@@ -43,7 +45,7 @@ export function LiveAgentRail({ width = 280, onCollapse }: { width?: number; onC
     >
       <div
         className="px-4 py-3 border-b"
-        style={{ borderColor: 'rgba(255,255,255,0.05)' }}
+        style={{ borderColor: 'var(--sl-divider)' }}
       >
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -81,8 +83,9 @@ export function LiveAgentRail({ width = 280, onCollapse }: { width?: number; onC
       <div className="flex flex-col min-h-0 flex-1 overflow-hidden">
         <ScrollArea className="flex-1">
           <div className="p-2.5 space-y-2">
-            {agents.length === 0 && childSessions.length === 0 && (
-              <div className="py-7 px-3 text-center rounded-xl border border-white/5 bg-black/10">
+            {agents.length === 0 && childSessionTotal === 0 && (
+              <div className="flat-rest-state py-7 px-3 text-center rounded-xl border border-white/5 bg-black/10">
+                <span className="flat-rest-mark" aria-hidden="true">∿</span>
                 <p className="text-xs text-ivory-dim font-medium">No helper agents active.</p>
                 <p className="text-xs text-ash mt-1 leading-relaxed">
                   When work is delegated, helper sessions appear here.
@@ -90,26 +93,41 @@ export function LiveAgentRail({ width = 280, onCollapse }: { width?: number; onC
               </div>
             )}
 
-            {childSessions.length > 0 && (
+            {childSessionTotal > 0 && (
               <section className="space-y-2">
                 <div className="flex items-center justify-between px-1 text-[10px] font-mono uppercase tracking-[0.16em] text-ash">
-                  <span>Delegated now</span>
-                  <span className="text-brass">{childSessions.length}</span>
+                  <span>Delegated lanes</span>
+                  <span className="text-brass">{childSessionTotal}</span>
                 </div>
-                <AnimatePresence initial={false}>
-                  {childSessions.map((session) => (
-                    <motion.div
-                      key={session.id}
-                      layout
-                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -4, scale: 0.98 }}
-                      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                    >
-                      <SubagentSessionCard session={session} onOpen={() => openChildSession(session.id)} />
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
+                <DelegatedSessionSection
+                  title="Running now"
+                  tone="teal"
+                  items={delegated.runningNow.slice(0, 4)}
+                  onOpen={(session) => openChildSession(session.id)}
+                />
+                <DelegatedSessionSection
+                  title="Created, waiting"
+                  tone="brass"
+                  items={delegated.createdEmpty.slice(0, 3)}
+                  onOpen={(session) => openChildSession(session.id)}
+                />
+                <DelegatedSessionSection
+                  title="Recently delegated"
+                  tone="ash"
+                  items={delegated.recentlyDelegated.slice(0, 4)}
+                  onOpen={(session) => openChildSession(session.id)}
+                />
+                <DelegatedSessionSection
+                  title="Completed"
+                  tone="ash"
+                  items={delegated.completed.slice(0, 3)}
+                  onOpen={(session) => openChildSession(session.id)}
+                />
+                {delegated.stale.length > 0 && (
+                  <div className="lane-note-card rounded-xl border border-white/5 bg-black/10 px-3 py-2 text-[10px] leading-4 text-ash">
+                    {delegated.stale.length} stale delegated lane{delegated.stale.length === 1 ? '' : 's'} tucked away because no fresh heartbeat was found.
+                  </div>
+                )}
               </section>
             )}
 
@@ -142,8 +160,45 @@ export function LiveAgentRail({ width = 280, onCollapse }: { width?: number; onC
   );
 }
 
-function SubagentSessionCard({ session, onOpen }: { session: OpenClawSession; onOpen: () => void }) {
-  const active = session.status === 'active';
+function DelegatedSessionSection({
+  title,
+  tone,
+  items,
+  onOpen,
+}: {
+  title: string;
+  tone: 'teal' | 'brass' | 'ash';
+  items: Array<ClassifiedDelegatedSession<OpenClawSession>>;
+  onOpen: (session: OpenClawSession) => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between px-1 text-[10px] font-mono uppercase tracking-[0.14em] text-ash-muted">
+        <span className={cn(tone === 'teal' && 'text-signal-teal', tone === 'brass' && 'text-brass')}>{title}</span>
+        <span>{items.length}</span>
+      </div>
+      <AnimatePresence initial={false}>
+        {items.map(({ session, state }) => (
+          <motion.div
+            key={session.id}
+            layout
+            initial={{ opacity: 0, y: 8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <SubagentSessionCard session={session} state={state} onOpen={() => onOpen(session)} />
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function SubagentSessionCard({ session, state, onOpen }: { session: OpenClawSession; state: ClassifiedDelegatedSession<OpenClawSession>['state']; onOpen: () => void }) {
+  const active = state === 'running';
+  const created = state === 'created';
   const toolCount = session.toolCallCount ?? 0;
   return (
     <button
@@ -155,18 +210,18 @@ function SubagentSessionCard({ session, onOpen }: { session: OpenClawSession; on
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className={cn('h-1.5 w-1.5 rounded-full bg-signal-teal', active && 'signal-pulse')} aria-hidden="true" />
-            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-signal-teal">Subagent</span>
+            <span className={cn('h-1.5 w-1.5 rounded-full', active ? 'bg-signal-teal signal-pulse' : created ? 'bg-brass' : 'bg-white/35')} aria-hidden="true" />
+            <span className={cn('text-[10px] font-semibold uppercase tracking-[0.2em]', active ? 'text-signal-teal' : created ? 'text-brass' : 'text-ash')}>Subagent</span>
           </div>
           <p className="mt-1 truncate text-xs font-semibold text-ivory-dim">{session.title}</p>
         </div>
         <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[9px] font-mono text-ash">{session.shortId}</span>
       </div>
-      <p className="line-clamp-2 text-xs leading-snug text-ash">{session.preview || 'Waiting for the delegated lane to write its first useful breadcrumb.'}</p>
+      <p className="line-clamp-2 text-xs leading-snug text-ash">{session.preview || (created ? 'Created, but no useful breadcrumb has landed yet.' : 'No preview captured for this delegated lane.')}</p>
       <div className="mt-2 flex items-center justify-between border-t border-white/5 pt-2 text-[10px] font-mono text-ash-muted">
         <span>{session.messageCount} msg{session.messageCount !== 1 ? 's' : ''}</span>
         <span>{toolCount} tool{toolCount !== 1 ? 's' : ''}</span>
-        <span>{active ? 'live' : session.status}</span>
+        <span>{active ? 'running' : created ? 'created' : state}</span>
       </div>
     </button>
   );

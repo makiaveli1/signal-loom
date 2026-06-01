@@ -145,9 +145,9 @@ export function MissionShell() {
   return (
     <TooltipProvider>
       <div
-        className="signal-loom-shell flex flex-col"
+        className="signal-loom-shell flex min-w-0 flex-col"
         style={{
-          background: 'var(--mb-carbon)',
+          background: 'var(--sl-shell-gradient)',
           height: '100dvh',
           overflow: 'hidden',
         }}
@@ -158,7 +158,7 @@ export function MissionShell() {
         </div>
 
         {/* Main content area */}
-        <div className="relative flex min-h-0 flex-1" style={{ height: '100%' }}>
+        <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden" style={{ height: '100%' }}>
           {compactDrawerOpen && (
             <button
               type="button"
@@ -385,7 +385,7 @@ function LayoutUtilityBar({
             </div>
             <div className="layout-menu-footer">
               <span>{selectedTheme.intent}</span>
-              <button type="button" onClick={onReset} className="layout-pill subdued">
+              <button type="button" onClick={onReset} className="layout-pill subdued" aria-label="Reset layout">
                 Reset layout
               </button>
             </div>
@@ -411,8 +411,7 @@ function CollapsedRailTab({
     <button
       type="button"
       onClick={onClick}
-      className="collapsed-rail-tab flex h-full w-10 flex-shrink-0 items-center justify-center border-x text-[10px] font-semibold uppercase tracking-[0.22em] text-ash transition-colors hover:text-ivory"
-      style={{ borderColor: 'rgba(255,255,255,0.055)' }}
+      className={`collapsed-rail-tab collapsed-rail-tab-${side} flex h-full w-10 flex-shrink-0 items-center justify-center border-x text-[10px] font-semibold uppercase tracking-[0.22em] text-ash transition-colors hover:text-ivory`}
       title={`Show ${label} rail`}
       aria-label={`Show ${label} rail`}
     >

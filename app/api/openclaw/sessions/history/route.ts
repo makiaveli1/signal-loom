@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { resolveAgentIdentity } from '@/lib/hermes/agent-identity-server';
 import { loadHermesMessages, unixToIso } from '@/lib/hermes/state-db';
 import type { OpenClawMessage } from '@/lib/openclaw/adapter/types';
 
@@ -30,12 +31,13 @@ export async function GET(request: NextRequest) {
 
   try {
     const raw = await loadHermesMessages(sessionKey, limit);
+    const identity = resolveAgentIdentity();
     const messages: OpenClawMessage[] = raw.map((m) => ({
       id: String(m.id),
       role: normalizeMessageRole(m.role),
       content: m.content,
       timestamp: unixToIso(m.timestamp) ?? new Date().toISOString(),
-      agentId: m.role === 'assistant' ? 'nero' : undefined,
+      agentId: m.role === 'assistant' ? identity.id : undefined,
     }));
     const totalBytes = messages.reduce((sum, m) => sum + m.content.length, 0);
 

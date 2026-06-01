@@ -54,7 +54,7 @@ export function ApprovalsPanel() {
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: '100%' }}
           transition={{ type: 'spring', stiffness: 380, damping: 32, mass: 0.8 }}
-          className="flex flex-col h-full border-l"
+          className="approval-panel-shell flex flex-col h-full border-l"
           style={{
             background: 'var(--mb-shell)',
             borderColor: 'rgba(255,255,255,0.05)',
@@ -117,8 +117,8 @@ export function ApprovalsPanel() {
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-3">
               {pendingApprovals.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
-                  <span className="text-lg opacity-30">✓</span>
+                <div className="flat-rest-state flex flex-col items-center justify-center py-12 gap-2 text-center">
+                  <span className="flat-rest-mark" aria-hidden="true">✓</span>
                   <p className="text-xs text-ash-muted">No approvals pending</p>
                   <p className="text-xs text-ash-muted opacity-60">
                     Decisions appear here as agents request them

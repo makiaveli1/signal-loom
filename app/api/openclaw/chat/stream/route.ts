@@ -12,6 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { chatGateErrorPayload, probeHermesChatGate, resolveHermesGatewayConfig } from '@/lib/hermes-server-gate';
 
 
 interface ChatMessage {
@@ -52,6 +53,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Message too long (max 10000 chars)' }, { status: 400 });
   }
 
+  const connectionGate = await probeHermesChatGate();
+  if (!connectionGate.allowed) {
+    return NextResponse.json(
+      chatGateErrorPayload(connectionGate),
+      { status: connectionGate.httpStatus },
+    );
+  }
+
   const sourceHistory = Array.isArray(history)
     ? history
     : Array.isArray(bodyMessages)
@@ -80,13 +89,7 @@ export async function POST(request: NextRequest) {
   let gatewayResponse: Response;
   try {
     // We need to use fetch directly here to handle the streaming response.
-    const GATEWAY_URL = process.env.NEXT_PUBLIC_HERMES_API_URL
-      ?? process.env.NEXT_PUBLIC_OPENCLAW_GATEWAY_URL
-      ?? 'http://127.0.0.1:8642';
-    const GATEWAY_TOKEN = process.env.HERMES_API_KEY
-      ?? process.env.API_SERVER_KEY
-      ?? process.env.OPENCLAW_GATEWAY_TOKEN
-      ?? '';
+    const { apiUrl: GATEWAY_URL, token: GATEWAY_TOKEN } = resolveHermesGatewayConfig();
 
     gatewayResponse = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
       method: 'POST',
