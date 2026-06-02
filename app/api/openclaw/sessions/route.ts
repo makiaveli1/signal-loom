@@ -5,18 +5,17 @@
  * contract while the UI migration is in progress.
  */
 
-import { NextResponse } from 'next/server';
-import { resolveAgentIdentity } from '@/lib/hermes/agent-identity-server';
-import { listHermesSessions, unixToIso, type HermesStateSession } from '@/lib/hermes/state-db';
-import type { OpenClawSession, SessionStatus } from '@/lib/openclaw/adapter/types';
+import { NextResponse } from 'next/server.js';
+import { resolveAgentIdentity } from '../../../../lib/hermes/agent-identity-server.ts';
+import { listHermesSessions, unixToIso, type HermesStateSession } from '../../../../lib/hermes/state-db.ts';
+import { runtimeContractHeaders, sanitizeRuntimeDetail } from '../../../../lib/runtime-contract.ts';
+import type { OpenClawSession, SessionStatus } from '../../../../lib/openclaw/adapter/types.ts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function headerSafe(value: unknown) {
-  return String(value instanceof Error ? value.message : value ?? 'Hermes sessions unavailable')
-    .replace(/[\r\n]+/g, ' ')
-    .slice(0, 240);
+  return sanitizeRuntimeDetail(value ?? 'Hermes sessions unavailable').slice(0, 240);
 }
 
 function degradedSessionsResponse(error: unknown) {
@@ -39,12 +38,7 @@ function degradedSessionsResponse(error: unknown) {
   };
 
   return NextResponse.json([fallbackSession], {
-    headers: {
-      'Cache-Control': 'no-store',
-      'X-Adapter-Fetched-At': now,
-      'X-Signal-Loom-Degraded': 'sessions',
-      'X-Signal-Loom-Degraded-Reason': reason,
-    },
+    headers: runtimeContractHeaders('sessions', reason),
   });
 }
 

@@ -1,7 +1,8 @@
-import { NextRequest } from 'next/server';
-import { resolveAgentIdentity } from '@/lib/hermes/agent-identity-server';
-import { loadHermesMessages, unixToIso } from '@/lib/hermes/state-db';
-import type { OpenClawMessage } from '@/lib/openclaw/adapter/types';
+import { NextRequest } from 'next/server.js';
+import { resolveAgentIdentity } from '../../../../../lib/hermes/agent-identity-server.ts';
+import { loadHermesMessages, unixToIso } from '../../../../../lib/hermes/state-db.ts';
+import { runtimeContractHeaders, sanitizeRuntimeDetail } from '../../../../../lib/runtime-contract.ts';
+import type { OpenClawMessage } from '../../../../../lib/openclaw/adapter/types.ts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,7 +17,7 @@ function emptyHistoryPayload(error?: unknown, limit = 80) {
       droppedMessages: false,
       totalBytes: 0,
       degraded: true,
-      error: error instanceof Error ? error.message : 'Hermes session history unavailable',
+      error: sanitizeRuntimeDetail(error ?? 'Hermes session history unavailable'),
       requestedLimit: limit,
     },
     fetchedAt: new Date().toISOString(),
@@ -77,8 +78,7 @@ export async function GET(request: NextRequest) {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'no-store',
-        'X-Signal-Loom-Degraded': 'session-history',
+        ...runtimeContractHeaders('session-history', error),
       },
     });
   }

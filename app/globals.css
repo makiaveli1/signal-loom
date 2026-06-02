@@ -3699,15 +3699,48 @@ html[data-signal-rhythm="terminal"] .message-copy {
 
   .message-card-premium,
   .message-card-user,
+  .message-card-shell,
   .action-summary-premium {
     box-sizing: border-box;
-    width: calc(100% - 2rem) !important;
-    max-width: calc(100% - 2rem) !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0;
   }
 
-  .message-card-user {
-    margin-left: auto !important;
-    margin-right: 1rem !important;
+  .message-card-user,
+  .message-card-shell {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  .message-card-shell {
+    gap: 0.65rem;
+    padding-inline: 0.75rem !important;
+    overflow-x: clip;
+  }
+
+  .message-card-shell .message-avatar {
+    width: 1.85rem;
+    height: 1.85rem;
+  }
+
+  .message-card-shell .work-trace-toggle {
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+
+  .message-source-divider {
+    width: 100%;
+    min-width: 0;
+    gap: 0.5rem;
+  }
+
+  .message-source-chip {
+    max-width: min(100%, calc(100vw - 4rem));
+    overflow: hidden;
   }
 
   .composer-flat-input {

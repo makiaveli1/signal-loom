@@ -23,11 +23,37 @@ type QuickSetting = {
   value: SettingValue | null;
 };
 
+type RuntimeConfigIssue = {
+  code: string;
+  tone: 'warn' | 'danger';
+  message: string;
+};
+
+type RuntimeConfigTruth = {
+  api: {
+    url: string;
+    source: string;
+    valid: boolean;
+    loopback: boolean;
+  };
+  auth: {
+    tokenPresent: boolean;
+    tokenSource: string | null;
+    acceptedSources: string[];
+  };
+  flags: {
+    mockDataEnabled: boolean;
+    installEnabled: boolean;
+  };
+  issues: RuntimeConfigIssue[];
+};
+
 type HermesSettingsPayload = {
   ok: boolean;
   fetchedAt: string;
   paths: Record<string, string>;
   runtime: { version: string; updateAvailable: boolean; tools: string; toolsOk: boolean };
+  runtimeConfig: RuntimeConfigTruth;
   quickSettings: QuickSetting[];
   config: {
     content: string;
@@ -113,6 +139,61 @@ function StatCard({ label, value, tone = 'teal' }: { label: string; value: strin
       </div>
       <div className="mt-1 break-words font-mono text-xs leading-5 text-ivory-dim">{value || '—'}</div>
     </div>
+  );
+}
+
+function RuntimeTruthPanel({ config }: { config: RuntimeConfigTruth }) {
+  const healthTone = config.issues.some((issue) => issue.tone === 'danger')
+    ? 'red'
+    : config.issues.length > 0
+      ? 'brass'
+      : 'teal';
+  const healthLabel = healthTone === 'red' ? 'Needs fix' : healthTone === 'brass' ? 'Review' : 'Aligned';
+
+  return (
+    <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brass">Runtime truth</p>
+          <h3 className="mt-1 text-base font-semibold text-ivory">Detected Signal Loom configuration</h3>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-ash">
+            One readout for the env values server routes will actually use. Tokens stay hidden; only source and presence are shown.
+          </p>
+        </div>
+        <span className={cn(
+          'rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em]',
+          healthTone === 'teal' && 'border-signal-teal/30 text-signal-teal',
+          healthTone === 'brass' && 'border-brass/30 text-brass',
+          healthTone === 'red' && 'border-signal-red/30 text-signal-red'
+        )}>
+          {healthLabel}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <StatCard label="Hermes API" value={`${config.api.url} (${config.api.source})`} tone={config.api.valid && config.api.loopback ? 'teal' : 'brass'} />
+        <StatCard label="API token" value={config.auth.tokenPresent ? `Set via ${config.auth.tokenSource}` : `Missing (${config.auth.acceptedSources.join(', ')})`} tone={config.auth.tokenPresent ? 'teal' : 'brass'} />
+        <StatCard label="Local flags" value={`mock:${config.flags.mockDataEnabled ? 'on' : 'off'} · install:${config.flags.installEnabled ? 'on' : 'off'}`} tone={config.flags.installEnabled ? 'brass' : 'teal'} />
+      </div>
+
+      {config.issues.length > 0 ? (
+        <div className="mt-4 grid gap-2">
+          {config.issues.map((issue) => (
+            <div key={issue.code} className={cn(
+              'rounded-2xl border px-3 py-2 text-sm leading-6',
+              issue.tone === 'danger' ? 'border-signal-red/20 bg-signal-red/10 text-signal-red' : 'border-brass/20 bg-brass/10 text-brass'
+            )}>
+              <span className="mr-2 font-mono text-[10px] uppercase tracking-[0.16em]">{issue.code.replace(/_/g, ' ')}</span>
+              {issue.message}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 rounded-2xl border border-signal-teal/20 bg-signal-teal-glow px-3 py-2 text-sm leading-6 text-signal-teal">
+          Runtime env sources are aligned for a local Hermes setup.
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -712,6 +793,7 @@ export function HermesSettingsPanel() {
                           <StatCard label="Config file" value={`${settings.config.bytes.toLocaleString()} bytes`} />
                           <StatCard label="Update status" value={settings.runtime.updateAvailable ? 'Update available' : 'Up to date'} tone={settings.runtime.updateAvailable ? 'brass' : 'teal'} />
                         </div>
+                        <RuntimeTruthPanel config={settings.runtimeConfig} />
                         <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-4">
                           <h3 className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brass">Where files live</h3>
                           <p className="mt-1 text-sm leading-6 text-ash">Signal Loom reads these paths so you do not have to remember them.</p>

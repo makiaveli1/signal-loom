@@ -113,11 +113,15 @@ By default the app expects Hermes at:
 http://127.0.0.1:8642
 ```
 
-Override it with:
+Override it with the private server-side value first; the public names remain migration fallbacks:
 
 ```bash
+HERMES_API_URL=http://127.0.0.1:8642
+# fallback only if needed:
 NEXT_PUBLIC_HERMES_API_URL=http://127.0.0.1:8642
 ```
+
+Copy `.env.example` for the full local template. The Connect tab's Runtime truth panel shows which API URL source and token source the server routes are actually using, without exposing token values.
 
 The adapter still accepts older OpenClaw environment names while the migration finishes, but new setups should prefer Hermes names.
 

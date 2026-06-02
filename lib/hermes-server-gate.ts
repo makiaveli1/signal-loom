@@ -1,3 +1,6 @@
+import { resolveSignalLoomRuntimeConfig } from './runtime-config.ts';
+import { sanitizeRuntimeDetail } from './runtime-contract.ts';
+
 export type HermesChatGateCode =
   | 'ready'
   | 'needs_token'
@@ -24,17 +27,8 @@ type ProbeOptions = {
 };
 
 export function resolveHermesGatewayConfig(env: EnvLike = process.env) {
-  const rawApiUrl = env.HERMES_API_URL
-    ?? env.NEXT_PUBLIC_HERMES_API_URL
-    ?? env.NEXT_PUBLIC_OPENCLAW_GATEWAY_URL
-    ?? 'http://127.0.0.1:8642';
-  const apiUrl = rawApiUrl.replace(/\/$/, '');
-  const token = env.HERMES_API_KEY
-    ?? env.API_SERVER_KEY
-    ?? env.OPENCLAW_GATEWAY_TOKEN
-    ?? '';
-
-  return { apiUrl, token };
+  const runtimeConfig = resolveSignalLoomRuntimeConfig(env);
+  return { apiUrl: runtimeConfig.apiUrl, token: runtimeConfig.token };
 }
 
 function blockedGate({
@@ -113,7 +107,7 @@ export async function probeHermesChatGate({
       apiUrl,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = sanitizeRuntimeDetail(error);
     return blockedGate({
       code: 'api_unreachable',
       reason: 'Hermes API unreachable',

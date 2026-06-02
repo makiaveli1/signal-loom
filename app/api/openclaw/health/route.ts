@@ -4,8 +4,9 @@
  * Returns the OpenClaw runtime health snapshot.
  */
 
-import { NextResponse } from 'next/server';
-import { listHermesSessions } from '@/lib/hermes/state-db';
+import { NextResponse } from 'next/server.js';
+import { listHermesSessions } from '../../../../lib/hermes/state-db.ts';
+import { runtimeContractHeaders, sanitizeRuntimeDetail } from '../../../../lib/runtime-contract.ts';
 
 function healthySnapshot() {
   return {
@@ -37,13 +38,9 @@ export async function GET() {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Hermes runtime unavailable';
+    const message = sanitizeRuntimeDetail(error);
     return NextResponse.json(degradedSnapshot(message), {
-      headers: {
-        'Cache-Control': 'no-store',
-        'X-Adapter-Fetched-At': new Date().toISOString(),
-        'X-Signal-Loom-Degraded': 'health',
-      },
+      headers: runtimeContractHeaders('health', message),
     });
   }
 }

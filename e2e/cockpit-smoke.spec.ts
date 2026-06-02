@@ -23,6 +23,22 @@ async function collectShellMetrics(page: Page) {
       };
     };
 
+    const boxes = (selector: string) => [...document.querySelectorAll(selector)].map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        bottom: Math.round(rect.bottom),
+        right: Math.round(rect.right),
+      };
+    });
+
+    const viewportWidth = document.documentElement.clientWidth;
+    const viewportHeight = document.documentElement.clientHeight;
+    const overflowsViewport = (rect: { x: number; right: number }) => rect.x < 0 || rect.right > viewportWidth;
+
     const bodyText = document.body.innerText || '';
     const overlayPresent = [
       '[data-nextjs-dialog-overlay]',
@@ -47,12 +63,22 @@ async function collectShellMetrics(page: Page) {
     const ids = [...document.querySelectorAll('[id]')].map((element) => element.id).filter(Boolean);
     const duplicateIds = ids.filter((id, index) => ids.indexOf(id) !== index);
 
+    const messageCards = boxes('.message-card-shell, .action-summary-premium');
+    const workTracePanels = boxes('.work-trace-panel');
+    const messageSourceChips = boxes('.message-source-chip');
+
     return {
+      viewportWidth,
+      viewportHeight,
       overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       overlayPresent,
       failTextPresent: failText.some((text) => bodyText.includes(text)),
       duplicateIds,
       unnamedVisibleControls,
+      messageCardCount: messageCards.length,
+      messageCardOverflows: messageCards.filter(overflowsViewport),
+      workTracePanelOverflows: workTracePanels.filter(overflowsViewport),
+      messageSourceChipOverflows: messageSourceChips.filter(overflowsViewport),
       composerShell: box('.composer-shell'),
       composerFrame: box('.composer-input-frame'),
       transcript: box('.transcript-scroll'),
@@ -72,6 +98,9 @@ async function expectShellClean(page: Page, testInfo: { attach: (name: string, o
   expect(metrics.failTextPresent).toBe(false);
   expect(metrics.duplicateIds).toEqual([]);
   expect(metrics.unnamedVisibleControls).toBe(0);
+  expect(metrics.messageCardOverflows).toEqual([]);
+  expect(metrics.workTracePanelOverflows).toEqual([]);
+  expect(metrics.messageSourceChipOverflows).toEqual([]);
   return metrics;
 }
 
@@ -88,7 +117,8 @@ test.describe('Signal Loom cockpit smoke', () => {
     await expect(page.getByText('Signal Loom').first()).toBeVisible();
     await expect(page.getByRole('textbox', { name: /Message (Hermes Agent|Nero)/i })).toBeVisible();
 
-    await expectShellClean(page, testInfo, 'shell-metrics');
+    const metrics = await expectShellClean(page, testInfo, 'shell-metrics');
+    expect(metrics.messageCardCount).toBeGreaterThan(0);
     expect(consoleErrors).toEqual([]);
     expect(pageErrors).toEqual([]);
   });
@@ -112,6 +142,40 @@ test.describe('Signal Loom cockpit smoke', () => {
     await expect(page.getByText('Dawn').first()).toBeVisible();
 
     await expectShellClean(page, testInfo, 'theme-persistence-metrics');
+  });
+
+  test('opens settings modal and shows runtime truth without token values', async ({ page }, testInfo) => {
+    const consoleErrors: string[] = [];
+    const pageErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text());
+    });
+    page.on('pageerror', (error) => pageErrors.push(String(error)));
+
+    await page.goto('/');
+    await expect(page.getByRole('textbox', { name: /Message (Hermes Agent|Nero)/i })).toBeVisible();
+
+    const desktopSettings = page.getByRole('button', { name: 'Open Hermes settings' });
+    if (await desktopSettings.isVisible()) {
+      await desktopSettings.click();
+    } else {
+      await page.getByRole('button', { name: /Open Signal Loom mobile actions/i }).click();
+      await page.getByRole('menuitem', { name: 'Connect / Settings' }).click();
+    }
+
+    await expect(page.getByRole('dialog', { name: 'Hermes settings' })).toBeVisible();
+    await expect(page.getByText('Runtime truth')).toBeVisible();
+    await expect(page.getByText('Detected Signal Loom configuration')).toBeVisible();
+    await expect(page.getByText('Hermes API')).toBeVisible();
+    await expect(page.getByText('API token')).toBeVisible();
+
+    const bodyText = await page.locator('body').innerText();
+    expect(bodyText).not.toContain('Bearer ');
+    expect(bodyText).not.toContain('secret-token');
+
+    await expectShellClean(page, testInfo, 'settings-runtime-truth-metrics');
+    expect(consoleErrors).toEqual([]);
+    expect(pageErrors).toEqual([]);
   });
 
   test('keeps the mobile composer usable when options are open', async ({ browser }, testInfo) => {
@@ -140,6 +204,9 @@ test.describe('Signal Loom cockpit smoke', () => {
       expect(metrics.overflowX).toBe(0);
       expect(metrics.overlayPresent).toBe(false);
       expect(metrics.failTextPresent).toBe(false);
+      expect(metrics.messageCardOverflows).toEqual([]);
+      expect(metrics.workTracePanelOverflows).toEqual([]);
+      expect(metrics.messageSourceChipOverflows).toEqual([]);
       expect(metrics.composerFrame?.right ?? 999).toBeLessThanOrEqual(320);
       expect(metrics.composerShell?.height ?? 999).toBeLessThanOrEqual(260);
       // Guard against the original near-collapsed transcript failure while allowing

@@ -1,3 +1,4 @@
+import { buildRuntimeConfigTruth } from '@/lib/runtime-config';
 import { NextRequest, NextResponse } from 'next/server';
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -412,6 +413,7 @@ export async function GET() {
       tools: tools.output,
       toolsOk: tools.ok,
     },
+    runtimeConfig: buildRuntimeConfigTruth(process.env),
     quickSettings: getQuickSettings(configText),
     config: {
       content: configText,

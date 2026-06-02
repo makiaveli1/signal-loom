@@ -281,7 +281,7 @@ function StandardMessageCard({ message, isHighlighted, isStreaming, isNew, isChi
         style={cardStyle}
       >
         <div
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[var(--sl-radius-control)] text-[0.7rem] font-extrabold tracking-[0.04em]"
+          className="message-avatar flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[var(--sl-radius-control)] text-[0.7rem] font-extrabold tracking-[0.04em]"
           style={avatarStyle}
           aria-hidden="true"
         >
@@ -410,7 +410,7 @@ function ActionSummaryCard({ message, isHighlighted, isNew }: MessageCardProps) 
       className={cn('flex justify-center px-6 py-2 transition-all duration-300', isNew && 'msg-enter')}
     >
       <div
-        className="w-full rounded-[var(--sl-radius-card)] border px-4 py-3 sm:w-[76%] sm:max-w-[48rem]"
+        className="action-summary-premium w-full rounded-[var(--sl-radius-card)] border px-4 py-3 sm:w-[76%] sm:max-w-[48rem]"
         style={{
           background: 'color-mix(in srgb, var(--sl-surface-flat) 94%, var(--mb-violet) 6%)',
           borderColor: isHighlighted ? 'var(--sl-decision-edge)' : 'color-mix(in srgb, var(--mb-violet) 24%, var(--sl-rule-hairline))',

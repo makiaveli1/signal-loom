@@ -8,9 +8,10 @@
  */
 import { stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { NextResponse } from 'next/server';
-import { getHermesStateCursor, loadHermesDeltas, unixToIso } from '@/lib/hermes/state-db';
-import { getRuntimeEventCursor, normalizeRuntimeEventForGateway, readRuntimeEventsAfter } from '@/lib/hermes/runtime-events';
+import { NextResponse } from 'next/server.js';
+import { getHermesStateCursor, loadHermesDeltas, unixToIso } from '../../../../lib/hermes/state-db.ts';
+import { getRuntimeEventCursor, normalizeRuntimeEventForGateway, readRuntimeEventsAfter } from '../../../../lib/hermes/runtime-events.ts';
+import { localHermesStateDbLabel, sanitizeRuntimeDetail } from '../../../../lib/runtime-contract.ts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -33,6 +34,7 @@ function sseHeaders() {
 }
 
 function degradedLiveStream(reason: string) {
+  const safeReason = sanitizeRuntimeDetail(reason);
   const encoder = new TextEncoder();
   let heartbeat: ReturnType<typeof setInterval> | null = null;
   let closed = false;
@@ -51,13 +53,13 @@ function degradedLiveStream(reason: string) {
       send('connected', {
         source: 'degraded',
         degraded: true,
-        path: HERMES_STATE_DB,
-        error: reason,
+        stateDb: localHermesStateDbLabel(),
+        error: safeReason,
         pollMs: null,
       });
       send('gateway', {
         type: 'runtime.error',
-        data: { source: 'degraded', error: reason, at: new Date().toISOString() },
+        data: { source: 'degraded', error: safeReason, at: new Date().toISOString() },
       });
 
       heartbeat = setInterval(() => {
@@ -76,6 +78,7 @@ function degradedLiveStream(reason: string) {
     headers: {
       ...sseHeaders(),
       'X-Signal-Loom-Degraded': 'live-events',
+      'X-Signal-Loom-Degraded-Reason': safeReason.slice(0, 240),
     },
   });
 }
@@ -123,7 +126,7 @@ export async function GET() {
 
       send('connected', {
         source: initialRuntimeCursor.exists ? 'hermes-runtime-events+state-db' : 'hermes-state-db',
-        path: HERMES_STATE_DB,
+        stateDb: localHermesStateDbLabel(),
         runtimeEvents: initialRuntimeCursor,
         cursor: initialCursor,
         pollMs: POLL_MS,
@@ -214,7 +217,7 @@ export async function GET() {
           } catch (e) {
             send('gateway', {
               type: 'runtime.error',
-              data: { error: e instanceof Error ? e.message : 'Hermes state poll failed' },
+              data: { error: sanitizeRuntimeDetail(e ?? 'Hermes state poll failed') },
             });
           } finally {
             polling = false;
