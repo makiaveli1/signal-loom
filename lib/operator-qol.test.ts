@@ -73,7 +73,7 @@ test('buildConnectionTruthSummary distinguishes ready, blocked, and degraded sta
   });
   assert.equal(tokenNeeded.state, 'blocked');
   assert.equal(tokenNeeded.sendAllowed, false);
-  assert.match(tokenNeeded.primaryLabel, /API token needed/);
+  assert.match(tokenNeeded.primaryLabel, /Local auth token needed/);
   assert.equal(tokenNeeded.checks.some((check) => check.detail.includes('supersecretvalue')), false);
 
   const stateMissing = buildConnectionTruthSummary({

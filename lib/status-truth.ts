@@ -85,7 +85,7 @@ export function buildConnectionChips({
     },
     {
       id: 'api',
-      label: apiReachable && apiAuthenticated ? 'API connected' : apiReachable ? 'API token needed' : detection ? 'API unreachable' : 'API checking',
+      label: apiReachable && apiAuthenticated ? 'API connected' : apiReachable ? 'Auth token needed' : detection ? 'Local API unreachable' : 'API checking',
       detail: detection?.api?.error ?? detection?.api?.url ?? 'Local Hermes API auth boundary',
       tone: detection ? (apiReachable && apiAuthenticated ? 'ok' : apiReachable ? 'warn' : 'danger') : 'neutral',
     },
@@ -176,7 +176,7 @@ export function getComposerConnectionGate({
     return {
       blocked: true,
       tone: 'warn',
-      reason: 'Hermes API token needed',
+      reason: 'Local auth token needed',
       detail: 'The local API answered, but Signal Loom cannot authenticate. Add HERMES_API_KEY, API_SERVER_KEY, or OPENCLAW_GATEWAY_TOKEN, then re-check.',
       actionLabel: 'Connect Hermes',
     };
@@ -186,7 +186,7 @@ export function getComposerConnectionGate({
     return {
       blocked: true,
       tone: 'danger',
-      reason: detection.status === 'configured_api_missing' ? 'Hermes API not configured' : 'Hermes API unreachable',
+      reason: detection.status === 'configured_api_missing' ? 'Local API not configured' : 'Local API unreachable',
       detail: detection.api?.error ?? 'Start the local Hermes API server, then re-check the connection.',
       actionLabel: 'Open Settings',
     };

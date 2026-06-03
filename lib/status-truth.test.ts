@@ -30,7 +30,7 @@ test('buildConnectionChips splits Hermes API token state from runtime health', (
     chips.map((chip) => [chip.id, chip.label, chip.tone]),
     [
       ['cli', 'CLI installed', 'ok'],
-      ['api', 'API token needed', 'warn'],
+      ['api', 'Auth token needed', 'warn'],
       ['state-db', 'State DB connected', 'ok'],
       ['runtime', 'Runtime stream live', 'ok'],
       ['gateway', 'Gateway healthy', 'ok'],
@@ -82,7 +82,7 @@ test('getComposerConnectionGate blocks a reachable unauthenticated API without t
     {
       blocked: true,
       tone: 'warn',
-      reason: 'Hermes API token needed',
+      reason: 'Local auth token needed',
       detail: 'The local API answered, but Signal Loom cannot authenticate. Add HERMES_API_KEY, API_SERVER_KEY, or OPENCLAW_GATEWAY_TOKEN, then re-check.',
       actionLabel: 'Connect Hermes',
     },

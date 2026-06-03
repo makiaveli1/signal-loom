@@ -140,7 +140,7 @@ export function resolveSignalLoomRuntimeConfig(env: EnvLike = process.env): Runt
     issues.push({
       code: 'missing_token',
       tone: 'warn',
-      message: 'No Hermes API token env var is set. Read-only checks may work, but chat send can fail if the API requires auth.',
+      message: 'No local API token env var is set. Read-only checks may work, but chat send can fail if the API requires auth.',
     });
   } else if (token.key === 'OPENCLAW_GATEWAY_TOKEN') {
     issues.push({

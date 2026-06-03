@@ -89,9 +89,9 @@ function persistWorkspacePreset(preset: WorkspacePreset) {
 }
 
 function readWorkspaceMode(): WorkspaceMode {
-  if (typeof window === 'undefined') return 'basic';
+  if (typeof window === 'undefined') return 'operator';
   const value = window.localStorage.getItem(WORKSPACE_MODE_STORAGE_KEY);
-  return WORKSPACE_MODES.has(value as WorkspaceMode) ? (value as WorkspaceMode) : 'basic';
+  return WORKSPACE_MODES.has(value as WorkspaceMode) ? (value as WorkspaceMode) : 'operator';
 }
 
 function persistWorkspaceMode(mode: WorkspaceMode) {
@@ -414,7 +414,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   hermesCommandCenterOpen: false,
   hermesSettingsOpen: false,
   verificationPanelOpen: false,
-  workspaceMode: 'basic',
+  workspaceMode: 'operator',
   composerDraft: null,
   composerMode: 'chat',
 
