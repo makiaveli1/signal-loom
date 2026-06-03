@@ -145,7 +145,10 @@ export type WorkspacePreset =
   | 'focus'       // 1 full pane
   | 'duo'         // 2 equal panes (50/50)
   | 'duo_monitor' // 2 panes + 1 compact monitor
+  | 'verify'      // 1 chat pane + wider verification/monitor workspace
   | 'operator';   // 1 full + 1 compact support
+
+export type WorkspaceMode = 'basic' | 'operator';
 
 export interface WorkspaceState {
   preset: WorkspacePreset;
@@ -165,6 +168,7 @@ export interface ResizeState {
 
 // Sprint 2: Composer
 export type StreamingStatus = 'idle' | 'connecting' | 'streaming' | 'finalizing' | 'complete' | 'error' | 'cancelled';
+export type ComposerMode = 'chat' | 'plan' | 'execute' | 'review' | 'debug' | 'research' | 'handoff';
 
 export interface ComposerState {
   isSending: boolean;

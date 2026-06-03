@@ -2,6 +2,7 @@
 
 import { cn } from '@/lib/utils';
 import type { Agent } from '@/lib/types';
+import type { LanePresence } from '@/lib/lane-presence';
 import { getAgentLaneMeta } from '@/lib/agents';
 
 const STATUS_CONFIG: Record<Agent['status'], { label: string; color: string }> = {
@@ -14,10 +15,11 @@ const STATUS_CONFIG: Record<Agent['status'], { label: string; color: string }> =
 
 interface AgentCardProps {
   agent: Agent;
+  presence?: LanePresence;
   onClick?: () => void;
 }
 
-export function AgentCard({ agent, onClick }: AgentCardProps) {
+export function AgentCard({ agent, presence, onClick }: AgentCardProps) {
   const statusCfg = STATUS_CONFIG[agent.status];
   const isActive  = agent.status === 'active';
   const laneMeta = getAgentLaneMeta(agent.id);
@@ -93,8 +95,18 @@ export function AgentCard({ agent, onClick }: AgentCardProps) {
           overflow: 'hidden',
         }}
       >
-        {agent.taskPreview}
+        {presence?.latestTask || agent.taskPreview}
       </p>
+
+      {presence && (
+        <div className="mb-2 rounded-[var(--sl-radius-control)] border border-white/5 bg-black/10 px-2 py-1.5 text-[10px] leading-4 text-ash">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono uppercase tracking-[0.14em] text-brass">{presence.label}</span>
+            <span>{presence.ageLabel}</span>
+          </div>
+          <p className="mt-0.5 truncate" title={presence.detail}>{presence.detail}</p>
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-2">
         <span className="text-[10px] font-mono" style={{ color: agent.accentColor }}>

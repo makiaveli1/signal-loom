@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { agentIdentityFromDetection } from '@/lib/agent-identity';
 import { cn } from '@/lib/utils';
-import type { Message, MessageRole } from '@/lib/types';
+import type { Message, MessageRole, StreamingStatus } from '@/lib/types';
 import { useHermesDetection } from '@/lib/use-hermes-detection';
 
 function formatLocalTime(isoString: string): string {
@@ -32,13 +32,29 @@ interface MessageCardProps {
   isHighlighted?: boolean;
   /** True when this message is actively receiving streaming content */
   isStreaming?: boolean;
+  /** Fine-grained Hermes activity while this message bubble is streaming. */
+  streamingStatus?: StreamingStatus;
+  streamingTokenCount?: number;
+  streamingCharsPerSecond?: number;
+  streamingLastChunkAt?: string | null;
   /** True when this is the most recent message — triggers entrance animation */
   isNew?: boolean;
   /** True when this message is in a child/secondary session (specialist work) */
   isChildSession?: boolean;
 }
 
-function MotionText({
+const LINK_TOKEN_PATTERN = /^(https?:\/\/[^\s<>()]+|www\.[^\s<>()]+)$/i;
+
+function splitTrailingPunctuation(token: string): { linkText: string; trailing: string } {
+  const match = token.match(/^(.+?)([.,!?;:]+)?$/);
+  return { linkText: match?.[1] ?? token, trailing: match?.[2] ?? '' };
+}
+
+function linkHref(linkText: string): string {
+  return linkText.startsWith('www.') ? `https://${linkText}` : linkText;
+}
+
+function LinkifiedMotionText({
   text,
   className,
   isStreaming,
@@ -51,16 +67,86 @@ function MotionText({
 
   return (
     <span className={className}>
-      {words.map((word, i) => (
-        <span
-          key={i}
-          className={isStreaming ? 'word-animated' : undefined}
-          style={{ '--word-delay': isStreaming ? `${Math.min(i * 18, 420)}ms` : '0ms', display: 'inline' } as React.CSSProperties}
-        >
-          {word}
-        </span>
-      ))}
+      {words.map((word, i) => {
+        const isWhitespace = /^\s+$/.test(word);
+        const { linkText, trailing } = splitTrailingPunctuation(word);
+        const delayStyle = { '--word-delay': isStreaming ? `${Math.min(i * 18, 420)}ms` : '0ms', display: 'inline' } as React.CSSProperties;
+
+        if (!isWhitespace && LINK_TOKEN_PATTERN.test(linkText)) {
+          return (
+            <span key={i} className={isStreaming ? 'word-animated' : undefined} style={delayStyle}>
+              <a
+                href={linkHref(linkText)}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="message-link"
+              >
+                {linkText}
+              </a>
+              {trailing}
+            </span>
+          );
+        }
+
+        return (
+          <span
+            key={i}
+            className={isStreaming ? 'word-animated' : undefined}
+            style={delayStyle}
+          >
+            {word}
+          </span>
+        );
+      })}
     </span>
+  );
+}
+
+function activityForStatus(status: StreamingStatus | undefined, agentName: string, chunks: number | undefined, charsPerSecond: number | undefined) {
+  const frameLabel = typeof chunks === 'number' && chunks > 0 ? `${chunks} frames` : 'waiting for first frame';
+  const speedLabel = typeof charsPerSecond === 'number' && charsPerSecond > 0 ? `${charsPerSecond}/s` : 'warming route';
+
+  switch (status) {
+    case 'connecting':
+      return { mood: 'listening', glyph: '◇', title: 'Opening stream', detail: 'Finding the Hermes route and clearing the runway.' };
+    case 'finalizing':
+      return { mood: 'cogitating', glyph: '◈', title: 'Finalizing answer', detail: 'Compressing tool noise into the useful bit.' };
+    case 'error':
+      return { mood: 'blocked', glyph: '!', title: 'Needs attention', detail: 'The live response hit a runtime snag.' };
+    case 'streaming':
+      return { mood: 'typing', glyph: '✦', title: `${agentName} is typing`, detail: `${frameLabel} · ${speedLabel}` };
+    default:
+      return { mood: 'cogitating', glyph: '•', title: `${agentName} is cogitating`, detail: 'Working through the context.' };
+  }
+}
+
+function HermesActivityRail({
+  status,
+  agentName,
+  chunks,
+  charsPerSecond,
+}: {
+  status?: StreamingStatus;
+  agentName: string;
+  chunks?: number;
+  charsPerSecond?: number;
+}) {
+  const activity = activityForStatus(status, agentName, chunks, charsPerSecond);
+
+  return (
+    <div className="hermes-activity-rail" data-mood={activity.mood} aria-live="polite">
+      <div className="hermes-mascot" aria-hidden="true">
+        <span className="hermes-mascot-face">{activity.glyph}</span>
+        <span className="hermes-mascot-orbit" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="hermes-activity-title">{activity.title}</span>
+          <span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>
+        </div>
+        <p className="hermes-activity-detail">{activity.detail}</p>
+      </div>
+    </div>
   );
 }
 
@@ -121,7 +207,13 @@ function pullReasoning(content: string): { stripped: string; sections: TraceSect
   const pattern = /\[Reasoning\]\s*([\s\S]*?)(?=\[Reasoning\]|\[Tool:|\[Result\]|$)/g;
   const stripped = content.replace(pattern, (_full, body: string) => {
     const { trace, visibleTail } = splitVisibleTailFromTrace(body ?? '');
-    if (trace) sections.push({ label: 'Private reasoning', tone: 'reasoning', text: trace });
+    if (trace) {
+      sections.push({
+        label: 'Reasoning folded',
+        tone: 'reasoning',
+        text: 'Private reasoning was intentionally hidden from the browser receipts.',
+      });
+    }
     return visibleTail ? `\n${visibleTail}\n` : '\n';
   });
   return { stripped, sections };
@@ -194,13 +286,32 @@ export function MessageCard(props: MessageCardProps) {
   return <StandardMessageCard {...props} />;
 }
 
-function StandardMessageCard({ message, isHighlighted, isStreaming, isNew, isChildSession }: MessageCardProps) {
+function StandardMessageCard({
+  message,
+  isHighlighted,
+  isStreaming,
+  streamingStatus,
+  streamingTokenCount,
+  streamingCharsPerSecond,
+  isNew,
+  isChildSession,
+}: MessageCardProps) {
   const { detection } = useHermesDetection({ pollMs: 60_000 });
   const agentIdentity = agentIdentityFromDetection(detection?.identity);
   const runtimeRole = message.role as RuntimeRole;
   const display = useMemo(() => buildMessageDisplay(message.content, runtimeRole), [message.content, runtimeRole]);
   const [traceExpanded, setTraceExpanded] = useState(false);
+  const [receiptsCopied, setReceiptsCopied] = useState(false);
   const tracePanelId = useId();
+
+  const copyReceiptSummary = async () => {
+    const summary = display.traceSections
+      .map((section, index) => `#${index + 1} ${section.label}\n${section.text}`)
+      .join('\n\n---\n\n');
+    await navigator.clipboard.writeText(summary);
+    setReceiptsCopied(true);
+    window.setTimeout(() => setReceiptsCopied(false), 1400);
+  };
 
   const isUser = runtimeRole === 'user';
   const isAssistant = runtimeRole === 'nero' || runtimeRole === 'assistant';
@@ -274,11 +385,13 @@ function StandardMessageCard({ message, isHighlighted, isStreaming, isNew, isChi
         className={cn(
           'message-card-shell boxed-corner-mark relative flex w-full gap-3 rounded-[var(--sl-radius-card)] border px-4 py-3.5 sm:max-w-[52rem] sm:w-[78%]',
           isAssistant && 'message-card-agent',
+          isStreaming && 'message-card-streaming hermes-live-bubble',
           display.operationalOnly && 'message-card-operational',
           isUser && 'ml-auto flex-row-reverse sm:max-w-[42rem] sm:w-[72%]',
           isNew && 'packet-arrival'
         )}
         style={cardStyle}
+        aria-live={isStreaming ? 'polite' : undefined}
       >
         <div
           className="message-avatar flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[var(--sl-radius-control)] text-[0.7rem] font-extrabold tracking-[0.04em]"
@@ -300,8 +413,17 @@ function StandardMessageCard({ message, isHighlighted, isStreaming, isNew, isChi
             )}
           </div>
 
+          {isAssistant && isStreaming && (
+            <HermesActivityRail
+              status={streamingStatus}
+              agentName={agentIdentity.name}
+              chunks={streamingTokenCount}
+              charsPerSecond={streamingCharsPerSecond}
+            />
+          )}
+
           <div className={cn('message-copy text-sm leading-7', isUser ? 'text-ivory' : 'text-ivory/90')}>
-            <MotionText
+            <LinkifiedMotionText
               text={display.answer}
               className="whitespace-pre-wrap"
               isStreaming={isStreaming}
@@ -368,6 +490,12 @@ function StandardMessageCard({ message, isHighlighted, isStreaming, isNew, isChi
                       boxShadow: 'none',
                     }}
                   >
+                    <div className="work-trace-panel-actions">
+                      <span>{display.traceSections.length} receipt{display.traceSections.length === 1 ? '' : 's'} folded from this message.</span>
+                      <button type="button" onClick={copyReceiptSummary}>
+                        {receiptsCopied ? 'Copied' : 'Copy summary'}
+                      </button>
+                    </div>
                     {display.traceSections.map((section, idx) => (
                       <section
                         key={`${section.label}-${idx}`}

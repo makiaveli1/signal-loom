@@ -16,6 +16,8 @@ import type {
   WorkspaceState,
   ResizeState,
   WorkspacePreset,
+  WorkspaceMode,
+  ComposerMode,
   Pane,
 } from '@/lib/types';
 import type { OpenClawSession } from '@/lib/openclaw/adapter/types';
@@ -53,9 +55,49 @@ type RuntimeActivity = {
 };
 
 const HIDDEN_THREADS_STORAGE_KEY = 'signal-loom-hidden-conversations-v1';
+const COMPOSER_MODE_STORAGE_KEY = 'signal-loom:composer-mode-v1';
+const WORKSPACE_PRESET_STORAGE_KEY = 'signal-loom:workspace-preset-v1';
+const WORKSPACE_MODE_STORAGE_KEY = 'signal-loom:workspace-mode-v1';
 const LOCAL_SESSION_PREFIX = 'signal-loom:local:';
 
 type ThreadDockMode = 'focus' | 'all' | 'hidden';
+
+const COMPOSER_MODES = new Set<ComposerMode>(['chat', 'plan', 'execute', 'review', 'debug', 'research', 'handoff']);
+const WORKSPACE_PRESETS = new Set<WorkspacePreset>(['focus', 'duo', 'duo_monitor', 'verify', 'operator']);
+const WORKSPACE_MODES = new Set<WorkspaceMode>(['basic', 'operator']);
+
+function readComposerMode(): ComposerMode {
+  if (typeof window === 'undefined') return 'chat';
+  const value = window.localStorage.getItem(COMPOSER_MODE_STORAGE_KEY);
+  return COMPOSER_MODES.has(value as ComposerMode) ? (value as ComposerMode) : 'chat';
+}
+
+function persistComposerMode(mode: ComposerMode) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(COMPOSER_MODE_STORAGE_KEY, mode);
+}
+
+function readWorkspacePreset(): WorkspacePreset {
+  if (typeof window === 'undefined') return 'focus';
+  const value = window.localStorage.getItem(WORKSPACE_PRESET_STORAGE_KEY);
+  return WORKSPACE_PRESETS.has(value as WorkspacePreset) ? (value as WorkspacePreset) : 'focus';
+}
+
+function persistWorkspacePreset(preset: WorkspacePreset) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(WORKSPACE_PRESET_STORAGE_KEY, preset);
+}
+
+function readWorkspaceMode(): WorkspaceMode {
+  if (typeof window === 'undefined') return 'basic';
+  const value = window.localStorage.getItem(WORKSPACE_MODE_STORAGE_KEY);
+  return WORKSPACE_MODES.has(value as WorkspaceMode) ? (value as WorkspaceMode) : 'basic';
+}
+
+function persistWorkspaceMode(mode: WorkspaceMode) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(WORKSPACE_MODE_STORAGE_KEY, mode);
+}
 
 function createLocalSessionId(): string {
   const timestamp = Date.now().toString(36);
@@ -151,12 +193,27 @@ function buildPanesForPreset(
         { id: 'pane-monitor', role: 'monitor', threadId: monitorId, widthRatio: 0.2, active: false, collapsed: false },
       ];
     }
+    case 'verify':
+      return [
+        { id: 'pane-center', role: 'primary', threadId: primaryThreadId, widthRatio: 0.55, active: true, collapsed: false },
+        { id: 'pane-monitor', role: 'monitor', threadId: existingMonitorId ?? 'thread-7', widthRatio: 0.45, active: false, collapsed: false },
+      ];
     case 'operator':
       return [
         { id: 'pane-center', role: 'primary', threadId: primaryThreadId, widthRatio: 0.65, active: true, collapsed: false },
         { id: 'pane-monitor', role: 'monitor', threadId: existingMonitorId ?? 'thread-7', widthRatio: 0.35, active: false, collapsed: false },
       ];
   }
+}
+
+function initialWorkspaceState(primaryThreadId: string, preset: WorkspacePreset = 'focus'): WorkspaceState {
+  const panes = buildPanesForPreset(preset, primaryThreadId);
+  return {
+    preset,
+    panes,
+    activePaneId: panes.find((p) => p.role === 'primary')?.id ?? panes[0].id,
+    monitorCollapsed: false,
+  };
 }
 
 function calcWidthRatio(deltaX: number, containerWidth: number, startA: number, startB: number): { ratioA: number; ratioB: number } {
@@ -238,7 +295,10 @@ interface SignalLoomStore {
   approvalsPanelOpen: boolean;
   hermesCommandCenterOpen: boolean;
   hermesSettingsOpen: boolean;
+  verificationPanelOpen: boolean;
+  workspaceMode: WorkspaceMode;
   composerDraft: string | null;
+  composerMode: ComposerMode;
   // Sprint 2: Legacy split view (kept for migration compatibility)
   splitView: SplitViewState;
   composerState: ComposerState;
@@ -294,8 +354,13 @@ interface SignalLoomStore {
   closeHermesCommandCenter: () => void;
   toggleHermesSettings: () => void;
   closeHermesSettings: () => void;
+  toggleVerificationPanel: () => void;
+  closeVerificationPanel: () => void;
+  hydrateStoredUiPreferences: () => void;
+  setWorkspaceMode: (mode: WorkspaceMode) => void;
   setComposerDraft: (draft: string) => void;
   clearComposerDraft: () => void;
+  setComposerMode: (mode: ComposerMode) => void;
   startNewSession: () => string;
 
   // Sprint 3: Data loading via OpenClaw adapter
@@ -348,7 +413,10 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   approvalsPanelOpen: false,
   hermesCommandCenterOpen: false,
   hermesSettingsOpen: false,
+  verificationPanelOpen: false,
+  workspaceMode: 'basic',
   composerDraft: null,
+  composerMode: 'chat',
 
   // Sprint 2 legacy (migrated to workspace in 2.5)
   splitView: {
@@ -374,14 +442,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
   highlightedMessageId: null,
 
   // Sprint 2.5: Initial pane workspace state
-  workspace: {
-    preset: 'focus',
-    panes: [
-      { id: 'pane-center', role: 'primary', threadId: 'thread-1', widthRatio: 1, active: true, collapsed: false },
-    ],
-    activePaneId: 'pane-center',
-    monitorCollapsed: false,
-  },
+  workspace: initialWorkspaceState('thread-1'),
 
   resize: {
     dragging: false,
@@ -531,6 +592,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
     set((state) => ({
       hermesCommandCenterOpen: !state.hermesCommandCenterOpen,
       hermesSettingsOpen: false,
+      verificationPanelOpen: false,
     })),
 
   closeHermesCommandCenter: () =>
@@ -540,16 +602,67 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
     set((state) => ({
       hermesSettingsOpen: !state.hermesSettingsOpen,
       hermesCommandCenterOpen: false,
+      verificationPanelOpen: false,
     })),
 
   closeHermesSettings: () =>
     set({ hermesSettingsOpen: false }),
+
+  toggleVerificationPanel: () =>
+    set((state) => ({
+      verificationPanelOpen: !state.verificationPanelOpen,
+      hermesCommandCenterOpen: false,
+      hermesSettingsOpen: false,
+    })),
+
+  closeVerificationPanel: () =>
+    set({ verificationPanelOpen: false }),
+
+  hydrateStoredUiPreferences: () => {
+    const workspaceMode = readWorkspaceMode();
+    const composerMode = readComposerMode();
+    const preset = readWorkspacePreset();
+
+    set((state) => {
+      const primaryThreadId = state.workspace.panes.find((p) => p.role === 'primary')?.threadId
+        ?? state.selectedThreadId;
+      const secondaryPane = state.workspace.panes.find((p) => p.role === 'secondary');
+      const monitorPane = state.workspace.panes.find((p) => p.role === 'monitor');
+      const panes = buildPanesForPreset(
+        preset,
+        primaryThreadId,
+        secondaryPane?.threadId,
+        monitorPane?.threadId
+      );
+
+      return {
+        workspaceMode,
+        composerMode,
+        workspace: {
+          preset,
+          panes,
+          activePaneId: panes.find((p) => p.role === 'primary')?.id ?? panes[0].id,
+          monitorCollapsed: state.workspace.monitorCollapsed,
+        },
+      };
+    });
+  },
+
+  setWorkspaceMode: (mode) => {
+    persistWorkspaceMode(mode);
+    set({ workspaceMode: mode });
+  },
 
   setComposerDraft: (draft) =>
     set({ composerDraft: draft }),
 
   clearComposerDraft: () =>
     set({ composerDraft: null }),
+
+  setComposerMode: (mode) => {
+    persistComposerMode(mode);
+    set({ composerMode: mode });
+  },
 
   startNewSession: () => {
     const now = new Date().toISOString();
@@ -1337,6 +1450,7 @@ export const useSignalLoomStore = create<SignalLoomStore>((set, get) => ({
 
   setPreset: (preset) =>
     set((state) => {
+      persistWorkspacePreset(preset);
       const primaryThreadId = state.workspace.panes.find((p) => p.role === 'primary')?.threadId
         ?? state.selectedThreadId;
       const secondaryPane = state.workspace.panes.find((p) => p.role === 'secondary');

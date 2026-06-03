@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useSignalLoomStore } from '@/lib/store';
 import { getStatusRowState } from '@/lib/status-truth';
 import { cn } from '@/lib/utils';
+import { DesktopBoundaryPanel } from './desktop-boundary-panel';
 
 type HighlightLine = { line: number; text: string };
 type SettingValue = boolean | number | string;
@@ -193,6 +194,34 @@ function RuntimeTruthPanel({ config }: { config: RuntimeConfigTruth }) {
           Runtime env sources are aligned for a local Hermes setup.
         </p>
       )}
+    </section>
+  );
+}
+
+function LocalSafetyBoundary({ config }: { config: RuntimeConfigTruth }) {
+  const rows = [
+    { label: 'Bind address', value: config.api.loopback ? 'Loopback/local API' : 'Review API host', tone: config.api.loopback ? 'text-signal-teal' : 'text-brass' },
+    { label: 'Token source', value: config.auth.tokenPresent ? `Present via ${config.auth.tokenSource}` : 'Missing; sends should stay blocked', tone: config.auth.tokenPresent ? 'text-signal-teal' : 'text-brass' },
+    { label: 'Config writes', value: 'Only explicit Save/setting actions write config; diagnostics are read-only.', tone: 'text-ivory-dim' },
+    { label: 'Approval sync', value: 'Gateway requests are marked; derived/local decisions are audit labels, not backend acknowledgement.', tone: 'text-ivory-dim' },
+    { label: 'Updater', value: config.flags.installEnabled ? 'Update route available but still requires typed confirmation.' : 'Browser-triggered install/update is disabled.', tone: config.flags.installEnabled ? 'text-brass' : 'text-signal-teal' },
+  ];
+
+  return (
+    <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-4">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brass">Local safety boundary</p>
+      <h3 className="mt-1 text-base font-semibold text-ivory">What this browser surface can and cannot do</h3>
+      <p className="mt-1 text-sm leading-6 text-ash">
+        This is a local operator cockpit. It should show exposure and mutation boundaries before anything risky gets clicked.
+      </p>
+      <div className="mt-3 grid gap-2">
+        {rows.map((row) => (
+          <div key={row.label} className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-xl border border-white/5 bg-black/15 px-3 py-2 text-xs">
+            <span className="font-semibold uppercase tracking-[0.16em] text-ash">{row.label}</span>
+            <span className={cn('leading-5', row.tone)}>{row.value}</span>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -417,6 +446,7 @@ function SettingCard({
           type="button"
           role="switch"
           aria-checked={checked}
+          aria-label={setting.label + ': ' + (checked ? 'On' : 'Off')}
           disabled={saving}
           onClick={() => onCommit(setting.key, !checked)}
           className={cn(
@@ -794,6 +824,7 @@ export function HermesSettingsPanel() {
                           <StatCard label="Update status" value={settings.runtime.updateAvailable ? 'Update available' : 'Up to date'} tone={settings.runtime.updateAvailable ? 'brass' : 'teal'} />
                         </div>
                         <RuntimeTruthPanel config={settings.runtimeConfig} />
+                        <LocalSafetyBoundary config={settings.runtimeConfig} />
                         <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-4">
                           <h3 className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brass">Where files live</h3>
                           <p className="mt-1 text-sm leading-6 text-ash">Signal Loom reads these paths so you do not have to remember them.</p>
@@ -863,6 +894,7 @@ export function HermesSettingsPanel() {
                     <section className="rounded-3xl border border-brass/20 bg-brass/10 p-4 text-sm leading-6 text-brass">
                       Changes that affect security, secret redaction, or gateway privacy may need a new Hermes session or gateway restart. Signal Loom saves a backup before each change.
                     </section>
+                    <DesktopBoundaryPanel />
                   </div>
                 )}
 

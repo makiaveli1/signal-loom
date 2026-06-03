@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useSignalLoomStore } from '@/lib/store';
 import { AgentCard } from './agent-card';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { buildLanePresence, type LanePresence } from '@/lib/lane-presence';
 import { classifyDelegatedSessions, type ClassifiedDelegatedSession } from '@/lib/status-truth';
 import { cn } from '@/lib/utils';
 import type { Agent } from '@/lib/types';
@@ -24,6 +25,10 @@ export function LiveAgentRail({ width = 280, onCollapse }: { width?: number; onC
     + delegated.recentlyDelegated.length
     + delegated.completed.length
     + delegated.stale.length;
+  const lanePresence = useMemo(
+    () => buildLanePresence({ agents, sessions, runtimeActivities }),
+    [agents, runtimeActivities, sessions]
+  );
 
   const visible = agents.filter(
     (a) => a.status === 'active' || a.status === 'waiting' || a.status === 'blocked'
@@ -145,7 +150,7 @@ export function LiveAgentRail({ width = 280, onCollapse }: { width?: number; onC
                   exit={{ opacity: 0, y: -4, scale: 0.98 }}
                   transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
                 >
-                  <AgentCard agent={agent} />
+                  <AgentCard agent={agent} presence={lanePresence[agent.id]} />
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -153,6 +158,7 @@ export function LiveAgentRail({ width = 280, onCollapse }: { width?: number; onC
             {idleAgents.length > 0 && (
               <CollapsibleIdleSection
                 agents={idleAgents}
+                lanePresence={lanePresence}
                 expanded={idleExpanded}
                 onToggle={() => setIdleExpanded((v) => !v)}
               />
@@ -233,10 +239,12 @@ function SubagentSessionCard({ session, state, onOpen }: { session: OpenClawSess
 
 function CollapsibleIdleSection({
   agents,
+  lanePresence,
   expanded,
   onToggle,
 }: {
   agents: Agent[];
+  lanePresence: Partial<Record<Agent['id'], LanePresence>>;
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -287,6 +295,7 @@ function CollapsibleIdleSection({
                 <AgentCard
                   key={agent.id}
                   agent={agent}
+                  presence={lanePresence[agent.id]}
                 />
               ))}
             </div>

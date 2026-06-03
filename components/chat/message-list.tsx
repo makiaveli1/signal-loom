@@ -50,7 +50,7 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
   const { highlightedMessageId, composerState, childToParentMap } = useSignalLoomStore();
   const isStreaming = composerState.isStreaming;
   const streamingContent = composerState.streamingResponse;
-  const showThinkingCard = composerState.isSending && (!streamingContent || composerState.streamingStatus === 'connecting');
+  const showPendingBubble = composerState.isSending && !isStreaming;
   const messages = rawMessages.filter((message, index) => {
     const isLastRawMessage = index === rawMessages.length - 1;
     const isLiveStreamingPlaceholder =
@@ -212,17 +212,32 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
                   message={message}
                   isHighlighted={message.id === highlightedMessageId}
                   isStreaming={isLast && isLastMsgStreaming}
+                  streamingStatus={isLast && isLastMsgStreaming ? composerState.streamingStatus : undefined}
+                  streamingTokenCount={isLast && isLastMsgStreaming ? composerState.streamingTokenCount : undefined}
+                  streamingCharsPerSecond={isLast && isLastMsgStreaming ? composerState.streamingCharsPerSecond : undefined}
+                  streamingLastChunkAt={isLast && isLastMsgStreaming ? composerState.streamingLastChunkAt : undefined}
                   isNew={newArrivalIds.has(message.id)}
                   isChildSession={!!childToParentMap[message.sourceThreadId ?? thread.id]}
                 />
               </div>
             );
           })}
-          <AnimatePresence>
-            {showThinkingCard && (
-              <ThinkingCard status={composerState.streamingStatus} agentName={agentIdentity.name} agentInitials={agentIdentity.initials} />
-            )}
-          </AnimatePresence>
+          {showPendingBubble && (
+            <MessageCard
+              message={{
+                id: `pending-${thread.id}`,
+                role: 'nero',
+                content: '',
+                timestamp: composerState.streamingStartedAt ?? thread.lastActive,
+              }}
+              isStreaming
+              streamingStatus={composerState.streamingStatus === 'idle' ? 'connecting' : composerState.streamingStatus}
+              streamingTokenCount={composerState.streamingTokenCount}
+              streamingCharsPerSecond={composerState.streamingCharsPerSecond}
+              streamingLastChunkAt={composerState.streamingLastChunkAt}
+              isNew
+            />
+          )}
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
@@ -256,47 +271,6 @@ export function MessageList({ thread, messages: messagesOverride, conversationBu
         )}
       </AnimatePresence>
     </div>
-  );
-}
-
-function ThinkingCard({ status, agentName, agentInitials }: { status: string; agentName: string; agentInitials: string }) {
-  const label = status === 'connecting' ? 'Opening stream' : status === 'finalizing' ? 'Finalizing' : `${agentName} is thinking`;
-  return (
-    <motion.div
-      key="thinking-card"
-      initial={{ opacity: 0, y: 8, scale: 0.985 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 6, scale: 0.985 }}
-      transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-      className="mx-auto flex max-w-3xl items-center gap-3 rounded-[var(--sl-radius-card)] border px-4 py-3"
-      style={{
-        background: 'color-mix(in srgb, var(--sl-surface-flat) 94%, var(--sl-decision) 6%)',
-        borderColor: 'var(--sl-decision-edge)',
-        borderLeft: '3px solid var(--sl-decision-edge)',
-        boxShadow: 'none',
-      }}
-      aria-live="polite"
-    >
-      <div
-        className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[var(--sl-radius-control)] text-[0.7rem] font-extrabold tracking-[0.04em]"
-        style={{
-          background: 'color-mix(in srgb, var(--sl-danger) 12%, transparent)',
-          color: 'var(--sl-danger)',
-          border: '1px solid var(--sl-rule-visible)',
-          boxShadow: 'none',
-        }}
-        aria-hidden="true"
-      >
-        {agentInitials}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-nero-brass">
-          {label}
-          <span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>
-        </div>
-        <p className="mt-1 text-xs text-ivory-dim">Routing context, tools, and live state into one answer.</p>
-      </div>
-    </motion.div>
   );
 }
 

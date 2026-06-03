@@ -4,14 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { agentIdentityFromDetection } from '@/lib/agent-identity';
 import { useSignalLoomStore } from '@/lib/store';
-import { buildConnectionChips, classifyDelegatedSessions, type ChipTone } from '@/lib/status-truth';
+import { buildConnectionTruthSummary } from '@/lib/operator-qol';
+import { classifyDelegatedSessions, type ChipTone } from '@/lib/status-truth';
 import { useHermesDetection } from '@/lib/use-hermes-detection';
 import { cn } from '@/lib/utils';
 
 type ConnectionChipListProps = {
-  chips: ReturnType<typeof buildConnectionChips>;
-  primaryLabel: string;
-  okCount: number;
+  summary: ReturnType<typeof buildConnectionTruthSummary>;
   onOpenSettings: () => void;
 };
 
@@ -22,20 +21,20 @@ function toneClass(tone: ChipTone) {
   return 'border-white/10 text-ash bg-white/[0.03]';
 }
 
-function ConnectionTruthPanel({ chips, primaryLabel, okCount, onOpenSettings }: ConnectionChipListProps) {
+function ConnectionTruthPanel({ summary, onOpenSettings }: ConnectionChipListProps) {
   return (
     <div className="connection-truth-panel w-[min(92vw,25rem)] p-3 text-left">
       <div className="connection-truth-header flex items-start justify-between gap-3 pb-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brass">Connection truth</p>
-          <h2 className="mt-1 text-sm font-semibold text-ivory">{primaryLabel}</h2>
+          <h2 className="mt-1 text-sm font-semibold text-ivory">{summary.primaryLabel}</h2>
         </div>
         <span className="connection-count-chip rounded-[var(--sl-radius-control)] px-2 py-1 font-mono text-[10px] text-ash">
-          {okCount}/5 checks
+          {summary.okCount}/{summary.totalCount} checks
         </span>
       </div>
       <div className="mt-3 grid gap-2">
-        {chips.map((chip) => (
+        {summary.checks.map((chip) => (
           <div key={chip.id} className="connection-truth-row rounded-[var(--sl-radius-card)] p-3">
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm font-semibold text-ivory-dim">{chip.label}</span>
@@ -47,6 +46,14 @@ function ConnectionTruthPanel({ chips, primaryLabel, okCount, onOpenSettings }: 
           </div>
         ))}
       </div>
+      {summary.nextActions.length > 0 && (
+        <div className="mt-3 rounded-[var(--sl-radius-card)] border border-brass/20 bg-brass/5 p-2 text-[11px] leading-5 text-ash">
+          <p className="font-semibold text-brass">Next actions</p>
+          <ul className="mt-1 list-disc space-y-1 pl-4">
+            {summary.nextActions.slice(0, 3).map((action) => <li key={action}>{action}</li>)}
+          </ul>
+        </div>
+      )}
       <div className="connection-truth-footer mt-3 flex flex-wrap items-center justify-between gap-2 rounded-[var(--sl-radius-card)] p-2.5">
         <p className="max-w-[15rem] text-[11px] leading-5 text-ash">
           This shows runtime truth only. Tokens are never shown here.
@@ -77,6 +84,10 @@ export function TopBar() {
     toggleHermesCommandCenter,
     hermesSettingsOpen,
     toggleHermesSettings,
+    verificationPanelOpen,
+    toggleVerificationPanel,
+    workspaceMode,
+    setWorkspaceMode,
   } = useSignalLoomStore();
   const { detection, loading: detectionLoading } = useHermesDetection({ pollMs: 60_000 });
   const agentIdentity = agentIdentityFromDetection(detection?.identity);
@@ -97,16 +108,13 @@ export function TopBar() {
   );
   const runningLaneCount = agents.filter((a) => a.status === 'active').length + delegated.runningNow.length;
   const watchLaneCount = delegated.createdEmpty.length + delegated.recentlyDelegated.length;
-  const connectionChips = useMemo(
-    () => buildConnectionChips({ runtime, detection, liveConnected }),
-    [runtime, detection, liveConnected]
+  const connectionSummary = useMemo(
+    () => buildConnectionTruthSummary({ runtime, detection, liveConnected, loading: detectionLoading }),
+    [runtime, detection, liveConnected, detectionLoading]
   );
-  const primaryIssue = detectionLoading || !detection
-    ? undefined
-    : connectionChips.find((chip) => chip.tone === 'danger') ?? connectionChips.find((chip) => chip.tone === 'warn');
-  const connectionHealthy = !detectionLoading && Boolean(detection) && connectionChips.every((chip) => chip.tone === 'ok');
-  const connectionLabel = detectionLoading || !detection ? 'Checking Hermes' : primaryIssue?.label ?? 'Hermes connected';
-  const okCount = connectionChips.filter((chip) => chip.tone === 'ok').length;
+  const connectionHealthy = connectionSummary.state === 'ready';
+  const connectionLabel = connectionSummary.primaryLabel;
+  const okCount = connectionSummary.okCount;
 
   const openSettings = () => {
     setConnectionOpen(false);
@@ -213,7 +221,7 @@ export function TopBar() {
               ? 'is-healthy'
               : 'is-attention'
           )}
-          title={connectionChips.map((chip) => `${chip.label}: ${chip.detail}`).join(' · ')}
+          title={connectionSummary.checks.map((chip) => `${chip.label}: ${chip.detail}`).join(' · ')}
         >
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: connectionHealthy ? 'var(--mb-jade)' : 'var(--sl-decision)' }} />
           <span>{connectionLabel}</span>
@@ -226,11 +234,11 @@ export function TopBar() {
             </>
           )}
           <span className="hidden text-ash-muted xl:inline">·</span>
-          <span className="hidden text-ash xl:inline">{okCount}/5 checks</span>
+          <span className="hidden text-ash xl:inline">{okCount}/{connectionSummary.totalCount} checks</span>
         </button>
         {connectionOpen && (
           <div id="connection-truth-popover" role="dialog" aria-label="Hermes connection truth" className="absolute left-1/2 top-[calc(100%+0.65rem)] z-50 -translate-x-1/2">
-            <ConnectionTruthPanel chips={connectionChips} primaryLabel={connectionLabel} okCount={okCount} onOpenSettings={openSettings} />
+            <ConnectionTruthPanel summary={connectionSummary} onOpenSettings={openSettings} />
           </div>
         )}
       </div>
@@ -253,6 +261,24 @@ export function TopBar() {
           <span className="h-1.5 w-1.5 rounded-full bg-signal-teal signal-pulse" aria-hidden="true" />
           Command
           <kbd className="top-shortcut-kbd" aria-hidden="true">⌘K</kbd>
+        </button>
+        <button
+          type="button"
+          onClick={() => setWorkspaceMode(workspaceMode === 'basic' ? 'operator' : 'basic')}
+          aria-pressed={workspaceMode === 'operator'}
+          aria-label={workspaceMode === 'basic' ? 'Switch to operator mode' : 'Switch to basic mode'}
+          className={cn('top-chrome-button hidden items-center gap-2 px-3 py-1.5 text-xs font-medium md:flex', workspaceMode === 'operator' ? 'is-open' : 'is-closed')}
+        >
+          {workspaceMode === 'basic' ? 'Basic' : 'Operator'}
+        </button>
+        <button
+          type="button"
+          onClick={() => { setConnectionOpen(false); setMobileMenuOpen(false); toggleVerificationPanel(); }}
+          aria-pressed={verificationPanelOpen}
+          aria-label="Open verification panel"
+          className={cn('top-chrome-button hidden items-center gap-2 px-3 py-1.5 text-xs font-medium md:flex', verificationPanelOpen ? 'is-open' : 'is-closed')}
+        >
+          Verify
         </button>
         <button
           type="button"
@@ -326,11 +352,11 @@ export function TopBar() {
               <div className="connection-truth-row mb-3 rounded-[var(--sl-radius-card)] p-3">
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brass">Hermes</span>
-                  <span className="rounded-[var(--sl-radius-control)] border border-white/10 bg-black/20 px-2 py-0.5 font-mono text-[10px] text-ash">{okCount}/5 checks</span>
+                  <span className="rounded-[var(--sl-radius-control)] border border-white/10 bg-black/20 px-2 py-0.5 font-mono text-[10px] text-ash">{okCount}/{connectionSummary.totalCount} checks</span>
                 </div>
                 <p className="mt-1 text-sm font-semibold text-ivory">{connectionLabel}</p>
                 <div className="mt-2 grid gap-1.5">
-                  {connectionChips.map((chip) => (
+                  {connectionSummary.checks.map((chip) => (
                     <div key={chip.id} className="connection-truth-row flex items-start justify-between gap-2 rounded-[var(--sl-radius-card)] px-2.5 py-2">
                       <span className="text-xs font-semibold text-ivory-dim">{chip.label}</span>
                       <span className={cn('shrink-0 rounded-[var(--sl-radius-control)] border px-2 py-0.5 font-mono text-[10px]', toneClass(chip.tone))}>{chip.tone}</span>

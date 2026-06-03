@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { LocalSafetyLabel } from '@/components/ui/local-safety-label';
+import { getApprovalRiskProfile, getApprovalSafetyLabel } from '@/lib/operator-qol';
 import type { Approval } from '@/lib/types';
 
 /** Denied-state next-step cue for local/gateway approval cards. */
@@ -74,6 +76,8 @@ export function ApprovalCard({
   const [showNote, setShowNote] = useState(false);
   const isDecided = status === 'approved' || status === 'denied' || status === 'revised';
   const source = approval.source ?? 'derived';
+  const safetyLabel = getApprovalSafetyLabel(approval);
+  const riskProfile = getApprovalRiskProfile(approval);
 
   return (
     <div
@@ -119,6 +123,7 @@ export function ApprovalCard({
           >
             {SOURCE_CONFIG[source]?.label ?? source}
           </span>
+          <LocalSafetyLabel label={safetyLabel} />
         </div>
         <span className="text-xs text-ash-muted font-mono">
           by {approval.raisedBy}
@@ -135,6 +140,12 @@ export function ApprovalCard({
           Demo approval — not from a live gateway request.
         </p>
       )}
+
+      <div className="approval-risk-strip" aria-label="Approval risk profile">
+        <span>{riskProfile.category}</span>
+        <span>{riskProfile.reversibility}</span>
+        <small>{riskProfile.operatorHint}</small>
+      </div>
 
       {/* Recommendation */}
       <p className="text-xs text-ivory-dim leading-relaxed mb-3 italic">

@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useSignalLoomStore } from '@/lib/store';
 import { ThreadPane } from './thread-pane';
 import { MonitorThreadPane } from './monitor-thread-pane';
+import { DegradedState } from '@/components/ui/degraded-state';
 import { ResizeHandle } from '@/components/ui/resize-handle';
 import type { Pane } from '@/lib/types';
 
@@ -29,27 +30,12 @@ function EmptyState({ loading }: { loading?: boolean }) {
             <p className="text-ivory-dim text-sm">Loading sessions…</p>
           </>
         ) : (
-          <>
-            <div
-              className="w-20 h-20 rounded-[1.75rem] flex items-center justify-center mb-5 mx-auto border"
-              style={{
-                background: 'radial-gradient(circle at 50% 35%, var(--mb-teal-glow), transparent 62%), var(--mb-elevated)',
-                borderColor: 'var(--sl-border-soft)',
-                boxShadow: 'var(--sl-shadow-panel)',
-              }}
-            >
-              <svg width="42" height="42" viewBox="0 0 42 42" fill="none" aria-hidden="true">
-                <circle cx="21" cy="21" r="4" fill="var(--mb-teal)" opacity="0.9" />
-                <circle cx="21" cy="21" r="11" stroke="var(--mb-teal)" strokeWidth="1.2" opacity="0.38" />
-                <path d="M7 22C14 14 28 14 35 22" stroke="var(--mb-brass)" strokeWidth="1.2" opacity="0.55" strokeLinecap="round" />
-                <path d="M7 28C14 20 28 20 35 28" stroke="var(--mb-red)" strokeWidth="1.2" opacity="0.45" strokeLinecap="round" />
-              </svg>
-            </div>
-            <p className="text-ivory text-base font-semibold tracking-tight">Choose a signal to resume</p>
-            <p className="mt-2 max-w-sm text-sm leading-relaxed text-ash">
-              Open the Loom, review queued decisions, or use Command to start a fresh Hermes run.
-            </p>
-          </>
+          <DegradedState
+            eyebrow={loading ? 'Loading' : 'No active thread'}
+            title={loading ? 'Loading sessions…' : 'Choose a signal to resume'}
+            detail={loading ? 'Signal Loom is fetching local Hermes sessions. No send path is implied until the connection gate says it is ready.' : 'Open the Loom, review queued decisions, or use Command to start a fresh Hermes run. Local-only drafts stay local until you send.'}
+            tone={loading ? 'warn' : 'neutral'}
+          />
         )}
       </div>
     </div>

@@ -16,7 +16,7 @@ const PRESETS: { id: WorkspacePreset; label: string; description: string; icon: 
   },
   {
     id: 'duo',
-    label: 'Dual',
+    label: 'Compare',
     description: 'compare two sessions side by side',
     icon: (
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -27,13 +27,25 @@ const PRESETS: { id: WorkspacePreset; label: string; description: string; icon: 
   },
   {
     id: 'duo_monitor',
-    label: 'Dual + watch',
-    description: 'conversation pair with a monitor strip',
+    label: 'Review',
+    description: 'review two sessions with a monitor strip',
     icon: (
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
         <rect x="1" y="1" width="4" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
         <rect x="6" y="1" width="4" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
         <rect x="11" y="1" width="2" height="12" rx="1" stroke="currentColor" strokeWidth="1.2" opacity="0.5" />
+      </svg>
+    ),
+  },
+  {
+    id: 'verify',
+    label: 'Verify',
+    description: 'chat plus a wider evidence monitor',
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <rect x="1" y="1" width="7" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+        <rect x="9" y="1" width="4" height="12" rx="1" stroke="currentColor" strokeWidth="1.2" opacity="0.72" />
+        <path d="M10.2 6.9L11 7.7L12.5 5.6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
   },

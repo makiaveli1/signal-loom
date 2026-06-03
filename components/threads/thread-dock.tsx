@@ -7,8 +7,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useSignalLoomStore } from '@/lib/store';
 import { ThreadListItem } from './thread-list-item';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { DegradedState } from '@/components/ui/degraded-state';
 import type { Thread } from '@/lib/types';
 import { buildThreadGroups, type ConversationGroup } from '@/lib/conversation-groups';
+import { buildSessionIntelligence } from '@/lib/operator-qol';
 import { cn } from '@/lib/utils';
 
 type CollapseState = Map<string, boolean>;
@@ -33,8 +35,10 @@ export function ThreadDock({ width = 260, onCollapse }: { width?: number; onColl
     hideThreads,
     unhideThread,
     startNewSession,
+    sessionMessages,
   } = useSignalLoomStore();
 
+  const [query, setQuery] = useState('');
   const [collapsed, setCollapsed] = useState<CollapseState>(() => new Map([
     ['group-active', false],
     ['group-recent', true],
@@ -52,11 +56,27 @@ export function ThreadDock({ width = 260, onCollapse }: { width?: number; onColl
     thread.status === 'blocked' ||
     thread.hasApproval
   );
-  const dockThreads = threadDockMode === 'hidden'
+  const baseDockThreads = threadDockMode === 'hidden'
     ? hiddenThreads
     : threadDockMode === 'focus'
       ? (focusThreads.length > 0 ? focusThreads : visibleThreads)
       : visibleThreads;
+  const normalizedQuery = query.trim().toLowerCase();
+  const dockThreads = baseDockThreads
+    .map((thread) => {
+      const transcript = sessionMessages[thread.session?.id ?? thread.id] ?? sessionMessages[thread.id];
+      const intelligence = buildSessionIntelligence({
+        thread,
+        childCount: thread.linkedChildren?.length ?? 0,
+        hidden: hiddenSet.has(thread.id),
+        transcriptMessageCount: transcript?.messages.length,
+        transcriptPartial: Boolean(transcript?.contentTruncated || transcript?.truncated),
+      });
+      return { thread, intelligence };
+    })
+    .filter(({ intelligence }) => !normalizedQuery || intelligence.searchableText.includes(normalizedQuery))
+    .sort((a, b) => a.intelligence.priority - b.intelligence.priority || new Date(b.thread.lastActive).getTime() - new Date(a.thread.lastActive).getTime())
+    .map(({ thread }) => thread);
   const pinned = dockThreads.filter((t) => t.pinned);
   const unpinned = dockThreads.filter((t) => !t.pinned);
   const groups = buildThreadGroups(unpinned);
@@ -78,7 +98,7 @@ export function ThreadDock({ width = 260, onCollapse }: { width?: number; onColl
       <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--sl-divider)' }}>
         <div>
           <span className="text-xs font-semibold uppercase tracking-[0.22em] text-brass">Loom</span>
-          <p className="mt-0.5 text-[10px] text-ash">Focus, restore, or tuck chats away</p>
+          <p className="mt-0.5 text-[10px] text-ash">Focus, restore, or archive chats</p>
         </div>
         <div className="flex items-center gap-1.5">
           {sessionsLoading ? (
@@ -103,7 +123,7 @@ export function ThreadDock({ width = 260, onCollapse }: { width?: number; onColl
       <div className="loom-mode-tabs border-b px-2 py-2" style={{ borderColor: 'var(--sl-divider)' }}>
         {(['focus', 'all', 'hidden'] as const).map((mode) => {
           const count = mode === 'hidden' ? hiddenThreads.length : mode === 'focus' ? focusThreads.length : visibleThreads.length;
-          const label = mode === 'focus' ? 'Focus' : mode === 'all' ? 'All' : 'Hidden';
+          const label = mode === 'focus' ? 'Focus' : mode === 'all' ? 'All' : 'Archive';
           return (
             <button
               key={mode}
@@ -117,6 +137,17 @@ export function ThreadDock({ width = 260, onCollapse }: { width?: number; onColl
             </button>
           );
         })}
+      </div>
+
+      <div className="thread-dock-search-wrap border-b px-2 py-2" style={{ borderColor: 'var(--sl-divider)' }}>
+        <label className="sr-only" htmlFor="thread-dock-search">Search sessions</label>
+        <input
+          id="thread-dock-search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search sessions, tags, status…"
+          className="thread-dock-search"
+        />
       </div>
 
       <div className="thread-dock-new-session-wrap border-b px-2 py-2" style={{ borderColor: 'var(--sl-divider)' }}>
@@ -141,15 +172,14 @@ export function ThreadDock({ width = 260, onCollapse }: { width?: number; onColl
 
       {/* Error */}
       {!sessionsLoading && sessionsError && (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 py-8">
-          <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(232,96,58,0.12)', border: '1.5px solid rgba(232,96,58,0.3)', color: 'var(--mb-ember)', fontSize: '8px' }}>!</div>
-          <p className="text-xs text-ember text-center font-semibold">Hermes sessions unavailable</p>
-          {sessionsFetchedAt && (
-            <p className="text-xs text-ash-muted text-center">Last: {new Date(sessionsFetchedAt).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
-          )}
-          <button onClick={() => loadSessions()} className="text-xs px-3 py-1.5 rounded-md font-medium hover:opacity-90" style={{ background: 'var(--mb-graphite)', color: 'var(--mb-ivory)', border: '1px solid rgba(255,255,255,0.1)' }}>
-            ↻ Retry
-          </button>
+        <div className="flex-1 flex items-center justify-center px-4 py-8">
+          <DegradedState
+            eyebrow="Sessions degraded"
+            title="Hermes sessions unavailable"
+            detail={sessionsFetchedAt ? `Last fetched ${new Date(sessionsFetchedAt).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}. Chat sending still depends on the composer connection gate.` : 'Signal Loom could not fetch local Hermes sessions. Chat sending still depends on the composer connection gate.'}
+            tone="danger"
+            action={{ label: 'Retry', onClick: () => loadSessions() }}
+          />
         </div>
       )}
 
@@ -160,7 +190,7 @@ export function ThreadDock({ width = 260, onCollapse }: { width?: number; onColl
             <Image className="flat-rest-image" src="/generated/empty-states/quiet-loom.webp" alt="" width={640} height={480} sizes="160px" />
           </figure>
           <span className="flat-rest-mark" aria-hidden="true">⌁</span>
-          <p className="text-xs text-ivory-dim text-center">{threadDockMode === 'hidden' ? 'No hidden conversations' : 'The loom is quiet'}</p>
+          <p className="text-xs text-ivory-dim text-center">{threadDockMode === 'hidden' ? 'No archived conversations' : 'The loom is quiet'}</p>
           <p className="text-xs text-ash text-center">{threadDockMode === 'focus' ? 'Open All to browse quieter history.' : 'Start or restore a conversation to begin.'}</p>
           {threadDockMode !== 'hidden' && (
             <button

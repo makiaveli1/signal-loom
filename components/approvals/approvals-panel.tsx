@@ -1,12 +1,16 @@
 'use client';
 
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSignalLoomStore } from '@/lib/store';
 import { ApprovalCard } from './approval-card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Approval } from '@/lib/types';
 
+type ApprovalFilter = 'pending' | 'gateway' | 'local' | 'high' | 'decided' | 'all';
+
 export function ApprovalsPanel() {
+  const [filter, setFilter] = useState<ApprovalFilter>('pending');
   const {
     approvals,
     approvalsPanelOpen,
@@ -32,6 +36,15 @@ export function ApprovalsPanel() {
 
   const isPendingApproval = (approval: Approval) => approval.status === undefined || approval.status === 'pending';
   const pendingApprovals = sortedApprovals.filter(isPendingApproval);
+  const filteredApprovals = sortedApprovals.filter((approval) => {
+    if (filter === 'all') return true;
+    if (filter === 'pending') return isPendingApproval(approval);
+    if (filter === 'gateway') return approval.source === 'gateway';
+    if (filter === 'local') return approval.source === undefined || approval.source === 'derived' || approval.source === 'mock';
+    if (filter === 'high') return approval.urgency === 'high';
+    if (filter === 'decided') return !isPendingApproval(approval);
+    return true;
+  });
   const pendingCount = pendingApprovals.length;
 
   const gatewayCount = pendingApprovals.filter((approval) => approval.source === 'gateway').length;
@@ -114,10 +127,24 @@ export function ApprovalsPanel() {
             )}
           </div>
 
+          <div className="approval-filter-row" aria-label="Approval filters">
+            {(['pending', 'gateway', 'local', 'high', 'decided', 'all'] as ApprovalFilter[]).map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={filter === item ? 'is-active' : undefined}
+                onClick={() => setFilter(item)}
+                aria-pressed={filter === item}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+
           {/* Approval cards */}
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-3">
-              {pendingApprovals.length === 0 ? (
+              {filteredApprovals.length === 0 ? (
                 <div className="flat-rest-state flex flex-col items-center justify-center py-12 gap-2 text-center">
                   <span className="flat-rest-mark" aria-hidden="true">✓</span>
                   <p className="text-xs text-ash-muted">No approvals pending</p>
@@ -127,12 +154,12 @@ export function ApprovalsPanel() {
                 </div>
               ) : (
                 <>
-                  {pendingApprovals.length > 0 && (
+                  {filteredApprovals.length > 0 && (
                     <>
                       <div className="text-xs font-semibold uppercase tracking-wider text-ash-muted px-1">
                         Delegation Approvals
                       </div>
-                      {pendingApprovals.map((approval) => (
+                      {filteredApprovals.map((approval) => (
                         <ApprovalCard
                           key={approval.id}
                           approval={approval}

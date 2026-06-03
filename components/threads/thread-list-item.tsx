@@ -1,6 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
+import { buildSessionIntelligence } from '@/lib/operator-qol';
 import type { Thread } from '@/lib/types';
 import { RelativeTime } from '@/components/ui/relative-time';
 import { PretextSmartTitle } from '@/components/ui/pretext-smart-title';
@@ -48,6 +49,7 @@ export function ThreadListItem({ thread, isSelected, onSelect, childCount, isHid
   const statusColor = STATUS_COLORS[thread.status];
   const statusBg    = STATUS_BG[thread.status];
   const isActive    = thread.status === 'active';
+  const intelligence = buildSessionIntelligence({ thread, childCount, hidden: isHidden });
 
   // Sprint 10.5: layoutId enables smooth shared-element transition when selection
   // changes — Framer Motion animates the shared border indicator between items.
@@ -143,6 +145,9 @@ export function ThreadListItem({ thread, isSelected, onSelect, childCount, isHid
             )}
             {STATUS_LABELS[thread.status]}
           </span>
+          <span className="thread-triage-pill" title={intelligence.labels.join(' · ') || intelligence.triage}>
+            {intelligence.triage}
+          </span>
 
 
           {/* Badges + time */}
@@ -189,9 +194,9 @@ export function ThreadListItem({ thread, isSelected, onSelect, childCount, isHid
             if (isHidden) onUnhide?.();
             else onHide?.();
           }}
-          aria-label={isHidden ? `Restore ${thread.title}` : `Hide ${thread.title}`}
+          aria-label={isHidden ? `Restore ${thread.title}` : `Archive ${thread.title}`}
         >
-          {isHidden ? 'Restore' : 'Tuck'}
+          {isHidden ? 'Restore' : 'Archive'}
         </button>
       )}
     </motion.div>

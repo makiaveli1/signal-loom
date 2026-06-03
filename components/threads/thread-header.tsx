@@ -27,17 +27,29 @@ export function ThreadHeader({
   thread,
   delegationCount,
   onOpenChildSession,
+  dashboardCollapsed,
+  onToggleDashboard,
 }: {
   thread: Thread;
   delegationCount?: number;
   onOpenChildSession?: (childId: string) => void;
+  dashboardCollapsed?: boolean;
+  onToggleDashboard?: () => void;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [copiedResume, setCopiedResume] = useState(false);
 
   const { childToParentMap, threads } = useSignalLoomStore();
   const parentSessionId = childToParentMap[thread.id];
   const parentThread = parentSessionId ? threads.find((t) => t.id === parentSessionId) : null;
   const statusColor = STATUS_COLORS[thread.status];
+  const resumeCommand = thread.session?.id ? 'hermes --resume ' + thread.session.id : null;
+  const copyResumeCommand = async () => {
+    if (!resumeCommand) return;
+    await navigator.clipboard.writeText(resumeCommand);
+    setCopiedResume(true);
+    window.setTimeout(() => setCopiedResume(false), 1300);
+  };
 
   const hasDelegation = (delegationCount ?? 0) > 0;
   const hasLinkedAgents = thread.linkedAgents.length > 0;
@@ -71,18 +83,35 @@ export function ThreadHeader({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setDetailsOpen((v) => !v)}
-          className="thread-details-button flex min-h-11 flex-shrink-0 items-center gap-2 rounded-[var(--sl-radius-control)] border px-3 text-[11px] font-mono text-ash transition-colors hover:text-ivory"
-          style={{ borderColor: 'var(--sl-border-soft)', background: 'var(--sl-control)' }}
-          aria-expanded={detailsOpen}
-          aria-label={detailsOpen ? 'Hide thread details' : 'Show thread details'}
-        >
-          <span className="thread-details-label">Details</span>
-          <span className="thread-details-mark" aria-hidden="true">i</span>
-          {detailCount > 0 && <span className="thread-details-count text-brass">{detailCount}</span>}
-        </button>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          {onToggleDashboard && (
+            <button
+              type="button"
+              onClick={onToggleDashboard}
+              className="thread-focus-button hidden min-h-11 items-center gap-2 rounded-[var(--sl-radius-control)] border px-3 text-[11px] font-mono text-ash transition-colors hover:text-ivory md:flex"
+              style={{ borderColor: 'var(--sl-border-soft)', background: 'var(--sl-control)' }}
+              aria-pressed={dashboardCollapsed}
+              aria-label={dashboardCollapsed ? 'Restore chat dashboard' : 'Collapse dashboard and focus chat'}
+              title={dashboardCollapsed ? 'Restore dashboard' : 'Collapse dashboard — give the chat the whole pane'}
+            >
+              <span aria-hidden="true">{dashboardCollapsed ? '▤' : '⛶'}</span>
+              <span>Focus chat</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((v) => !v)}
+            className="thread-details-button flex min-h-11 flex-shrink-0 items-center gap-2 rounded-[var(--sl-radius-control)] border px-3 text-[11px] font-mono text-ash transition-colors hover:text-ivory"
+            style={{ borderColor: 'var(--sl-border-soft)', background: 'var(--sl-control)' }}
+            aria-expanded={detailsOpen}
+            aria-label={detailsOpen ? 'Hide thread details' : 'Show thread details'}
+          >
+            <span className="thread-details-label">Details</span>
+            <span className="thread-details-mark" aria-hidden="true">i</span>
+            {detailCount > 0 && <span className="thread-details-count text-brass">{detailCount}</span>}
+          </button>
+        </div>
       </div>
 
       {detailsOpen && (
@@ -133,6 +162,18 @@ export function ThreadHeader({
                 {delegationCount} delegated lane{delegationCount !== 1 ? 's' : ''}
               </span>
             )
+          )}
+
+          {resumeCommand && (
+            <button
+              type="button"
+              onClick={copyResumeCommand}
+              className="cursor-pointer rounded-[var(--sl-radius-control)] border px-2 py-1 text-xs font-mono transition-all duration-100 hover:opacity-80 active:scale-95"
+              style={{ borderColor: 'var(--sl-rule-visible)', color: 'var(--mb-ivory-dim)', background: 'var(--sl-control)' }}
+              title={resumeCommand}
+            >
+              {copiedResume ? 'Copied resume command' : 'Copy resume command'}
+            </button>
           )}
 
           {hasParent && (

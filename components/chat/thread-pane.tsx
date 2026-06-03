@@ -8,10 +8,13 @@ import { getConversationBundle } from '@/lib/conversation-groups';
 import { MessageList } from './message-list';
 import { ThreadHeader } from '../threads/thread-header';
 import { Composer } from './composer';
+import { HandoffGenerator } from './handoff-generator';
+import { ContextChip } from '@/components/ui/context-chip';
 import { DelegationTimeline } from './delegation-timeline';
 import { SplitViewToggle } from './split-view-toggle';
 import { PretextSmartTitle } from '@/components/ui/pretext-smart-title';
 import { PanePresetSwitcher } from './pane-preset-switcher';
+import { buildContextChips } from '@/lib/operator-qol';
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
 
@@ -264,6 +267,20 @@ export function ThreadPane({
     workspace,
     childToParentMap,
   } = useSignalLoomStore();
+  const [dashboardCollapsed, setDashboardCollapsed] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const stored = window.localStorage.getItem('signal-loom:chat-dashboard-collapsed') === 'true';
+        setDashboardCollapsed(stored);
+      } catch {
+        // Storage can be unavailable in private or locked-down browser contexts.
+      }
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, []);
 
   // Sprint 10.7: Load transcript from sessionMessages store — messages loaded by
   // loadMessagesForThread are stored here, NOT in thread.messages (which is empty
@@ -281,6 +298,19 @@ export function ThreadPane({
 
   const transcriptKey = thread.session?.id ?? thread.id;
   const transcript = sessionMessages[transcriptKey] ?? sessionMessages[thread.id];
+
+
+  const toggleDashboardCollapsed = () => {
+    setDashboardCollapsed((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem('signal-loom:chat-dashboard-collapsed', String(next));
+      } catch {
+        // Storage can be unavailable in private or locked-down browser contexts.
+      }
+      return next;
+    });
+  };
 
   const displayedMessages = useMemo<(Message & {
     sourceThreadId?: string;
@@ -339,6 +369,19 @@ export function ThreadPane({
 
   const threadEvents = delegationEvents.filter((e) => e.threadId === thread.id);
   const pendingApproval = approvals.find((a) => a.linkedThreadId === thread.id);
+  const childCount = childSessionIds[thread.id]?.length ?? thread.linkedChildren?.length ?? 0;
+  const transcriptState = transcript?.contentTruncated || transcript?.truncated
+    ? 'partial'
+    : transcript?.messages?.length
+      ? 'loaded'
+      : 'unknown';
+  const contextChips = buildContextChips({
+    thread,
+    childCount,
+    pendingApprovalCount: approvals.filter((a) => a.linkedThreadId === thread.id && (a.status === undefined || a.status === 'pending')).length,
+    transcriptState,
+    hidden: hiddenThreadIds.includes(thread.id),
+  });
   const linkedAgents = thread.linkedAgents
     .map((id) => agents.find((a) => a.id === id))
     .filter(Boolean);
@@ -346,7 +389,8 @@ export function ThreadPane({
   return (
     <div
       className={cn(
-        'flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden transition-opacity duration-150',
+        'relative flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden transition-opacity duration-150',
+        dashboardCollapsed && 'signal-chat-focus-mode',
         isSplit && !isActive && 'opacity-85'
       )}
       style={
@@ -464,59 +508,88 @@ export function ThreadPane({
         </div>
       )}
 
-      {/* Preset switcher — shown when preset switcher is visible (top of center area) */}
-      {!isSplit && <PanePresetSwitcher />}
+      {dashboardCollapsed ? (
+        <button
+          type="button"
+          onClick={toggleDashboardCollapsed}
+          className="chat-dashboard-restore absolute right-4 top-3 z-20 flex min-h-11 items-center gap-2 rounded-[var(--sl-radius-control)] border px-3 text-[11px] font-mono text-ivory shadow-lg transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/70"
+          aria-label="Restore chat dashboard"
+          title="Restore dashboard, receipts, layout, and session context"
+        >
+          <span aria-hidden="true">▤</span>
+          <span>Dashboard</span>
+        </button>
+      ) : (
+        <>
+          {/* Preset switcher — shown when preset switcher is visible (top of center area) */}
+          {!isSplit && <PanePresetSwitcher />}
 
-      {/* Thread header */}
-      <ThreadHeader
-        thread={thread}
-        delegationCount={childSessionIds[thread.id]?.length ?? 0}
-        onOpenChildSession={
-          (childId) => openChildSession(childId, threadEvents.find((e) => e.childSessionIds?.includes(childId))?.id)
-        }
-      />
+          {/* Thread header */}
+          <ThreadHeader
+            thread={thread}
+            delegationCount={childCount}
+            dashboardCollapsed={dashboardCollapsed}
+            onToggleDashboard={toggleDashboardCollapsed}
+            onOpenChildSession={
+              (childId) => openChildSession(childId, threadEvents.find((e) => e.childSessionIds?.includes(childId))?.id)
+            }
+          />
 
-      {/* Sprint 9: Session info panel — wraps Delegated Lane Work + Timeline + Hermes Session */}
-      <SessionInfoPanel
-        thread={thread}
-        threadEvents={threadEvents}
-        sessionsFetchedAt={sessionsFetchedAt}
-        showDelegationTimeline={showDelegationTimeline}
-        activeDelegationEventId={activeDelegationEventId}
-        onOpenChildSession={(childId) =>
-          openChildSession(childId, threadEvents.find((e) => e.childSessionIds?.includes(childId))?.id)
-        }
-        onHighlightMessage={highlightMessage}
-        collapsed={infoPanelCollapsed}
-        onToggleCollapse={() => setInfoPanelCollapsed((v) => !v)}
-      />
+          <div className="thread-context-chip-row" aria-label="Current thread context">
+            {contextChips.map((chip) => <ContextChip key={chip.id} chip={chip} />)}
+          </div>
 
-      {/* Context enrichment block — sparse threads ≤2 messages */}
-      {displayedMessages.length <= 2 && !isSplit && (
-        <ContextEnrichmentBlock thread={thread} />
+          <HandoffGenerator
+            thread={thread}
+            messages={displayedMessages}
+            approvals={approvals}
+            delegationEvents={delegationEvents}
+            childCount={childCount}
+          />
+
+          {/* Sprint 9: Session info panel — wraps Delegated Lane Work + Timeline + Hermes Session */}
+          <SessionInfoPanel
+            thread={thread}
+            threadEvents={threadEvents}
+            sessionsFetchedAt={sessionsFetchedAt}
+            showDelegationTimeline={showDelegationTimeline}
+            activeDelegationEventId={activeDelegationEventId}
+            onOpenChildSession={(childId) =>
+              openChildSession(childId, threadEvents.find((e) => e.childSessionIds?.includes(childId))?.id)
+            }
+            onHighlightMessage={highlightMessage}
+            collapsed={infoPanelCollapsed}
+            onToggleCollapse={() => setInfoPanelCollapsed((v) => !v)}
+          />
+
+          {/* Context enrichment block — sparse threads ≤2 messages */}
+          {displayedMessages.length <= 2 && !isSplit && (
+            <ContextEnrichmentBlock thread={thread} />
+          )}
+
+          {/* Sprint 10.5: Spring pop-in for approval indicator */}
+          <AnimatePresence>
+            {pendingApproval && (
+              <motion.div
+                key="approval-indicator"
+                initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.97 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 26, mass: 0.7 }}
+                className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
+                style={{
+                  background: 'color-mix(in srgb, var(--sl-surface-flat) 92%, var(--sl-decision) 8%)',
+                  borderColor: 'var(--sl-decision-edge)',
+                  color: 'var(--mb-brass)',
+                }}
+              >
+                <span className="font-semibold">▲ 1 approval pending</span>
+                <span className="text-ivory-dim truncate">{pendingApproval.title}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
       )}
-
-      {/* Sprint 10.5: Spring pop-in for approval indicator */}
-      <AnimatePresence>
-        {pendingApproval && (
-          <motion.div
-            key="approval-indicator"
-            initial={{ opacity: 0, y: 6, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.97 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 26, mass: 0.7 }}
-            className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
-            style={{
-              background: 'color-mix(in srgb, var(--sl-surface-flat) 92%, var(--sl-decision) 8%)',
-              borderColor: 'var(--sl-decision-edge)',
-              color: 'var(--mb-brass)',
-            }}
-          >
-            <span className="font-semibold">▲ 1 approval pending</span>
-            <span className="text-ivory-dim truncate">{pendingApproval.title}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Messages */}
       <MessageList

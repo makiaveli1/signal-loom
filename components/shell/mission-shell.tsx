@@ -6,6 +6,9 @@ import { TopBar } from './top-bar';
 import { RuntimeStrip } from './runtime-strip';
 import { HermesCommandCenter } from './hermes-command-center';
 import { HermesSettingsPanel } from './hermes-settings-panel';
+import { VerificationPanel } from './verification-panel';
+import { BasicModePanel } from './basic-mode-panel';
+import { MobileOperatorBar } from './mobile-operator-bar';
 import { ThreadDock } from '../threads/thread-dock';
 import { NeroWorkspace } from '../chat/nero-workspace';
 import { LiveAgentRail } from '../agents/live-agent-rail';
@@ -38,6 +41,9 @@ export function MissionShell() {
     loadApprovals,
     loadRuntimeHealth,
     hydrateHiddenThreads,
+    hydrateStoredUiPreferences,
+    workspaceMode,
+    setWorkspaceMode,
   } = useSignalLoomStore();
 
   const [layout, setLayout] = useState<ShellLayoutState>(DEFAULT_LAYOUT);
@@ -108,6 +114,14 @@ export function MissionShell() {
   // Sessions are loaded via /api/openclaw/sessions (Next.js API route) — not via
   // the adapter's gatewayFetch which fails from browser (relative URL → Next.js → 404).
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      hydrateStoredUiPreferences();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [hydrateStoredUiPreferences]);
+
+  useEffect(() => {
     hydrateHiddenThreads();
     loadSessions();
     loadAgents();
@@ -138,8 +152,9 @@ export function MissionShell() {
     }));
   }, [isCompactShell]);
 
-  const inlineSignalsOpen = layout.signalsOpen && !isCompactShell;
-  const inlineLanesOpen = layout.lanesOpen && !isCompactShell;
+  const isBasicMode = workspaceMode === 'basic';
+  const inlineSignalsOpen = (layout.signalsOpen || isBasicMode) && !isCompactShell;
+  const inlineLanesOpen = layout.lanesOpen && !isCompactShell && !isBasicMode;
   const compactDrawerOpen = isCompactShell && (layout.signalsOpen || layout.lanesOpen);
 
   return (
@@ -172,7 +187,7 @@ export function MissionShell() {
             <div className="mobile-shell-drawer mobile-shell-drawer-left">
               <ThreadDock
                 width={Math.min(layout.signalWidth, 320)}
-                onCollapse={() => updateLayout({ signalsOpen: false })}
+                onCollapse={() => isBasicMode ? setWorkspaceMode('operator') : updateLayout({ signalsOpen: false })}
               />
             </div>
           )}
@@ -199,7 +214,7 @@ export function MissionShell() {
                 onReset={() => updateLayout({ signalWidth: DEFAULT_LAYOUT.signalWidth })}
               />
             </>
-          ) : !isCompactShell ? (
+          ) : !isCompactShell && !isBasicMode ? (
             <CollapsedRailTab
               label="Loom"
               shortcut="Loom"
@@ -210,15 +225,22 @@ export function MissionShell() {
 
           {/* Chat workspace — center */}
           <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-            <LayoutUtilityBar
-              signalsOpen={layout.signalsOpen}
-              lanesOpen={layout.lanesOpen}
-              themeId={themeId}
-              onThemeChange={changeTheme}
-              onToggleSignals={toggleSignals}
-              onToggleLanes={toggleLanes}
-              onReset={resetLayout}
-            />
+            {isBasicMode ? (
+              <BasicUtilityBar
+                onOpenLoom={toggleSignals}
+                onOpenOperator={() => setWorkspaceMode('operator')}
+              />
+            ) : (
+              <LayoutUtilityBar
+                signalsOpen={layout.signalsOpen}
+                lanesOpen={layout.lanesOpen}
+                themeId={themeId}
+                onThemeChange={changeTheme}
+                onToggleSignals={toggleSignals}
+                onToggleLanes={toggleLanes}
+                onReset={resetLayout}
+              />
+            )}
             <NeroWorkspace />
           </div>
 
@@ -236,7 +258,7 @@ export function MissionShell() {
                 onCollapse={() => updateLayout({ lanesOpen: false })}
               />
             </>
-          ) : !isCompactShell ? (
+          ) : !isCompactShell && !isBasicMode ? (
             <CollapsedRailTab
               label="Live Lanes"
               shortcut="Lanes"
@@ -245,12 +267,22 @@ export function MissionShell() {
             />
           ) : null}
 
+          {isBasicMode && !isCompactShell && <BasicModePanel />}
+
           {/* Approvals panel — slides in from right */}
           <ApprovalsPanel />
+          <VerificationPanel />
           <HermesCommandCenter />
           <HermesSettingsPanel />
 
         </div>
+
+        <MobileOperatorBar
+          signalsOpen={layout.signalsOpen}
+          lanesOpen={layout.lanesOpen}
+          onToggleSignals={toggleSignals}
+          onToggleLanes={toggleLanes}
+        />
 
         {/* Runtime health strip */}
         <div className="flex-shrink-0">
@@ -258,6 +290,36 @@ export function MissionShell() {
         </div>
       </div>
     </TooltipProvider>
+  );
+}
+
+
+function BasicUtilityBar({ onOpenLoom, onOpenOperator }: { onOpenLoom: () => void; onOpenOperator: () => void }) {
+  return (
+    <div className="basic-utility-bar flex items-center justify-between gap-3 border-b px-3 py-2 sm:px-4" role="toolbar" aria-label="Basic workspace controls">
+      <div className="layout-workbench-title min-w-0">
+        <span className="layout-signal-dot" aria-hidden="true" />
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.16em] text-ash-muted">
+            <span>Basic workspace</span>
+            <span className="theme-current-chip">first-run safe</span>
+          </div>
+          <p className="hidden truncate text-[11px] text-ash sm:block">
+            Chats, connection truth, approvals, and setup without the full operator cockpit.
+          </p>
+        </div>
+      </div>
+      <div className="layout-workbench-actions flex flex-shrink-0 items-center justify-end gap-1.5">
+        <button type="button" onClick={onOpenLoom} className="layout-pill rail-toggle">
+          <span className="rail-toggle-dot" aria-hidden="true" />
+          Loom
+        </button>
+        <button type="button" onClick={onOpenOperator} className="layout-pill rail-toggle">
+          <span className="rail-toggle-dot" aria-hidden="true" />
+          Operator mode
+        </button>
+      </div>
+    </div>
   );
 }
 

@@ -6,92 +6,114 @@ import { useSignalLoomStore } from '@/lib/store';
 import { addressAgentPrompt, agentIdentityFromDetection } from '@/lib/agent-identity';
 import { getComposerConnectionGate } from '@/lib/status-truth';
 import { useHermesDetection } from '@/lib/use-hermes-detection';
+import type { ComposerMode } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 interface ComposerProps {
   threadId: string;
 }
 
-/** Live streaming HUD — connection state, throughput, and progressive preview. */
-function StreamingIndicator({
-  text,
-  status,
-  chunks,
-  charsPerSecond,
-  lastChunkAt,
-}: {
-  text: string;
-  status: string;
-  chunks: number;
-  charsPerSecond: number;
-  lastChunkAt: string | null;
-}) {
-  const PREVIEW_LEN = 420;
-  const preview = text.length > PREVIEW_LEN
-    ? text.slice(Math.max(0, text.length - PREVIEW_LEN))
-    : text;
-  const statusLabel = status === 'connecting'
-    ? 'Opening stream'
-    : status === 'finalizing'
-      ? 'Finalizing'
-      : status === 'error'
-        ? 'Stream needs attention'
-        : 'Streaming live';
-  const freshness = lastChunkAt ? new Date(lastChunkAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'waiting';
+type ModeConfig = {
+  label: string;
+  hint: string;
+  placeholder: (agentName: string) => string;
+  scaffold: string;
+  chips: Array<{ label: string; prompt: string }>;
+};
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 8, scale: 0.98 }}
-      transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.7 }}
-      className="streaming-hud mb-2 overflow-hidden rounded-[var(--sl-radius-card)] border px-3.5 py-3 text-xs"
-      style={{
-        background: status === 'error'
-          ? 'color-mix(in srgb, var(--sl-surface-flat) 92%, var(--sl-danger) 8%)'
-          : 'color-mix(in srgb, var(--sl-surface-flat) 94%, var(--sl-accent) 6%)',
-        borderColor: status === 'error' ? 'var(--sl-danger-edge)' : 'var(--sl-active-edge)',
-        borderLeft: `3px solid ${status === 'error' ? 'var(--sl-danger-edge)' : 'var(--sl-active-edge)'}`,
-        boxShadow: 'none',
-        color: 'var(--sl-text-muted)',
-      }}
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="relative flex h-2.5 w-2.5" aria-hidden="true">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-signal-teal opacity-40" />
-          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-signal-teal" />
-        </span>
-        <span className="text-[10px] font-semibold uppercase tracking-[0.24em] text-signal-teal">
-          {statusLabel}
-        </span>
-        <div className="ml-auto flex flex-wrap items-center gap-1.5 font-mono text-[10px] text-ash">
-          <span className="rounded-[var(--sl-radius-control)] border border-white/10 bg-black/15 px-2 py-0.5">{chunks} frames</span>
-          <span className="rounded-[var(--sl-radius-control)] border border-white/10 bg-black/15 px-2 py-0.5">{text.length} chars</span>
-          <span className="rounded-[var(--sl-radius-control)] border border-white/10 bg-black/15 px-2 py-0.5">{charsPerSecond}/s</span>
-          <span className="rounded-[var(--sl-radius-control)] border border-white/10 bg-black/15 px-2 py-0.5">last {freshness}</span>
-        </div>
-      </div>
+const DRAFT_STORAGE_PREFIX = 'signal-loom:draft:v1:';
 
-      <div className="relative mt-2.5 overflow-hidden rounded-[var(--sl-radius-card)] border border-white/10 bg-black/20 p-3">
-        <motion.div
-          className="absolute left-0 top-0 h-px bg-signal-teal"
-          initial={{ width: '0%' }}
-          animate={{ width: status === 'connecting' ? ['8%', '38%', '12%'] : ['35%', '100%', '55%'] }}
-          transition={{ duration: status === 'connecting' ? 1.2 : 1.8, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <p className="max-h-28 overflow-hidden whitespace-pre-wrap break-words leading-relaxed text-ivory/82">
-          {preview || 'Waiting for the first token…'}
-          <motion.span
-            className="ml-0.5 inline-block h-3 w-1 rounded-sm bg-signal-teal align-[-2px]"
-            animate={{ opacity: [1, 0.15, 1] }}
-            transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut' }}
-            aria-hidden="true"
-          />
-        </p>
-      </div>
-    </motion.div>
-  );
-}
+type SlashCommand = { command: string; label: string; prompt: string };
+
+const SLASH_COMMANDS: SlashCommand[] = [
+  { command: '/plan', label: 'Plan mode', prompt: 'Write a concise implementation plan with files, risks, stop points, and verification commands. Do not edit yet.' },
+  { command: '/review', label: 'Review mode', prompt: 'Review this for correctness, regressions, accessibility, security/privacy risks, and missing evidence.' },
+  { command: '/debug', label: 'Debug mode', prompt: 'Debug this systematically: reproduce, isolate root cause, patch the smallest safe fix, then verify.' },
+  { command: '/research', label: 'Research mode', prompt: 'Research this with sources, separate facts from assumptions, and give a recommendation.' },
+  { command: '/handoff', label: 'Handoff mode', prompt: 'Create a continuation handoff with active state, files changed, commands run, blockers, and next move.' },
+  { command: '/resume', label: 'Resume session', prompt: 'Resume this Hermes session. Re-check live state first, then continue from the verified context.' },
+  { command: '/watcher', label: 'Draft watcher', prompt: 'Draft a Hermes cron/watch job with schedule, trigger condition, delivery target, safety notes, and approval gate. Do not create it until I approve.' },
+];
+
+const MODE_CONFIG: Record<ComposerMode, ModeConfig> = {
+  chat: {
+    label: 'Chat',
+    hint: 'plain conversation',
+    placeholder: (agentName) => `Ask ${agentName} to synthesize, route, or decide…`,
+    scaffold: 'Give me the useful answer, the tradeoffs, and the next move.',
+    chips: [
+      { label: 'Decision', prompt: 'give me the decision, risks, tradeoffs, and exact next move for this thread.' },
+      { label: 'Split task', prompt: 'Split this into the right Hermes helper tasks and tell me what each helper should do before acting.' },
+      { label: 'Recall', prompt: 'Search prior Hermes sessions for relevant context, then continue from the useful facts only.' },
+    ],
+  },
+  plan: {
+    label: 'Plan',
+    hint: 'scope before acting',
+    placeholder: (agentName) => `Ask ${agentName} for a tight plan before execution…`,
+    scaffold: 'Write a concise implementation plan with files, steps, verification commands, risks, and stop points. Do not edit yet.',
+    chips: [
+      { label: 'Plan', prompt: 'Write a concise implementation plan with files, steps, verification commands, risks, and stop points. Do not edit yet.' },
+      { label: 'Tradeoffs', prompt: 'Compare the two safest implementation routes, then recommend one.' },
+      { label: 'Precheck', prompt: 'Inspect relevant repo state and prerequisites before proposing edits.' },
+    ],
+  },
+  execute: {
+    label: 'Execute',
+    hint: 'do the work safely',
+    placeholder: (agentName) => `Tell ${agentName} exactly what to build or fix…`,
+    scaffold: 'Implement this in the current repo. Re-check live state first, keep the diff scoped, and run the appropriate verification before claiming completion.',
+    chips: [
+      { label: 'Implement', prompt: 'Implement this in the current repo. Re-check live state first, keep the diff scoped, and run the appropriate verification before claiming completion.' },
+      { label: 'Fix bug', prompt: 'Diagnose the root cause first, then patch the smallest safe fix and verify it.' },
+      { label: 'Refactor', prompt: 'Refactor this without changing behavior; call out any risky seams and verify before/after.' },
+    ],
+  },
+  review: {
+    label: 'Review',
+    hint: 'Argus pass',
+    placeholder: (agentName) => `Ask ${agentName} to review evidence, risks, and regressions…`,
+    scaffold: 'Review this work for correctness, regressions, browser behavior, accessibility, security/privacy risks, and missing verification evidence.',
+    chips: [
+      { label: 'QA', prompt: 'Run an Argus QA pass: regressions, browser behavior, security/privacy risks, and evidence needed before completion.' },
+      { label: 'Risk', prompt: 'List related risks, unrelated residuals, and what must be fixed before pass.' },
+      { label: 'Approve', prompt: 'Review this approval gate and tell me approve, revise, or block with the safest next action.' },
+    ],
+  },
+  debug: {
+    label: 'Debug',
+    hint: 'root cause lane',
+    placeholder: (agentName) => `Ask ${agentName} to isolate the failing path…`,
+    scaffold: 'Debug this systematically: reproduce, isolate likely cause, patch only after evidence, then verify the exact failure is gone.',
+    chips: [
+      { label: 'Repro', prompt: 'Reproduce the issue first and show the smallest failing signal before changing code.' },
+      { label: 'Trace', prompt: 'Trace the data/control flow that makes this happen, then name the root cause.' },
+      { label: 'Verify fix', prompt: 'After the fix, rerun the focused failing lane and one broad regression lane.' },
+    ],
+  },
+  research: {
+    label: 'Research',
+    hint: 'Scout evidence',
+    placeholder: (agentName) => `Ask ${agentName} to gather evidence before recommending…`,
+    scaffold: 'Research this with sources, separate facts from assumptions, and return a recommendation with confidence and open questions.',
+    chips: [
+      { label: 'Sources', prompt: 'Research this with sources, separate facts from assumptions, and return a recommendation with confidence and open questions.' },
+      { label: 'Compare', prompt: 'Compare the top options by evidence, cost, risk, and implementation effort.' },
+      { label: 'Last 30d', prompt: 'Check current/latest sources first, then summarize what changed recently.' },
+    ],
+  },
+  handoff: {
+    label: 'Handoff',
+    hint: 'continuation brief',
+    placeholder: (agentName) => `Ask ${agentName} for a safe continuation handoff…`,
+    scaffold: 'Create a handoff with active state, completed actions, files changed, commands run, verification evidence, blockers, risks, and the exact next operator move.',
+    chips: [
+      { label: 'Handoff', prompt: 'Create a handoff with active state, completed actions, files changed, commands run, verification evidence, blockers, risks, and the exact next operator move.' },
+      { label: 'Evidence', prompt: 'Summarize only the verified evidence from this thread and flag anything historical/unverified.' },
+      { label: 'Next move', prompt: 'Tell the next operator where to continue and what to verify before editing.' },
+    ],
+  },
+};
 
 export function Composer({ threadId }: ComposerProps) {
   const {
@@ -99,6 +121,8 @@ export function Composer({ threadId }: ComposerProps) {
     sendMessage,
     sendStreamingMessage,
     composerDraft,
+    composerMode,
+    setComposerMode,
     clearComposerDraft,
     hermesSettingsOpen,
     toggleHermesSettings,
@@ -109,10 +133,17 @@ export function Composer({ threadId }: ComposerProps) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [sendPulse, setSendPulse] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const draftHydratedRef = useRef(false);
 
-  const { isSending, isStreaming, streamingResponse, streamingStatus, streamingTokenCount, streamingCharsPerSecond, streamingLastChunkAt, error, lastSentAt } = composerState;
+  const { isSending, error, lastSentAt } = composerState;
   const connectionGate = getComposerConnectionGate({ detection, loading: detectionLoading });
   const agentIdentity = agentIdentityFromDetection(detection?.identity);
+  const modeConfig = MODE_CONFIG[composerMode];
+  const draftStorageKey = DRAFT_STORAGE_PREFIX + threadId;
+  const slashQuery = value.trimStart().startsWith('/') && !value.includes('\n') ? value.trim().toLowerCase() : '';
+  const slashMatches = slashQuery
+    ? SLASH_COMMANDS.filter((item) => item.command.startsWith(slashQuery) || item.label.toLowerCase().includes(slashQuery.slice(1))).slice(0, 5)
+    : [];
   const showConnectionGate = connectionGate.blocked || connectionGate.tone === 'warn';
 
   const openHermesSettings = () => {
@@ -135,6 +166,7 @@ export function Composer({ threadId }: ComposerProps) {
   const handleSend = async () => {
     const trimmed = value.trim();
     if (!trimmed || isSending || connectionGate.blocked) return;
+    try { window.localStorage.removeItem(draftStorageKey); } catch {}
     setValue('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -178,6 +210,30 @@ export function Composer({ threadId }: ComposerProps) {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [shortcutsOpen]);
 
+  useEffect(() => {
+    draftHydratedRef.current = false;
+    const timer = window.setTimeout(() => {
+      try {
+        setValue(window.localStorage.getItem(draftStorageKey) ?? '');
+      } catch {
+        setValue('');
+      } finally {
+        draftHydratedRef.current = true;
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (!draftHydratedRef.current) return;
+    try {
+      if (value.trim()) window.localStorage.setItem(draftStorageKey, value);
+      else window.localStorage.removeItem(draftStorageKey);
+    } catch {
+      // Local drafts are a convenience, not a send dependency.
+    }
+  }, [draftStorageKey, value]);
+
   // Global command center can safely pre-fill the composer without auto-sending.
   useEffect(() => {
     if (!composerDraft) return;
@@ -195,17 +251,18 @@ export function Composer({ threadId }: ComposerProps) {
   const canSend = value.trim().length > 0 && !isSending && !connectionGate.blocked;
   const sendButtonDisabled = connectionGate.blocked ? detectionLoading || isSending : !canSend;
   const sendButtonLabel = connectionGate.blocked ? connectionGate.actionLabel : 'Send message';
-  const commandChips = [
-    { label: 'Decision', prompt: addressAgentPrompt(agentIdentity, 'give me the decision, risks, tradeoffs, and exact next move for this thread.') },
-    { label: 'Split task', prompt: 'Split this into the right Hermes helper tasks and tell me what each helper should do before acting.' },
-    { label: 'Recall', prompt: 'Search prior Hermes sessions for relevant context, then continue from the useful facts only.' },
-    { label: 'Watcher', prompt: 'Design a safe Hermes cron/watch job for this need. Do not create it until I approve schedule and delivery.' },
-    { label: 'Approve', prompt: 'Review this approval gate and tell me approve, revise, or block with the safest next action.' },
-    { label: 'QA', prompt: 'Run an Argus QA pass: regressions, browser behavior, security/privacy risks, and evidence needed before completion.' },
-  ];
+  const commandChips = modeConfig.chips.map((chip) => ({
+    ...chip,
+    prompt: addressAgentPrompt(agentIdentity, chip.prompt),
+  }));
 
   const applyChip = (prompt: string) => {
-    setValue((current) => current.trim() ? `${current.trimEnd()}\n\n${prompt}` : prompt);
+    setValue((current) => current.trim() ? current.trimEnd() + '\n\n' + prompt : prompt);
+    queueMicrotask(() => textareaRef.current?.focus());
+  };
+
+  const applySlashCommand = (command: SlashCommand) => {
+    setValue(command.prompt);
     queueMicrotask(() => textareaRef.current?.focus());
   };
 
@@ -218,30 +275,6 @@ export function Composer({ threadId }: ComposerProps) {
         boxShadow: 'none',
       }}
     >
-      {/* Streaming indicator — shows progressive response */}
-      <AnimatePresence initial={false}>
-        {isStreaming && streamingResponse !== null && (
-          <StreamingIndicator
-            text={streamingResponse}
-            status={streamingStatus}
-            chunks={streamingTokenCount}
-            charsPerSecond={streamingCharsPerSecond}
-            lastChunkAt={streamingLastChunkAt}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Sending indicator (non-streaming) */}
-      {isSending && !isStreaming && (
-        <div
-          className="flex items-center gap-2 mb-2 text-xs font-mono"
-          style={{ color: 'var(--mb-brass)' }}
-        >
-          <span className="animate-pulse">◷</span>
-          <span>Sending…</span>
-        </div>
-      )}
-
       {/* Error banner */}
       {error && (
         <div
@@ -310,10 +343,10 @@ export function Composer({ threadId }: ComposerProps) {
           )}
           aria-expanded={shortcutsOpen}
         >
-          {shortcutsOpen ? 'Close options' : 'Options'}
+          {shortcutsOpen ? 'Close options' : `${modeConfig.label} mode`}
         </button>
         <span className="hidden truncate sm:inline">
-          {streamingMode ? 'Streaming replies · Enter sends' : 'Direct send · Enter sends'}
+          {modeConfig.hint} · {streamingMode ? 'live reply bubble' : 'direct send'} · Enter sends
         </span>
       </div>
 
@@ -334,7 +367,7 @@ export function Composer({ threadId }: ComposerProps) {
           >
             <div className="mb-2 flex items-center justify-between gap-3 border-b border-white/5 pb-2">
               <div>
-                <span className="block text-[10px] font-mono uppercase tracking-[0.2em] text-ash-muted">Reply mode</span>
+                <span className="block text-[10px] font-mono uppercase tracking-[0.2em] text-ash-muted">Composer mode</span>
                 <span className="mt-0.5 hidden text-[10px] text-ash-muted sm:block">Esc closes this panel · Shift+Enter adds a line</span>
               </div>
               <button
@@ -350,6 +383,33 @@ export function Composer({ threadId }: ComposerProps) {
                 {streamingMode ? 'Streaming on' : 'Streaming off'}
               </button>
             </div>
+
+            <div className="composer-mode-grid mb-2" role="radiogroup" aria-label="Composer mode">
+              {(Object.keys(MODE_CONFIG) as ComposerMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={composerMode === mode}
+                  onClick={() => setComposerMode(mode)}
+                  className={cn('composer-mode-button', composerMode === mode && 'is-active')}
+                  title={MODE_CONFIG[mode].hint}
+                >
+                  <span>{MODE_CONFIG[mode].label}</span>
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              className="composer-scaffold-button mb-2 w-full rounded-[var(--sl-radius-control)] border border-brass/20 bg-black/15 px-3 py-2 text-left text-[11px] text-ivory-dim transition hover:border-brass/40 hover:text-brass"
+              onClick={() => applyChip(addressAgentPrompt(agentIdentity, modeConfig.scaffold))}
+              disabled={isSending}
+            >
+              Insert {modeConfig.label.toLowerCase()} scaffold
+              <span className="mt-0.5 block text-[10px] text-ash-muted">Adds text to the draft only. Nothing sends until you press Send.</span>
+            </button>
+
             <div className="composer-shortcuts flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-ash">
               {commandChips.map((chip, index) => (
                 <motion.button
@@ -364,7 +424,7 @@ export function Composer({ threadId }: ComposerProps) {
                   }}
                   disabled={isSending}
                   className="rounded-[var(--sl-radius-control)] border border-white/10 bg-black/20 px-2.5 py-1.5 transition-all duration-150 hover:-translate-y-0.5 hover:border-brass/30 hover:bg-brass/10 disabled:opacity-40"
-                  style={{ color: chip.label === 'Synthesize' ? 'var(--mb-brass)' : 'var(--mb-ivory-dim)' }}
+                  style={{ color: 'var(--mb-ivory-dim)' }}
                 >
                   {chip.label}
                 </motion.button>
@@ -373,6 +433,17 @@ export function Composer({ threadId }: ComposerProps) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {slashMatches.length > 0 && (
+        <div className="composer-slash-panel" role="listbox" aria-label="Slash command suggestions">
+          {slashMatches.map((command) => (
+            <button key={command.command} type="button" onClick={() => applySlashCommand(command)} className="composer-slash-command" role="option" aria-selected="false">
+              <strong>{command.command}</strong>
+              <span>{command.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Composer input row */}
       <div className="flex items-end gap-2">
@@ -404,7 +475,7 @@ export function Composer({ threadId }: ComposerProps) {
             value={value}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder={`Ask ${agentIdentity.name} to synthesize, route, or decide…`}
+            placeholder={modeConfig.placeholder(agentIdentity.name)}
             aria-label={`Message ${agentIdentity.name}`}
             rows={1}
             disabled={isSending}
@@ -455,14 +526,10 @@ export function Composer({ threadId }: ComposerProps) {
         </div>
       </div>
 
-      {/* Footer hint — only appears when state changes, keeping the default composer calm. */}
-      {(isSending || lastSentAt) && (
+      {/* Footer hint — keep runtime activity inside the transcript bubble, not above the composer. */}
+      {!isSending && lastSentAt && (
         <p className="mt-1.5 flex items-center gap-2 px-1 text-xs text-ash-muted">
-          {isSending && !isStreaming && <span>Sending…</span>}
-          {isSending && isStreaming && <span className="animate-pulse">Streaming response…</span>}
-          {!isSending && lastSentAt && (
-            <span>Last sent {new Date(lastSentAt).toLocaleTimeString()}</span>
-          )}
+          <span>Last sent {new Date(lastSentAt).toLocaleTimeString()}</span>
         </p>
       )}
 

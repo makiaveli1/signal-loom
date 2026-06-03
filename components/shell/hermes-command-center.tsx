@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { addressAgentPrompt, agentIdentityFromDetection } from '@/lib/agent-identity';
 import { useSignalLoomStore } from '@/lib/store';
 import { classifyDelegatedSessions } from '@/lib/status-truth';
@@ -11,6 +11,7 @@ type Capability = {
   id: string;
   label: string;
   lane: string;
+  actionClass: 'fills prompt' | 'opens panel' | 'safe' | 'requires approval';
   accent: 'teal' | 'brass' | 'red' | 'violet' | 'jade';
   description: string;
   prompt: string;
@@ -22,6 +23,7 @@ const CAPABILITIES: Capability[] = [
     id: 'decision',
     label: 'Summarise decision',
     lane: 'Operator',
+    actionClass: 'fills prompt',
     accent: 'red',
     description: 'Pull out the decision, risks, and next step from the current chat.',
     helper: 'Use this when the chat is long and you need the point, not every detail.',
@@ -31,6 +33,7 @@ const CAPABILITIES: Capability[] = [
     id: 'delegate',
     label: 'Split the work',
     lane: 'Council',
+    actionClass: 'fills prompt',
     accent: 'teal',
     description: 'Break a larger task into coding, research, design, QA, or business work.',
     helper: 'Use this when several parts can move at the same time.',
@@ -40,6 +43,7 @@ const CAPABILITIES: Capability[] = [
     id: 'session-recall',
     label: 'Recall context',
     lane: 'Session search',
+    actionClass: 'fills prompt',
     accent: 'violet',
     description: 'Find useful past chats before making me repeat myself.',
     helper: 'Good for “where did we leave this?” and project continuity.',
@@ -49,6 +53,7 @@ const CAPABILITIES: Capability[] = [
     id: 'explain-hermes',
     label: 'Explain this screen',
     lane: 'Guide',
+    actionClass: 'fills prompt',
     accent: 'jade',
     description: 'Turn the dense cockpit into a plain-English walkthrough.',
     helper: 'Good for first-time users or when the operator labels are too much.',
@@ -58,6 +63,7 @@ const CAPABILITIES: Capability[] = [
     id: 'watcher',
     label: 'Create a watcher',
     lane: 'Cron',
+    actionClass: 'requires approval',
     accent: 'jade',
     description: 'Plan a repeated check, alert, or briefing.',
     helper: 'Nothing is scheduled until you approve the exact schedule and message.',
@@ -67,6 +73,7 @@ const CAPABILITIES: Capability[] = [
     id: 'skills',
     label: 'Choose skills/tools',
     lane: 'Skills',
+    actionClass: 'fills prompt',
     accent: 'brass',
     description: 'Pick the best saved runbooks and tools for this job.',
     helper: 'Use this when the safest route is not obvious.',
@@ -76,6 +83,7 @@ const CAPABILITIES: Capability[] = [
     id: 'approval',
     label: 'Review risky action',
     lane: 'Argus',
+    actionClass: 'requires approval',
     accent: 'red',
     description: 'Check pending approvals, sends, deletes, or other risky actions.',
     helper: 'Use this before anything public, expensive, or hard to undo.',
@@ -85,15 +93,27 @@ const CAPABILITIES: Capability[] = [
     id: 'connect-hermes',
     label: 'Connect Hermes',
     lane: 'Setup',
+    actionClass: 'fills prompt',
     accent: 'brass',
     description: 'Check whether Hermes is installed, configured, and reachable from this app.',
     helper: 'Use this when the UI is open but sessions, chat, or tools feel disconnected.',
     prompt: 'Diagnose my local Hermes setup for Signal Loom. Check binary, config path, env path, API server, state database, gateway status, and give me the safest next command to run.',
   },
   {
+    id: 'handoff',
+    label: 'Draft handoff',
+    lane: 'Operator',
+    actionClass: 'fills prompt',
+    accent: 'brass',
+    description: 'Prepare a structured handoff prompt for continuing this thread safely.',
+    helper: 'Fills the composer; nothing is sent until you press Send.',
+    prompt: 'Create a Signal Loom handoff for this thread with active state, completed actions, pending decisions, verification evidence, files/commands, risks, and the exact next operator move.',
+  },
+  {
     id: 'qa',
     label: 'Verify before done',
     lane: 'Argus',
+    actionClass: 'opens panel',
     accent: 'teal',
     description: 'Check the work before calling it finished.',
     helper: 'Use when a build, UI, route, or workflow needs proof, not vibes.',
@@ -125,7 +145,24 @@ export function HermesCommandCenter() {
     approvals,
     sessions,
     runtimeActivities,
+    toggleVerificationPanel,
+    setPreset,
   } = useSignalLoomStore();
+  const [query, setQuery] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const filteredCapabilities = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return CAPABILITIES;
+    return CAPABILITIES.filter((capability) =>
+      [capability.label, capability.lane, capability.actionClass, capability.description, capability.helper].join(' ').toLowerCase().includes(normalized)
+    );
+  }, [query]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setActiveIndex(0), 0);
+    return () => window.clearTimeout(timer);
+  }, [query, hermesCommandCenterOpen]);
 
   const stats = useMemo(() => {
     const delegated = classifyDelegatedSessions({ sessions, runtimeActivities });
@@ -148,7 +185,11 @@ export function HermesCommandCenter() {
       '[tabindex]:not([tabindex="-1"])',
     ].join(',');
 
-    window.setTimeout(() => panelRef.current?.focus(), 0);
+    window.setTimeout(() => {
+      const searchInput = panelRef.current?.querySelector<HTMLInputElement>('.hermes-command-search');
+      searchInput?.focus({ preventScroll: true });
+      if (!searchInput) panelRef.current?.focus({ preventScroll: true });
+    }, 0);
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -228,6 +269,35 @@ export function HermesCommandCenter() {
           </button>
         </header>
 
+        <label className="hermes-command-search-label">
+          <span className="sr-only">Search quick actions</span>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                setActiveIndex((current) => Math.min(current + 1, Math.max(filteredCapabilities.length - 1, 0)));
+              }
+              if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                setActiveIndex((current) => Math.max(current - 1, 0));
+              }
+              if (event.key === 'Enter') {
+                const selected = filteredCapabilities[activeIndex] ?? filteredCapabilities[0];
+                if (selected) {
+                  event.preventDefault();
+                  applyPrompt(selected.prompt);
+                }
+              }
+            }}
+            placeholder="Search actions… try model, doctor, approval, watcher, verify"
+            className="hermes-command-search"
+            aria-activedescendant={filteredCapabilities[activeIndex]?.id ? 'command-action-' + filteredCapabilities[activeIndex].id : undefined}
+            autoFocus
+          />
+        </label>
+
         <div className="hermes-command-status" aria-label="Hermes status summary">
           <StatusPill label="Gateway" value={runtime.gateway} good={runtime.gateway === 'healthy'} />
           <StatusPill label="Queue" value={runtime.queue} good={runtime.queue === 'healthy'} />
@@ -254,17 +324,35 @@ export function HermesCommandCenter() {
             <span>Runtime check</span>
             <strong>ask</strong>
           </button>
+          <button
+            type="button"
+            className="hermes-command-quick"
+            onClick={() => { toggleVerificationPanel(); closeHermesCommandCenter(); }}
+          >
+            <span>Verification</span>
+            <strong>open</strong>
+          </button>
+          <button
+            type="button"
+            className="hermes-command-quick"
+            onClick={() => { setPreset('verify'); toggleVerificationPanel(); closeHermesCommandCenter(); }}
+          >
+            <span>Verify layout</span>
+            <strong>safe</strong>
+          </button>
         </div>
 
         <div className="hermes-capability-grid">
-          {CAPABILITIES.map((capability) => (
+          {filteredCapabilities.map((capability, index) => (
             <button
+              id={'command-action-' + capability.id}
               key={capability.id}
               type="button"
               onClick={() => applyPrompt(capability.prompt)}
-              className={cn('hermes-capability-card', accentClass[capability.accent])}
+              onMouseEnter={() => setActiveIndex(index)}
+              className={cn('hermes-capability-card', accentClass[capability.accent], activeIndex === index && 'is-active')}
             >
-              <span className="hermes-capability-lane">{capability.lane}</span>
+              <span className="hermes-capability-lane">{capability.lane} · {capability.actionClass}</span>
               <span className="hermes-capability-label">{capability.label}</span>
               <span className="hermes-capability-description">{capability.description}</span>
               <span className="hermes-capability-helper">{capability.helper}</span>
