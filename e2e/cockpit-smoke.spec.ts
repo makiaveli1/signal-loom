@@ -166,8 +166,8 @@ test.describe('Signal Loom cockpit smoke', () => {
     await expect(page.getByRole('dialog', { name: 'Hermes settings' })).toBeVisible();
     await expect(page.getByText('Runtime truth')).toBeVisible();
     await expect(page.getByText('Detected Signal Loom configuration')).toBeVisible();
-    await expect(page.getByText('Hermes API')).toBeVisible();
-    await expect(page.getByText('API token')).toBeVisible();
+    await expect(page.getByText('Hermes API', { exact: true })).toBeVisible();
+    await expect(page.getByText('API token', { exact: true })).toBeVisible();
 
     const bodyText = await page.locator('body').innerText();
     expect(bodyText).not.toContain('Bearer ');
